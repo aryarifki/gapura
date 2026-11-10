@@ -1,0 +1,13 @@
+{
+  "name": "hme-web-dashboard",
+  "version": "2.0.0",
+  "description": "Web Review Dashboard and Control Center for Homeless Media Engine",
+  "main": "server.js",
+  "type": "module",
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "js-yaml": "^4.1.0",
+    "pg": "^8.13.1"
+  }
+}

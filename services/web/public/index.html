@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GAPURA · Homeless Media Engine</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Header Bar -->
+  <header class="app-header">
+    <div class="header-left">
+      <div class="brand-badge">HME v2.0</div>
+      <div class="brand-title">
+        <h1>GAPURA <span>· Homeless Media Engine</span></h1>
+        <p class="brand-sub">Platform Otomasi Konten Niche Data, Hukum & Ekonomi Bursa (@homelessmedia)</p>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="system-status">
+        <span class="status-pill status-ok" id="status-db">● DB PostgreSQL</span>
+        <span class="status-pill status-ok" id="status-render">● Render Service</span>
+        <span class="status-pill status-ok" id="status-n8n">● n8n Engine</span>
+      </div>
+      <button class="btn btn-primary" id="btn-run-pipeline">
+        <span class="icon">⚡</span> Jalankan Pipeline
+      </button>
+    </div>
+  </header>
+
+  <!-- Metric Overview Cards -->
+  <section class="metrics-grid">
+    <div class="metric-card">
+      <div class="metric-label">Bahan Mentah (Scout)</div>
+      <div class="metric-val" id="metric-raw">0</div>
+      <div class="metric-desc">Item berita resmi tersaring dedup</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Topik Teranalisis</div>
+      <div class="metric-val" id="metric-topics">0</div>
+      <div class="metric-desc"><span id="metric-passed">0</span> lolos skor, <span id="metric-fastfail">0</span> fast-failed</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Draf Menunggu Review</div>
+      <div class="metric-val accent-val" id="metric-drafts-pending">0</div>
+      <div class="metric-desc">Carousel siap diputuskan admin</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Antrean Jadwal Tayang</div>
+      <div class="metric-val" id="metric-scheduled">0</div>
+      <div class="metric-desc">Auto-publish jam optimal</div>
+    </div>
+  </section>
+
+  <!-- Main Tabs Navigation -->
+  <nav class="nav-tabs">
+    <button class="tab-btn active" data-tab="tab-drafts">📑 Antrean Draf Review (<span id="tab-draft-count">0</span>)</button>
+    <button class="tab-btn" data-tab="tab-topics">📊 Radar Topik & Skoring (<span id="tab-topic-count">0</span>)</button>
+    <button class="tab-btn" data-tab="tab-tokens">🎨 Design Tokens (tokens.yaml)</button>
+    <button class="tab-btn" data-tab="tab-audit">📜 Audit Log & Jejak</button>
+  </nav>
+
+  <!-- Content Container -->
+  <main class="main-content">
+    <!-- TAB 1: DRAFTS REVIEW -->
+    <section id="tab-drafts" class="tab-pane active">
+      <div class="section-toolbar">
+        <h2>Antrean Carousel Siap Review (Human-in-the-Loop)</h2>
+        <div class="filter-group">
+          <button class="btn btn-sm btn-filter active" data-filter="all">Semua Status</button>
+          <button class="btn btn-sm btn-filter" data-filter="draft">Perlu Diputuskan</button>
+          <button class="btn btn-sm btn-filter" data-filter="scheduled">Terjadwal</button>
+          <button class="btn btn-sm btn-filter" data-filter="rejected">Ditolak</button>
+        </div>
+      </div>
+      <div id="drafts-container" class="drafts-list">
+        <!-- Rendered by JS -->
+      </div>
+    </section>
+
+    <!-- TAB 2: TOPICS RADAR -->
+    <section id="tab-topics" class="tab-pane">
+      <div class="section-toolbar">
+        <h2>Radar Topik & Evaluasi Skor Analis (0–100)</h2>
+        <div class="filter-group">
+          <button class="btn btn-sm btn-topic-filter active" data-status="">Semua Topik</button>
+          <button class="btn btn-sm btn-topic-filter" data-status="scored">Lolos (>=75)</button>
+          <button class="btn btn-sm btn-topic-filter" data-status="rejected">Gugur / Fast-Fail</button>
+          <button class="btn btn-sm btn-topic-filter" data-status="produced">Diproduksi</button>
+        </div>
+      </div>
+      <div class="table-card">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th width="60">ID</th>
+              <th width="140">Sumber Primer</th>
+              <th>Judul Topik & Rangkuman Berita</th>
+              <th width="110">Skor Total</th>
+              <th width="110">Status</th>
+              <th width="130">Aksi</th>
+            </tr>
+          </thead>
+          <tbody id="topics-table-body">
+            <!-- Rendered by JS -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- TAB 3: DESIGN TOKENS -->
+    <section id="tab-tokens" class="tab-pane">
+      <div class="section-toolbar">
+        <h2>Design Tokens Brand (@homelessmedia)</h2>
+        <button class="btn btn-primary" id="btn-save-tokens">💾 Simpan & Muat Ulang Tokens</button>
+      </div>
+      <p class="section-desc">Satu berkas <code>tokens.yaml</code> mengontrol seluruh identitas visual, tipografi, warna, dan chart flat. Perubahan otomatis memicu hot-reload pada Render Service.</p>
+      <div class="tokens-editor-layout">
+        <textarea id="tokens-editor" class="code-editor" spellcheck="false"></textarea>
+      </div>
+    </section>
+
+    <!-- TAB 4: AUDIT LOG -->
+    <section id="tab-audit" class="tab-pane">
+      <div class="section-toolbar">
+        <h2>Audit Log Keputusan Admin (Append-Only)</h2>
+      </div>
+      <div class="table-card">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th width="80">Log ID</th>
+              <th width="100">Entitas</th>
+              <th width="100">ID Entitas</th>
+              <th width="140">Aksi</th>
+              <th width="120">Aktor</th>
+              <th>Detail Payload</th>
+              <th width="180">Waktu</th>
+            </tr>
+          </thead>
+          <tbody id="audit-table-body">
+            <!-- Rendered by JS -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- MODAL EDIT SLIDE -->
+  <div id="edit-modal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Edit Teks Slide & Render Ulang</h3>
+        <button class="modal-close" id="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-info">Mengedit teks slide akan langsung memicu Render Service (Satori + Sharp) dan memperbarui file PNG deterministik:</p>
+        <div class="form-group">
+          <label>Pilih Nomor Slide:</label>
+          <select id="edit-slide-no" class="form-control">
+            <option value="1">Slide 1 (Hook / Cover)</option>
+            <option value="2">Slide 2 (Konteks)</option>
+            <option value="3">Slide 3 (Bukti / Chart / Regulasi)</option>
+            <option value="4">Slide 4 (Implikasi)</option>
+            <option value="5">Slide 5 (CTA Close)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Teks Baru:</label>
+          <textarea id="edit-slide-text" class="form-control" rows="4"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="modal-cancel">Batal</button>
+        <button class="btn btn-primary" id="btn-submit-edit">🚀 Render Ulang Slide</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION -->
+  <div id="toast" class="toast"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
