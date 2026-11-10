@@ -55,6 +55,8 @@ function setupNavigation() {
         showGalleryView();
       } else if (viewId === 'view-topics') {
         loadTopics();
+      } else if (viewId === 'view-agents') {
+        loadAgentsConfigUI();
       } else if (viewId === 'view-n8n') {
         loadWorkflow();
       } else if (viewId === 'view-tokens') {
@@ -63,6 +65,58 @@ function setupNavigation() {
         loadAuditFull();
       }
     };
+  });
+
+  // Overview 4 Agent Status Cards Click -> Kustomisasi Agen AI
+  const agentCards = document.querySelectorAll('.agent-status-card');
+  if (agentCards.length >= 4) {
+    const agentMap = ['scout', 'analis', 'copywriter', 'designer'];
+    agentCards.forEach((card, idx) => {
+      card.onclick = () => {
+        switchToView('view-agents');
+        switchAgentTab(agentMap[idx]);
+      };
+    });
+  }
+
+  // Agent Customization Tabs
+  document.querySelectorAll('.agent-nav-tab').forEach((tab) => {
+    tab.onclick = () => {
+      switchAgentTab(tab.dataset.agent);
+    };
+  });
+
+  // Agent Save Buttons
+  const saveTopBtn = document.getElementById('btn-save-agents-config-top');
+  const saveBottomBtn = document.getElementById('btn-save-agents-config-bottom');
+  if (saveTopBtn) saveTopBtn.onclick = saveAgentsConfigUI;
+  if (saveBottomBtn) saveBottomBtn.onclick = saveAgentsConfigUI;
+
+  // Analis Threshold Slider & Num Sync
+  const thresholdSlider = document.getElementById('analis-threshold');
+  const thresholdNum = document.getElementById('analis-threshold-num');
+  const thresholdLabel = document.getElementById('analis-threshold-label');
+  if (thresholdSlider && thresholdNum) {
+    thresholdSlider.oninput = () => {
+      thresholdNum.value = thresholdSlider.value;
+      if (thresholdLabel) thresholdLabel.textContent = thresholdSlider.value;
+    };
+    thresholdNum.oninput = () => {
+      thresholdSlider.value = thresholdNum.value;
+      if (thresholdLabel) thresholdLabel.textContent = thresholdNum.value;
+    };
+  }
+
+  // Color Pickers & Hex Text Sync
+  ['bg', 'ink', 'accent', 'highlight', 'up', 'down'].forEach((key) => {
+    const picker = document.getElementById(`color-${key}`);
+    const hex = document.getElementById(`color-${key}-hex`);
+    if (picker && hex) {
+      picker.oninput = () => { hex.value = picker.value; };
+      hex.oninput = () => {
+        if (/^#[0-9A-Fa-f]{6}$/.test(hex.value)) picker.value = hex.value;
+      };
+    }
   });
 
   // Filter Tabs Gallery Review
@@ -129,16 +183,22 @@ async function loadStats() {
     if (!res.ok) return;
     const data = await res.json();
 
-    document.getElementById('ov-raw-val').textContent = data.raw_items_count || 0;
-    document.getElementById('ov-passed-val').textContent = data.topics_passed || 0;
-    document.getElementById('ov-fastfail-val').textContent = data.topics_fastfailed || 0;
-    document.getElementById('ov-pending-val').textContent = data.drafts_pending || 0;
-    document.getElementById('ov-scheduled-val').textContent = data.scheduled_count || 0;
+    const rawCount = data.raw_items ?? 0;
+    const passedCount = data.scores?.passed ?? 0;
+    const fastFailedCount = (data.scores?.fast_failed ?? 0) + (data.scores?.rejected ?? 0);
+    const pendingDrafts = data.drafts?.draft ?? 0;
+    const scheduledPosts = data.scheduled_posts ?? 0;
+
+    document.getElementById('ov-raw-val').textContent = rawCount;
+    document.getElementById('ov-passed-val').textContent = passedCount;
+    document.getElementById('ov-fastfail-val').textContent = fastFailedCount;
+    document.getElementById('ov-pending-val').textContent = pendingDrafts;
+    document.getElementById('ov-scheduled-val').textContent = scheduledPosts;
 
     const badge = document.getElementById('sidebar-review-badge');
     if (badge) {
-      badge.textContent = data.drafts_pending || 0;
-      badge.style.display = data.drafts_pending > 0 ? 'inline-block' : 'none';
+      badge.textContent = pendingDrafts;
+      badge.style.display = pendingDrafts > 0 ? 'inline-block' : 'none';
     }
   } catch (err) {
     console.error('Error loadStats:', err);
@@ -500,6 +560,8 @@ async function loadTopics() {
 
       const card = document.createElement('div');
       card.className = 'radar-item-card';
+      card.title = 'Klik untuk langsung mereview & memproduksi draf carousel ini';
+      card.onclick = () => autoProduceAndReviewTopic(t.id, t.title);
 
       card.innerHTML = `
         <div class="radar-score-col">
@@ -512,6 +574,9 @@ async function loadTopics() {
             <span class="radar-badge ${isLolos ? 'radar-badge-lolos' : 'radar-badge-gugur'}">${isLolos ? 'Lolos' : 'Gugur'}</span>
             <span class="radar-badge radar-badge-category">${escapeHtml(t.primary_source)}</span>
             <span class="radar-source-meta">· ${formatTimeAgo(t.created_at)}</span>
+            <span class="radar-action-hint" style="color: var(--lime); font-size: 11px; font-weight: 700; margin-left: auto; display: flex; align-items: center; gap: 4px;">
+              <span>⚡</span> <span>Siap Produksi ↗</span>
+            </span>
           </div>
         </div>
       `;
@@ -645,6 +710,262 @@ async function loadAuditFull() {
     console.error('Error loadAuditFull:', err);
   }
 }
+
+// ==============================================================================
+// 11. Auto-Produce Topic to Deep Review Editor (User Request #1)
+// ==============================================================================
+async function autoProduceAndReviewTopic(topicId, topicTitle) {
+  showToast(`✨ Menyiapkan draf carousel untuk: "${topicTitle.slice(0, 30)}..."`);
+  try {
+    const res = await fetch(`/api/topics/${topicId}/auto-produce`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    showToast(data.is_existing ? 'Draf sudah tersedia! Membuka editor...' : '✨ Draf & slide berhasil diproduksi! Membuka editor...');
+    await loadDrafts();
+    switchToView('view-review');
+    openDraftEditor(data.draft_id);
+  } catch (err) {
+    console.error('Error auto-producing topic:', err);
+    showToast(`Gagal memproduksi draf: ${err.message}`);
+  }
+}
+
+function switchToView(viewId) {
+  document.querySelectorAll('.nav-item').forEach((i) => i.classList.remove('active'));
+  document.querySelectorAll('.view-pane').forEach((p) => p.classList.remove('active'));
+
+  const navItem = document.querySelector(`.nav-item[data-view="${viewId}"]`);
+  const viewPane = document.getElementById(viewId);
+  if (navItem) navItem.classList.add('active');
+  if (viewPane) viewPane.classList.add('active');
+
+  const sidebar = document.getElementById('app-sidebar');
+  if (sidebar) sidebar.classList.remove('mobile-open');
+
+  if (viewId === 'view-overview') {
+    loadStats();
+    loadActivityFeed();
+  } else if (viewId === 'view-review') {
+    loadDrafts();
+    showGalleryView();
+  } else if (viewId === 'view-topics') {
+    loadTopics();
+  } else if (viewId === 'view-agents') {
+    loadAgentsConfigUI();
+  } else if (viewId === 'view-n8n') {
+    loadWorkflow();
+  } else if (viewId === 'view-tokens') {
+    loadTokens();
+  } else if (viewId === 'view-audit') {
+    loadAuditFull();
+  }
+}
+
+function switchAgentTab(agentKey) {
+  document.querySelectorAll('.agent-nav-tab').forEach((t) => {
+    t.classList.toggle('active', t.dataset.agent === agentKey);
+  });
+  document.querySelectorAll('.agent-tab-panel').forEach((p) => {
+    p.classList.toggle('active', p.id === `tab-panel-${agentKey}`);
+  });
+}
+
+// ==============================================================================
+// 12. AI Agents Configuration UI (User Requests #3 & #4)
+// ==============================================================================
+async function loadAgentsConfigUI() {
+  try {
+    const res = await fetch('/api/agents/config');
+    if (!res.ok) return;
+    const config = await res.json();
+
+    // Scout
+    const scout = config.scout || {};
+    if (document.getElementById('scout-poll-interval')) document.getElementById('scout-poll-interval').value = scout.poll_interval_mins ?? 30;
+    if (document.getElementById('scout-dedup-threshold')) document.getElementById('scout-dedup-threshold').value = scout.dedup_similarity_threshold ?? 0.85;
+    if (document.getElementById('scout-max-items')) document.getElementById('scout-max-items').value = scout.max_items_per_source ?? 15;
+    if (document.getElementById('scout-keywords')) document.getElementById('scout-keywords').value = scout.custom_keywords ?? '';
+    if (document.getElementById('scout-rules')) document.getElementById('scout-rules').value = scout.rules ?? '';
+
+    // Analis
+    const analis = config.analis || {};
+    if (document.getElementById('analis-provider')) document.getElementById('analis-provider').value = analis.provider || 'gemini';
+    if (document.getElementById('analis-model')) document.getElementById('analis-model').value = analis.model || 'gemini-2.0-flash';
+    if (document.getElementById('analis-endpoint')) document.getElementById('analis-endpoint').value = analis.endpoint || 'https://generativelanguage.googleapis.com';
+    if (document.getElementById('analis-api-key')) document.getElementById('analis-api-key').value = analis.api_key || '';
+
+    const minThreshold = analis.min_score_threshold ?? 75;
+    if (document.getElementById('analis-threshold')) document.getElementById('analis-threshold').value = minThreshold;
+    if (document.getElementById('analis-threshold-num')) document.getElementById('analis-threshold-num').value = minThreshold;
+    if (document.getElementById('analis-threshold-label')) document.getElementById('analis-threshold-label').textContent = minThreshold;
+
+    const weights = analis.weights || {};
+    if (document.getElementById('weight-relevance')) document.getElementById('weight-relevance').value = weights.relevance ?? 30;
+    if (document.getElementById('weight-credibility')) document.getElementById('weight-credibility').value = weights.credibility ?? 25;
+    if (document.getElementById('weight-momentum')) document.getElementById('weight-momentum').value = weights.momentum ?? 20;
+    if (document.getElementById('weight-engagement')) document.getElementById('weight-engagement').value = weights.engagement ?? 15;
+    if (document.getElementById('weight-compliance')) document.getElementById('weight-compliance').value = weights.compliance ?? 10;
+
+    if (document.getElementById('analis-fastfail')) document.getElementById('analis-fastfail').value = analis.fast_fail_rules ?? '';
+    if (document.getElementById('analis-prompt')) document.getElementById('analis-prompt').value = analis.system_prompt ?? '';
+
+    // Copywriter
+    const copy = config.copywriter || {};
+    if (document.getElementById('copywriter-provider')) document.getElementById('copywriter-provider').value = copy.provider || 'gemini';
+    if (document.getElementById('copywriter-model')) document.getElementById('copywriter-model').value = copy.model || 'gemini-2.0-flash';
+    if (document.getElementById('copywriter-endpoint')) document.getElementById('copywriter-endpoint').value = copy.endpoint || 'https://generativelanguage.googleapis.com';
+    if (document.getElementById('copywriter-api-key')) document.getElementById('copywriter-api-key').value = copy.api_key || '';
+    if (document.getElementById('copywriter-slides-count')) document.getElementById('copywriter-slides-count').value = copy.slide_count ?? 5;
+    if (document.getElementById('copywriter-tone')) document.getElementById('copywriter-tone').value = copy.tone_of_voice ?? '';
+    if (document.getElementById('copywriter-banned-words')) document.getElementById('copywriter-banned-words').value = copy.banned_words ?? '';
+    if (document.getElementById('copywriter-disclaimer-fin')) document.getElementById('copywriter-disclaimer-fin').value = copy.disclaimer_financial ?? '';
+    if (document.getElementById('copywriter-disclaimer-legal')) document.getElementById('copywriter-disclaimer-legal').value = copy.disclaimer_legal ?? '';
+    if (document.getElementById('copywriter-prompt')) document.getElementById('copywriter-prompt').value = copy.system_prompt ?? '';
+
+    // Designer
+    const designer = config.designer || {};
+    const tokens = designer.tokens || {};
+    const palette = tokens.palette || {};
+
+    const colorKeys = ['bg', 'ink', 'accent', 'highlight', 'up', 'down'];
+    colorKeys.forEach((k) => {
+      const val = palette[k] || (k === 'bg' ? '#f7f5f0' : k === 'ink' ? '#102b45' : '#1f7e81');
+      const pEl = document.getElementById(`color-${k}`);
+      const hEl = document.getElementById(`color-${k}-hex`);
+      if (pEl) pEl.value = val;
+      if (hEl) hEl.value = val;
+    });
+
+    const typo = tokens.typography || {};
+    if (document.getElementById('designer-display-font')) document.getElementById('designer-display-font').value = typo.display_font || 'Archivo Black';
+    if (document.getElementById('designer-text-font')) document.getElementById('designer-text-font').value = typo.text_font || 'Inter';
+
+    const layouts = designer.default_layouts || {};
+    if (document.getElementById('layout-cover')) document.getElementById('layout-cover').value = layouts.cover || 'cover-stat';
+    if (document.getElementById('layout-context')) document.getElementById('layout-context').value = layouts.context || 'big-statement';
+    if (document.getElementById('layout-data')) document.getElementById('layout-data').value = layouts.evidence_data || 'chart-bar';
+    if (document.getElementById('layout-implication')) document.getElementById('layout-implication').value = layouts.implication || 'comparison';
+    if (document.getElementById('layout-close')) document.getElementById('layout-close').value = layouts.close || 'cta-close';
+
+    if (document.getElementById('designer-autofit')) {
+      document.getElementById('designer-autofit').checked = designer.auto_fit_text !== false;
+    }
+  } catch (err) {
+    console.error('Error loadAgentsConfigUI:', err);
+  }
+}
+
+async function saveAgentsConfigUI() {
+  const saveBtns = [
+    document.getElementById('btn-save-agents-config-top'),
+    document.getElementById('btn-save-agents-config-bottom'),
+  ].filter(Boolean);
+
+  saveBtns.forEach((b) => {
+    b.disabled = true;
+    b.innerHTML = '<span>⏳</span> <span>Menyimpan & Menerapkan...</span>';
+  });
+
+  try {
+    const payload = {
+      scout: {
+        poll_interval_mins: parseInt(document.getElementById('scout-poll-interval')?.value || '30'),
+        dedup_similarity_threshold: parseFloat(document.getElementById('scout-dedup-threshold')?.value || '0.85'),
+        max_items_per_source: parseInt(document.getElementById('scout-max-items')?.value || '15'),
+        custom_keywords: document.getElementById('scout-keywords')?.value || '',
+        rules: document.getElementById('scout-rules')?.value || '',
+      },
+      analis: {
+        provider: document.getElementById('analis-provider')?.value || 'gemini',
+        endpoint: document.getElementById('analis-endpoint')?.value || 'https://generativelanguage.googleapis.com',
+        api_key: document.getElementById('analis-api-key')?.value || '',
+        model: document.getElementById('analis-model')?.value || 'gemini-2.0-flash',
+        min_score_threshold: parseInt(document.getElementById('analis-threshold')?.value || '75'),
+        weights: {
+          relevance: parseInt(document.getElementById('weight-relevance')?.value || '30'),
+          credibility: parseInt(document.getElementById('weight-credibility')?.value || '25'),
+          momentum: parseInt(document.getElementById('weight-momentum')?.value || '20'),
+          engagement: parseInt(document.getElementById('weight-engagement')?.value || '15'),
+          compliance: parseInt(document.getElementById('weight-compliance')?.value || '10'),
+        },
+        fast_fail_rules: document.getElementById('analis-fastfail')?.value || '',
+        system_prompt: document.getElementById('analis-prompt')?.value || '',
+      },
+      copywriter: {
+        provider: document.getElementById('copywriter-provider')?.value || 'gemini',
+        endpoint: document.getElementById('copywriter-endpoint')?.value || 'https://generativelanguage.googleapis.com',
+        api_key: document.getElementById('copywriter-api-key')?.value || '',
+        model: document.getElementById('copywriter-model')?.value || 'gemini-2.0-flash',
+        slide_count: parseInt(document.getElementById('copywriter-slides-count')?.value || '5'),
+        tone_of_voice: document.getElementById('copywriter-tone')?.value || '',
+        banned_words: document.getElementById('copywriter-banned-words')?.value || '',
+        system_prompt: document.getElementById('copywriter-prompt')?.value || '',
+        disclaimer_financial: document.getElementById('copywriter-disclaimer-fin')?.value || '',
+        disclaimer_legal: document.getElementById('copywriter-disclaimer-legal')?.value || '',
+      },
+      designer: {
+        tokens: {
+          palette: {
+            bg: document.getElementById('color-bg-hex')?.value || '#f7f5f0',
+            ink: document.getElementById('color-ink-hex')?.value || '#102b45',
+            accent: document.getElementById('color-accent-hex')?.value || '#1f7e81',
+            highlight: document.getElementById('color-highlight-hex')?.value || '#d79344',
+            up: document.getElementById('color-up-hex')?.value || '#1a7a4f',
+            down: document.getElementById('color-down-hex')?.value || '#b23a48',
+          },
+          typography: {
+            display_font: document.getElementById('designer-display-font')?.value || 'Archivo Black',
+            text_font: document.getElementById('designer-text-font')?.value || 'Inter',
+          },
+        },
+        default_layouts: {
+          cover: document.getElementById('layout-cover')?.value || 'cover-stat',
+          context: document.getElementById('layout-context')?.value || 'big-statement',
+          evidence_data: document.getElementById('layout-data')?.value || 'chart-bar',
+          evidence_legal: document.getElementById('layout-implication')?.value || 'comparison',
+          implication: document.getElementById('layout-implication')?.value || 'comparison',
+          close: document.getElementById('layout-close')?.value || 'cta-close',
+        },
+        auto_fit_text: document.getElementById('designer-autofit')?.checked !== false,
+      },
+    };
+
+    const res = await fetch('/api/agents/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    showToast(data.message || '✅ Konfigurasi 4 Agen AI berhasil disimpan & diterapkan!');
+  } catch (err) {
+    console.error('Error saving agent config:', err);
+    showToast(`Gagal menyimpan: ${err.message}`);
+  } finally {
+    saveBtns.forEach((b) => {
+      b.disabled = false;
+      b.innerHTML = '<span>💾</span> <span>Simpan & Terapkan Perubahan</span>';
+    });
+  }
+}
+
+window.togglePasswordVisibility = function (id) {
+  const el = document.getElementById(id);
+  if (el) {
+    el.type = el.type === 'password' ? 'text' : 'password';
+  }
+};
 
 // Utilities
 function formatTimeAgo(dateStr) {

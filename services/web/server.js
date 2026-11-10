@@ -13,6 +13,8 @@ import pkg from 'pg';
 const { Pool } = pkg;
 import yaml from 'js-yaml';
 import { exec } from 'child_process';
+import { produceSingleTopicDraft } from '../copywriter/copywriter.js';
+import { loadAgentsConfig } from '../common/llm.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,6 +29,7 @@ const HOST = '127.0.0.1';
 const STORAGE_PATH = path.resolve(__dirname, '../../storage');
 const DESIGN_SYSTEM_PATH = path.resolve(__dirname, '../../design-system');
 const TOKENS_PATH = path.join(DESIGN_SYSTEM_PATH, 'tokens.yaml');
+const AGENTS_CONFIG_PATH = path.resolve(__dirname, '../../config/agents.json');
 const RENDER_SERVICE_URL = 'http://127.0.0.1:3000';
 const RENDER_SECRET = process.env.RENDER_SECRET || 'dev_render_secret_hme';
 
@@ -304,6 +307,31 @@ app.post('/api/topics/:id/promote', async (req, res) => {
   }
 });
 
+// 7b. Auto Produce Topic directly to Draft & Slides
+app.post('/api/topics/:id/auto-produce', async (req, res) => {
+  const topicId = parseInt(req.params.id);
+  try {
+    // Cek apakah sudah pernah diproduksi
+    const { rows: existingDrafts } = await pool.query('SELECT id FROM drafts WHERE topic_id = $1 LIMIT 1', [topicId]);
+    if (existingDrafts.length > 0) {
+      return res.json({ status: 'success', draft_id: existingDrafts[0].id, is_existing: true });
+    }
+
+    // Ambil detail topik
+    const { rows: topics } = await pool.query('SELECT * FROM topics WHERE id = $1', [topicId]);
+    if (topics.length === 0) {
+      return res.status(404).json({ error: 'Topik tidak ditemukan' });
+    }
+
+    const topic = topics[0];
+    const result = await produceSingleTopicDraft(topic, pool);
+    res.json({ status: 'success', draft_id: result.draft_id, is_existing: false, slides_count: result.slides_count });
+  } catch (err) {
+    console.error('[Web API] Auto-produce error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 8. Run Pipeline Runner
 let isPipelineRunning = false;
 app.post('/api/pipeline/run', (req, res) => {
@@ -351,6 +379,81 @@ app.post('/api/tokens', async (req, res) => {
     res.json({ status: 'success', message: 'Tokens updated and reloaded.' });
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+// 9b. AI Agents Configuration API
+app.get('/api/agents/config', (req, res) => {
+  try {
+    const config = loadAgentsConfig();
+    res.json(config);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/agents/config', async (req, res) => {
+  try {
+    const newConfig = req.body;
+    if (!newConfig || typeof newConfig !== 'object') {
+      return res.status(400).json({ error: 'Payload konfigurasi tidak valid.' });
+    }
+
+    // 1. Simpan ke config/agents.json
+    fs.writeFileSync(AGENTS_CONFIG_PATH, JSON.stringify(newConfig, null, 2), 'utf8');
+
+    // 2. Jika konfigurasi designer / tokens ada pembaruan, sinkronisasi ke tokens.yaml dan reload Render Service
+    if (newConfig.designer && newConfig.designer.tokens) {
+      try {
+        let existingTokens = {};
+        if (fs.existsSync(TOKENS_PATH)) {
+          existingTokens = yaml.load(fs.readFileSync(TOKENS_PATH, 'utf8')) || {};
+        }
+        existingTokens.palette = {
+          ...(existingTokens.palette || {}),
+          ...(newConfig.designer.tokens.palette || {}),
+        };
+        existingTokens.typography = {
+          ...(existingTokens.typography || {}),
+          ...(newConfig.designer.tokens.typography || {}),
+        };
+        const tokensYaml = yaml.dump(existingTokens);
+        fs.writeFileSync(TOKENS_PATH, tokensYaml, 'utf8');
+        await fetch(`${RENDER_SERVICE_URL}/tokens/reload`, {
+          method: 'POST',
+          headers: { 'X-Render-Secret': RENDER_SECRET },
+        });
+        console.log('[Web API] Desain tokens berhasil disinkronisasi & di-reload di Render Service.');
+      } catch (tokenErr) {
+        console.warn('[Web API] Gagal sinkronisasi token desain:', tokenErr.message);
+      }
+    }
+
+    // 3. Jika threshold analis diubah, sinkronisasi ke app_settings DB
+    if (newConfig.analis && newConfig.analis.min_score_threshold) {
+      try {
+        await pool.query(
+          `INSERT INTO app_settings (key, value, updated_at)
+           VALUES ('score_threshold', $1, NOW())
+           ON CONFLICT (key) DO UPDATE
+           SET value = EXCLUDED.value, updated_at = NOW()`,
+          [JSON.stringify({ initial_strict_score: parseInt(newConfig.analis.min_score_threshold) })]
+        );
+      } catch (dbErr) {
+        console.warn('[Web API] Gagal sinkronisasi score_threshold ke DB:', dbErr.message);
+      }
+    }
+
+    // 4. Catat ke audit_log
+    await pool.query(
+      "INSERT INTO audit_log (entity, entity_id, action, actor, payload) VALUES ('ai_agents', 1, 'update_config', 'web_admin', $1)",
+      [JSON.stringify({ updated_agents: Object.keys(newConfig) })]
+    );
+
+    res.json({ status: 'success', message: 'Konfigurasi Agen AI berhasil disimpan dan diterapkan secara instan ke seluruh sistem.' });
+  } catch (err) {
+    console.error('[Web API] Gagal menyimpan config agen:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 

@@ -1,0 +1,62 @@
+{
+  "scout": {
+    "poll_interval_mins": 30,
+    "dedup_similarity_threshold": 0.85,
+    "max_items_per_source": 15,
+    "custom_keywords": "IHSG, Bursa, OJK, Bank Indonesia, BPS, Regulasi, APBN, Suku Bunga, Pasar Modal, Dividen, POJK",
+    "rules": "Hanya ambil siaran pers resmi, regulasi terverifikasi, dan pergerakan data makro ekonomi."
+  },
+  "analis": {
+    "provider": "gemini",
+    "endpoint": "https://generativelanguage.googleapis.com",
+    "api_key": "",
+    "model": "gemini-2.0-flash",
+    "min_score_threshold": 76,
+    "weights": {
+      "relevance": 30,
+      "credibility": 25,
+      "momentum": 20,
+      "engagement": 15,
+      "compliance": 10
+    },
+    "fast_fail_rules": "rekomendasi saham|target harga|koleksi saham|potensial cuan|serok|to the moon\ngosip|artis|selebriti|viral tiktok\nselamat ulang tahun|ucapan selamat|dirgahayu|peresmian gedung\nsara|ujaran kebencian|fitnah",
+    "system_prompt": "Anda adalah Analis Senior @homelessmedia untuk pasar modal, hukum, dan makro ekonomi. Nilai kelayakan berita dengan ketat berdasarkan rubrik 5 komponen. Kembalikan format JSON persis sesuai spesifikasi."
+  },
+  "copywriter": {
+    "provider": "gemini",
+    "endpoint": "https://generativelanguage.googleapis.com",
+    "api_key": "",
+    "model": "gemini-2.0-flash",
+    "slide_count": 5,
+    "tone_of_voice": "Data-editorial netral, berwibawa, angka di depan, tanpa hiperbola dan tanpa spekulasi",
+    "banned_words": "cuan, to the moon, serok, pasti untung, bocoran bandar, kaya mendadak",
+    "system_prompt": "Anda adalah Copywriter Data-Editorial untuk akun Instagram @homelessmedia (niche: data pasar saham, hukum, regulasi, dan ekonomi). Hasilkan teks carousel 5 slide: Cover hook angka, Konteks berita, Bukti data/regulasi, Implikasi kebijakan, dan CTA Penutup. Sisipkan kutipan verbatim dan disclaimer.",
+    "disclaimer_financial": "Informasi disajikan untuk tujuan edukasi data pasar publik dan bukan merupakan rekomendasi investasi beli/jual saham.",
+    "disclaimer_legal": "Informasi disajikan untuk tujuan edukasi hukum & regulasi publik dan bukan merupakan nasihat hukum resmi."
+  },
+  "designer": {
+    "tokens": {
+      "palette": {
+        "bg": "#f7f5f0",
+        "ink": "#102b45",
+        "accent": "#1f7e81",
+        "highlight": "#d79344",
+        "up": "#1a7a4f",
+        "down": "#b23a48"
+      },
+      "typography": {
+        "display_font": "Archivo Black",
+        "text_font": "Inter"
+      }
+    },
+    "default_layouts": {
+      "cover": "cover-stat",
+      "context": "big-statement",
+      "evidence_data": "chart-bar",
+      "evidence_legal": "regulasi",
+      "implication": "comparison",
+      "close": "cta-close"
+    },
+    "auto_fit_text": true
+  }
+}

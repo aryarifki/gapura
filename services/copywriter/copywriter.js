@@ -8,13 +8,14 @@ const { Pool } = pkg;
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { callAgentLLM, loadAgentsConfig } from '../common/llm.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
-const pool = new Pool({
+export const pool = new Pool({
   host: process.env.HME_DB_HOST || '127.0.0.1',
   port: parseInt(process.env.HME_DB_PORT || '5432'),
   user: process.env.HME_DB_USER || 'hme_user',
@@ -25,8 +26,8 @@ const pool = new Pool({
 const RENDER_SERVICE_URL = 'http://127.0.0.1:3000/render';
 const RENDER_SECRET = process.env.RENDER_SECRET || 'dev_render_secret_hme';
 
-// Generator Carousel Data-Editorial Deterministik
-function buildCarouselSlides(topic) {
+// Generator Carousel Data-Editorial Deterministik (Fallback Teruji)
+export function buildDeterministicCarouselSlides(topic) {
   const isRegulasi = /ojk|pojk|peraturan|uu|hukum|sanksi|denda|aturan/i.test(topic.title);
   const isMarket = /ihsg|saham|bursa|bei|idx|delisting|msci/i.test(topic.title);
 
@@ -39,11 +40,11 @@ function buildCarouselSlides(topic) {
     teks: topic.title,
     data: {
       value: isRegulasi ? 'REGULASI' : isMarket ? 'BURSA SAHAM' : 'DATA EKONOMI',
-      unit: topic.primary_source.toUpperCase(),
+      unit: (topic.primary_source || 'RESMI').toUpperCase(),
       title: topic.title,
       category: isRegulasi ? 'HUKUM & REGULASI' : isMarket ? 'PASAR MODAL' : 'MAKRO EKONOMI',
     },
-    source: topic.primary_source,
+    source: topic.primary_source || '@homelessmedia',
   });
 
   // Slide 2: Big Statement (Konteks Peristiwa)
@@ -52,12 +53,12 @@ function buildCarouselSlides(topic) {
     layout: 'big-statement',
     teks: topic.summary && topic.summary.length > 20
       ? topic.summary.slice(0, 180) + '...'
-      : `Perkembangan strategis terkait ${topic.title} menjadi perhatian pelaku pasar dan pengambil kebijakan di Indonesia.`,
+      : `Perkembangan strategis terkait ${topic.title} menjadi perhatian penting pelaku pasar dan pengambil kebijakan di Indonesia.`,
     data: {
-      author: topic.primary_source,
+      author: topic.primary_source || 'Otoritas Terkait',
       category: 'KONTEKS BERITA',
     },
-    source: topic.primary_source,
+    source: topic.primary_source || '@homelessmedia',
   });
 
   // Slide 3: Evidence (Chart atau Regulasi Box)
@@ -69,7 +70,7 @@ function buildCarouselSlides(topic) {
       data: {
         title: 'POIN KEBIJAKAN & REGULASI RESMI',
       },
-      source: topic.primary_source,
+      source: topic.primary_source || '@homelessmedia',
     });
   } else {
     slides.push({
@@ -81,7 +82,7 @@ function buildCarouselSlides(topic) {
         values: [75, 85, 60, 70],
         category: 'ANALISIS DAMPAK',
       },
-      source: topic.primary_source,
+      source: topic.primary_source || '@homelessmedia',
     });
   }
 
@@ -101,7 +102,7 @@ function buildCarouselSlides(topic) {
       },
       category: 'IMPLIKASI',
     },
-    source: topic.primary_source,
+    source: topic.primary_source || '@homelessmedia',
   });
 
   // Slide 5: CTA Close
@@ -118,7 +119,7 @@ function buildCarouselSlides(topic) {
     source: '@homelessmedia',
   });
 
-  const caption = `${topic.title}\n\n${topic.summary || ''}\n\nAnalisis Editorial:\nLangkah yang dirilis oleh ${topic.primary_source} ini memperlihatkan fokus berkelanjutan otoritas dalam memperkuat tata kelola sektor keuangan dan stabilitas bursa nasional. Informasi faktual ini penting dicermati oleh pelaku pasar dan investor untuk mengukur arah likuiditas serta kepatuhan jangka menengah.\n\nSumber Data: ${topic.primary_source} (${topic.url})\n\n---\nDisclaimer: Informasi disajikan untuk tujuan edukasi data publik dan bukan merupakan rekomendasi investasi beli/jual saham atau nasihat hukum.`;
+  const caption = `${topic.title}\n\n${topic.summary || ''}\n\nAnalisis Editorial:\nLangkah yang dirilis oleh ${topic.primary_source || 'otoritas'} ini memperlihatkan fokus berkelanjutan dalam memperkuat tata kelola sektor keuangan dan stabilitas bursa nasional. Informasi faktual ini penting dicermati oleh pelaku pasar dan investor untuk mengukur arah likuiditas serta kepatuhan jangka menengah.\n\nSumber Data: ${topic.primary_source} (${topic.url})\n\n---\nDisclaimer: Informasi disajikan untuk tujuan edukasi data publik dan bukan merupakan rekomendasi investasi beli/jual saham atau nasihat hukum.`;
 
   const hashtags = [
     '#HomelessMedia',
@@ -142,6 +143,145 @@ function buildCarouselSlides(topic) {
   };
 }
 
+/**
+ * Build Carousel Slides: Coba pakai AI LLM dulu, jika gagal fallback ke deterministik
+ */
+export async function buildCarouselSlides(topic) {
+  const cfg = loadAgentsConfig();
+  const copyCfg = cfg.copywriter || {};
+
+  // Jika API Key tersedia, gunakan LLM
+  if (copyCfg.api_key && copyCfg.api_key.trim().length > 0) {
+    try {
+      const prompt = `Topik Berita:
+Judul: ${topic.title}
+Ringkasan: ${topic.summary}
+Sumber Primer: ${topic.primary_source}
+URL: ${topic.url}
+
+Buatlah draf carousel Instagram 5 slide dan caption editorial sesuai karakter brand @homelessmedia.
+Kembalikan HANYA format JSON valid berikut:
+{
+  "slides": [
+    { "no": 1, "layout": "cover-stat", "teks": "Judul/Hook kuat", "data": { "value": "Kategori", "unit": "SUMBER", "title": "Judul", "category": "Kategori" }, "source": "Sumber" },
+    { "no": 2, "layout": "big-statement", "teks": "Konteks dan fakta kunci", "data": { "author": "Sumber", "category": "KONTEKS" }, "source": "Sumber" },
+    { "no": 3, "layout": "chart-bar", "teks": "Data poin atau regulasi", "data": { "labels": ["A", "B", "C"], "values": [80, 60, 70] }, "source": "Sumber" },
+    { "no": 4, "layout": "comparison", "teks": "Implikasi", "data": { "left": { "title": "Sebelumnya", "text": "..." }, "right": { "title": "Saat Ini", "text": "..." } }, "source": "Sumber" },
+    { "no": 5, "layout": "cta-close", "teks": "Pertanyaan refleksi?", "data": { "cta": "Ikuti @homelessmedia", "disclaimer": "..." }, "source": "@homelessmedia" }
+  ],
+  "caption": "Caption 150-250 kata berstruktur rapi...",
+  "hashtags": ["#HomelessMedia", "#DataEkonomi", "#IHSG"],
+  "disclaimer_type": "keuangan",
+  "needs_review": false
+}`;
+
+      const aiResponse = await callAgentLLM('copywriter', prompt, copyCfg.system_prompt || '', true);
+      const parsed = JSON.parse(aiResponse);
+      if (parsed && Array.isArray(parsed.slides) && parsed.slides.length >= 3) {
+        console.log(`[Copywriter] Sukses menghasilkan konten dinamis via AI LLM (${copyCfg.model || 'llm'})`);
+        return parsed;
+      }
+    } catch (llmErr) {
+      console.warn('[Copywriter] LLM gagal, menggunakan generator deterministik:', llmErr.message);
+    }
+  }
+
+  return buildDeterministicCarouselSlides(topic);
+}
+
+/**
+ * Menghasilkan dan menyimpan draf untuk satu topik spesifik
+ */
+export async function produceSingleTopicDraft(topic, dbClient = null) {
+  const client = dbClient || (await pool.connect());
+  const shouldRelease = !dbClient;
+
+  try {
+    // Cek apakah draf sudah ada
+    const { rows: existing } = await client.query('SELECT id FROM drafts WHERE topic_id = $1 LIMIT 1', [topic.id]);
+    if (existing.length > 0) {
+      return { draft_id: existing[0].id, is_existing: true };
+    }
+
+    console.log(`[Copywriter] Memproduksi draf untuk Topik #${topic.id}: "${topic.title}"...`);
+    const carouselData = await buildCarouselSlides(topic);
+
+    // 1. Simpan ke tabel drafts
+    const insertDraft = await client.query(
+      `INSERT INTO drafts (topic_id, slides, caption, hashtags, disclaimer_type, status, needs_review, tokens_version, copy_model)
+       VALUES ($1, $2, $3, $4, $5, 'draft', $6, 'v1.0', 'data-editorial-engine-v2')
+       RETURNING id`,
+      [
+        topic.id,
+        JSON.stringify(carouselData.slides),
+        carouselData.caption,
+        carouselData.hashtags,
+        carouselData.disclaimer_type || 'keuangan',
+        carouselData.needs_review || false,
+      ]
+    );
+
+    const draftId = insertDraft.rows[0].id;
+    console.log(`[Copywriter] Draf #${draftId} disimpan ke DB. Mengirim ke Render Service...`);
+
+    // 2. Render seluruh slide ke PNG melalui Render Service
+    const renderResp = await fetch(RENDER_SERVICE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Render-Secret': RENDER_SECRET,
+      },
+      body: JSON.stringify({
+        draft_id: draftId,
+        slides: carouselData.slides,
+      }),
+    });
+
+    if (!renderResp.ok) {
+      const errText = await renderResp.text();
+      throw new Error(`Render Service error: HTTP ${renderResp.status} - ${errText}`);
+    }
+
+    const renderData = await renderResp.json();
+    console.log(`[Copywriter] Render berhasil: ${renderData.rendered_slides.length} slide dalam ${renderData.total_time_ms} ms.`);
+
+    // 3. Simpan record slide ke draft_slides
+    for (const slideRes of renderData.rendered_slides) {
+      await client.query(
+        `INSERT INTO draft_slides (draft_id, slide_no, layout, render_path, text_snapshot, data_snapshot)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (draft_id, slide_no) DO UPDATE
+         SET render_path = EXCLUDED.render_path, rendered_at = NOW()`,
+        [
+          draftId,
+          slideRes.slide_no,
+          slideRes.layout,
+          slideRes.file_path,
+          carouselData.slides[slideRes.slide_no - 1]?.teks || '',
+          JSON.stringify(carouselData.slides[slideRes.slide_no - 1]?.data || {}),
+        ]
+      );
+    }
+
+    // 4. Update status topik menjadi 'produced'
+    await client.query("UPDATE topics SET status = 'produced', updated_at = NOW() WHERE id = $1", [topic.id]);
+
+    // 5. Catat audit_log
+    await client.query(
+      `INSERT INTO audit_log (entity, entity_id, action, actor, payload)
+       VALUES ('draft', $1, 'produced', 'copywriter-engine', $2)`,
+      [draftId, JSON.stringify({ slides_count: carouselData.slides.length, total_time_ms: renderData.total_time_ms })]
+    );
+
+    return { draft_id: draftId, is_existing: false, slides_count: carouselData.slides.length };
+  } finally {
+    if (shouldRelease) client.release();
+  }
+}
+
+/**
+ * Runner pipeline untuk memproduksi sejumlah topik teratas
+ */
 export async function runCopywriter(maxDrafts = 3) {
   const client = await pool.connect();
   const startTime = Date.now();
@@ -150,7 +290,6 @@ export async function runCopywriter(maxDrafts = 3) {
   let produced = 0;
 
   try {
-    // Ambil topik berstatus 'scored'
     const { rows: scoredTopics } = await client.query(
       `SELECT t.*, ts.score_total
        FROM topics t
@@ -164,90 +303,11 @@ export async function runCopywriter(maxDrafts = 3) {
     console.log(`[Copywriter] Ditemukan ${scoredTopics.length} topik siap produksi.`);
 
     for (const topic of scoredTopics) {
-      console.log(`\n[Copywriter] Memproduksi draf untuk topik #${topic.id}: "${topic.title}" (Skor: ${topic.score_total})`);
-
-      const carouselData = buildCarouselSlides(topic);
-
-      // Simpan draf ke tabel drafts terlebih dahulu untuk mendapatkan ID draf
-      const insertDraft = await client.query(
-        `INSERT INTO drafts (topic_id, slides, caption, hashtags, disclaimer_type, status, needs_review, tokens_version, copy_model)
-         VALUES ($1, $2, $3, $4, $5, 'draft', $6, 'v1.0', 'data-editorial-engine-v2')
-         RETURNING id`,
-        [
-          topic.id,
-          JSON.stringify(carouselData.slides),
-          carouselData.caption,
-          carouselData.hashtags,
-          carouselData.disclaimer_type,
-          carouselData.needs_review,
-        ]
-      );
-
-      const draftId = insertDraft.rows[0].id;
-      console.log(`[Copywriter] Draf tercatat di DB dengan ID #${draftId}. Mengirim ke Render Service...`);
-
-      // Panggil Render Service HTTP API
-      const renderResp = await fetch(RENDER_SERVICE_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Render-Secret': RENDER_SECRET,
-        },
-        body: JSON.stringify({
-          draft_id: draftId,
-          slides: carouselData.slides,
-        }),
-      });
-
-      if (!renderResp.ok) {
-        const errText = await renderResp.text();
-        throw new Error(`Render Service error: HTTP ${renderResp.status} - ${errText}`);
-      }
-
-      const renderData = await renderResp.json();
-      console.log(`[Copywriter] Sukses merender ${renderData.rendered_slides.length} slide PNG dalam ${renderData.total_time_ms} ms!`);
-
-      // Simpan setiap slide ke draft_slides
-      for (const slideRes of renderData.rendered_slides) {
-        await client.query(
-          `INSERT INTO draft_slides (draft_id, slide_no, layout, render_path, text_snapshot, data_snapshot)
-           VALUES ($1, $2, $3, $4, $5, $6)
-           ON CONFLICT (draft_id, slide_no) DO UPDATE
-           SET render_path = EXCLUDED.render_path, rendered_at = NOW()`,
-          [
-            draftId,
-            slideRes.slide_no,
-            slideRes.layout,
-            slideRes.file_path,
-            carouselData.slides[slideRes.slide_no - 1]?.teks || '',
-            JSON.stringify(carouselData.slides[slideRes.slide_no - 1]?.data || {}),
-          ]
-        );
-      }
-
-      // Update status topik menjadi 'produced'
-      await client.query("UPDATE topics SET status = 'produced', updated_at = NOW() WHERE id = $1", [topic.id]);
-
-      // Catat ke audit_log
-      await client.query(
-        `INSERT INTO audit_log (entity, entity_id, action, actor, payload)
-         VALUES ('draft', $1, 'produced', 'copywriter-engine', $2)`,
-        [draftId, JSON.stringify({ slides_count: carouselData.slides.length, total_time_ms: renderData.total_time_ms })]
-      );
-
+      await produceSingleTopicDraft(topic, client);
       produced++;
-      console.log(`[Copywriter] [SUKSES SELESAI] Draf #${draftId} siap di antrean Telegram review!`);
     }
 
-    // Telemetri Copywriter
     const durationMs = Date.now() - startTime;
-    await client.query(
-      `INSERT INTO agent_runs (agent, started_at, completed_at, status, model, tokens_input, tokens_output, est_cost_idr)
-       VALUES ('copywriter', NOW(), NOW(), 'success', 'data-editorial-engine-v2', $1, $2, 0.00)`,
-      [produced * 400, produced * 300]
-    );
-
-    console.log(`\n[Copywriter] Pipeline tuntas: ${produced} draf carousel berhasil diproduksi.`);
     return { produced, durationMs };
   } finally {
     client.release();

@@ -9,6 +9,7 @@ const { Pool } = pkg;
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { loadAgentsConfig, callAgentLLM } from '../common/llm.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -23,52 +24,71 @@ const pool = new Pool({
   database: process.env.HME_DB_NAME || 'hme',
 });
 
-// 1. FAST-FAIL PATTERNS (0 Biaya Token - Deterministic)
-const FAST_FAIL_PATTERNS = [
+// 1. FAST-FAIL PATTERNS (0 Biaya Token - Deterministic Default)
+const DEFAULT_FAST_FAIL_PATTERNS = [
   { regex: /rekomendasi saham|target harga|koleksi saham|potensial cuan|saham pilihan|serok|to the moon/i, reason: 'Kepatuhan: Terdeteksi rekomendasi/ajakan beli-jual saham spesifik' },
   { regex: /prilly latuconsina|gosip|artis|selebriti|viral tiktok/i, reason: 'Relevansi: Berita hiburan/gaya hidup tanpa substansi data ekonomi' },
   { regex: /selamat ulang tahun|ucapan selamat|dirgahayu|peresmian gedung/i, reason: 'Relevansi: Acara seremonial administratif tanpa data atau regulasi' },
   { regex: /sara|ujaran kebencian|fitnah|politik identitas/i, reason: 'Keamanan: Pelanggaran etika editorial dan kebijakan Meta' },
 ];
 
+function getFastFailRules(analisCfg) {
+  if (analisCfg && analisCfg.fast_fail_rules && typeof analisCfg.fast_fail_rules === 'string') {
+    const lines = analisCfg.fast_fail_rules.split('\n').map(l => l.trim()).filter(Boolean);
+    if (lines.length > 0) {
+      return lines.map((pattern, idx) => {
+        try {
+          return { regex: new RegExp(pattern, 'i'), reason: `Aturan Filter #${idx + 1}: ${pattern.slice(0, 30)}` };
+        } catch (e) {
+          return { regex: new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), reason: `Aturan Filter #${idx + 1}` };
+        }
+      });
+    }
+  }
+  return DEFAULT_FAST_FAIL_PATTERNS;
+}
+
 // Heuristic Scoring jika API Key belum dipasang
-function calculateHeuristicScore(title, summary, primarySource) {
+function calculateHeuristicScore(title, summary, primarySource, weights = {}) {
   const text = `${title} ${summary || ''}`.toLowerCase();
-  let rel = 10;
-  let cred = 10;
-  let mom = 10;
-  let eng = 8;
-  let comp = 10;
+  const maxRel = weights.relevance || 30;
+  const maxCred = weights.credibility || 25;
+  const maxMom = weights.momentum || 20;
+  const maxEng = weights.engagement || 15;
+  const maxComp = weights.compliance || 10;
 
-  // Relevansi Niche (0-30)
-  if (/inflasi|pdb|cadangan devisa|bi-rate|suku bunga|neraca perdagangan|apbn/i.test(text)) rel += 18;
-  else if (/ihsg|bursa efek|pasar modal|transaksi nego|ipo|msci|kapitalisasi/i.test(text)) rel += 16;
-  else if (/ojk|pojk|peraturan|uu|hukum|regulasi|putusan mk|sanksi/i.test(text)) rel += 16;
-  else if (/kredit|perbankan|dhe|asuransi|multifinance/i.test(text)) rel += 12;
-  rel = Math.min(30, rel);
+  let rel = Math.round(maxRel * 0.33);
+  let cred = Math.round(maxCred * 0.4);
+  let mom = Math.round(maxMom * 0.5);
+  let eng = Math.round(maxEng * 0.5);
+  let comp = maxComp;
 
-  // Kualitas Data & Kredibilitas (0-25)
-  if (/bps|bank indonesia|bi|ojk|bei|idx|kemenkeu/i.test(primarySource) || /resmi|siaran pers/i.test(text)) cred += 10;
-  if (/\d+([.,]\d+)?%/.test(text)) cred += 4; // Ada persentase
-  if (/rp\s*\d+|usd\s*\d+|triliun|miliar/i.test(text)) cred += 4; // Ada nilai uang konkret
-  cred = Math.min(25, cred);
+  // Relevansi Niche
+  if (/inflasi|pdb|cadangan devisa|bi-rate|suku bunga|neraca perdagangan|apbn/i.test(text)) rel += Math.round(maxRel * 0.6);
+  else if (/ihsg|bursa efek|pasar modal|transaksi nego|ipo|msci|kapitalisasi/i.test(text)) rel += Math.round(maxRel * 0.55);
+  else if (/ojk|pojk|peraturan|uu|hukum|regulasi|putusan mk|sanksi/i.test(text)) rel += Math.round(maxRel * 0.55);
+  else if (/kredit|perbankan|dhe|asuransi|multifinance/i.test(text)) rel += Math.round(maxRel * 0.4);
+  rel = Math.min(maxRel, rel);
 
-  // Momentum (0-20)
-  if (/terbaru|rilis|resmi|breaking|hari ini|q3|kuartal/i.test(text)) mom += 8;
-  mom = Math.min(20, mom);
+  // Kualitas Data & Kredibilitas
+  if (/bps|bank indonesia|bi|ojk|bei|idx|kemenkeu/i.test(primarySource) || /resmi|siaran pers/i.test(text)) cred += Math.round(maxCred * 0.4);
+  if (/\d+([.,]\d+)?%/.test(text)) cred += Math.round(maxCred * 0.16); // Ada persentase
+  if (/rp\s*\d+|usd\s*\d+|triliun|miliar/i.test(text)) cred += Math.round(maxCred * 0.16); // Ada nilai konkret
+  cred = Math.min(maxCred, cred);
 
-  // Potensi Interaksi (0-15)
-  if (/dompet|investor|masyarakat|bunga|pinjol|utang|rupiah|daya beli/i.test(text)) eng += 5;
-  eng = Math.min(15, eng);
+  // Momentum
+  if (/terbaru|rilis|resmi|breaking|hari ini|q3|kuartal/i.test(text)) mom += Math.round(maxMom * 0.4);
+  mom = Math.min(maxMom, mom);
 
-  // Kepatuhan (0-10)
-  comp = 10;
+  // Potensi Interaksi
+  if (/dompet|investor|masyarakat|bunga|pinjol|utang|rupiah|daya beli/i.test(text)) eng += Math.round(maxEng * 0.35);
+  eng = Math.min(maxEng, eng);
 
   const total = rel + cred + mom + eng + comp;
   return {
     scores: { relevance: rel, credibility: cred, momentum: mom, engagement: eng, compliance: comp },
     total,
-    reasoning: `Skor dihitung otomatis: Relevansi=${rel}/30, Kredibilitas=${cred}/25, Momentum=${mom}/20, Interaksi=${eng}/15, Kepatuhan=${comp}/10`,
+    reasoning: `Skor dihitung otomatis: Relevansi=${rel}/${maxRel}, Kredibilitas=${cred}/${maxCred}, Momentum=${mom}/${maxMom}, Interaksi=${eng}/${maxEng}, Kepatuhan=${comp}/${maxComp}`,
   };
 }
 
@@ -77,15 +97,24 @@ export async function runAnalis() {
   const startTime = Date.now();
   console.log('[Analis] Memulai evaluasi topik baru...');
 
+  // Muat konfigurasi dinamis agen analis
+  const fullAgentsConfig = loadAgentsConfig();
+  const analisCfg = fullAgentsConfig.analis || {};
+  const fastFailRules = getFastFailRules(analisCfg);
+  const weights = analisCfg.weights || { relevance: 30, credibility: 25, momentum: 20, engagement: 15, compliance: 10 };
+
   let evaluated = 0;
   let passed = 0;
   let fastFailed = 0;
   let scoreRejected = 0;
 
   try {
-    // Ambil setting ambang batas
-    const { rows: settingRows } = await client.query("SELECT value FROM app_settings WHERE key = 'score_threshold'");
-    const minThreshold = settingRows[0]?.value?.initial_strict_score || 70;
+    // Ambil setting ambang batas (prioritaskan config/agents.json, lalu app_settings)
+    let minThreshold = analisCfg.min_score_threshold;
+    if (!minThreshold) {
+      const { rows: settingRows } = await client.query("SELECT value FROM app_settings WHERE key = 'score_threshold'");
+      minThreshold = settingRows[0]?.value?.initial_strict_score || 70;
+    }
     console.log(`[Analis] Ambang batas kelulusan (threshold): ${minThreshold}`);
 
     // Ambil topik yang masih berstatus 'new'
@@ -96,9 +125,9 @@ export async function runAnalis() {
       evaluated++;
       const fullText = `${topic.title} ${topic.summary || ''}`;
 
-      // --- GATE 1: FAST-FAIL CHECK ---
+      // --- GATE 1: FAST-FAIL CHECK (Dynamic from agent config) ---
       let fastFailMatch = null;
-      for (const rule of FAST_FAIL_PATTERNS) {
+      for (const rule of fastFailRules) {
         if (rule.regex.test(fullText)) {
           fastFailMatch = rule.reason;
           break;
@@ -120,56 +149,56 @@ export async function runAnalis() {
 
       // --- GATE 2: SCORING (0-100) ---
       let scoreResult = null;
-      let modelUsed = 'heuristic-analis-v2';
+      let modelUsed = analisCfg.model || 'heuristic-analis-v2';
 
-      // Cek apakah API Key Gemini tersedia di env
-      if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.length > 10) {
+      // Cek apakah API Key Agen Analis tersedia
+      const apiKey = analisCfg.api_key || process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY;
+      if (apiKey && apiKey.length > 5) {
         try {
-          modelUsed = 'gemini-2.0-flash';
           const promptText = `Evaluasi berita ini untuk akun Instagram @homelessmedia (niche data ekonomi, hukum, bursa saham):
 Judul: ${topic.title}
-Ringkasan: ${topic.summary}
-Sumber: ${topic.primary_source}
+Ringkasan: ${topic.summary || ''}
+Sumber: ${topic.primary_source || ''}
+
+Bobot penilaian:
+- Relevansi: 0-${weights.relevance || 30}
+- Kredibilitas: 0-${weights.credibility || 25}
+- Momentum: 0-${weights.momentum || 20}
+- Interaksi: 0-${weights.engagement || 15}
+- Kepatuhan: 0-${weights.compliance || 10}
 
 Kembalikan HANYA JSON:
 {
-  "scores": { "relevance": 0-30, "credibility": 0-25, "momentum": 0-20, "engagement": 0-15, "compliance": 0-10 },
+  "scores": {
+    "relevance": 0-${weights.relevance || 30},
+    "credibility": 0-${weights.credibility || 25},
+    "momentum": 0-${weights.momentum || 20},
+    "engagement": 0-${weights.engagement || 15},
+    "compliance": 0-${weights.compliance || 10}
+  },
   "score_total": 0-100,
   "verdict": "passed" | "rejected",
   "reasoning": "maksimal 30 kata"
 }`;
 
-          const resp = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                contents: [{ parts: [{ text: promptText }] }],
-                generationConfig: { responseMimeType: 'application/json' },
-              }),
-            }
-          );
-
-          if (resp.ok) {
-            const data = await resp.json();
-            const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
-            scoreResult = JSON.parse(textResponse);
-          }
+          const llmOutput = await callAgentLLM('analis', promptText, analisCfg.system_prompt || '', true);
+          scoreResult = JSON.parse(llmOutput);
+          modelUsed = `${analisCfg.provider || 'gemini'}/${analisCfg.model || 'gemini-2.0-flash'}`;
         } catch (llmErr) {
-          console.warn('[Analis] Gagal panggil Gemini API, fallback ke heuristik:', llmErr.message);
+          console.warn('[Analis] Gagal panggil LLM, fallback ke heuristik:', llmErr.message);
         }
       }
 
       // Fallback ke Heuristik jika LLM tidak tersedia
-      if (!scoreResult) {
-        const h = calculateHeuristicScore(topic.title, topic.summary, topic.primary_source);
+      if (!scoreResult || typeof scoreResult.score_total !== 'number') {
+        const h = calculateHeuristicScore(topic.title, topic.summary, topic.primary_source, weights);
         scoreResult = {
           scores: h.scores,
           score_total: h.total,
           verdict: h.total >= minThreshold ? 'passed' : 'rejected',
           reasoning: h.reasoning,
         };
+        modelUsed = 'heuristic-analis-v2';
       }
 
       const isPassed = scoreResult.score_total >= minThreshold;
