@@ -143,7 +143,7 @@ function renderDraftsList() {
 
           <h3 class="draft-title">${d.topic_title}</h3>
 
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <div class="caption-label-row">
             <label style="font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase;">Caption Editorial:</label>
             <button class="btn btn-sm btn-secondary" onclick="copyCaption(${d.id})">📋 Salin Caption</button>
           </div>
@@ -162,9 +162,13 @@ function renderDraftsList() {
               <button class="btn btn-success" onclick="approveDraft(${d.id}, 'auto')">✅ Setujui (Auto)</button>
               <button class="btn btn-secondary" onclick="approveDraft(${d.id}, 'manual')">📲 Setujui (Manual)</button>
               <button class="btn btn-secondary" onclick="openEditModal(${d.id})">✏️ Edit Slide</button>
+              <button class="btn btn-secondary" onclick="window.open('${mainImgSrc}', '_blank')">🔍 Buka Slide Penuh</button>
             `
                 : `
-              <span style="font-size: 12px; font-weight: 600; color: var(--muted);">Status: ${d.status.toUpperCase()}</span>
+              <span style="font-size: 12.5px; font-weight: 600; color: var(--navy); display: inline-flex; align-items: center; gap: 6px;">
+                Status: <span class="badge ${statusBadgeClass}">${statusLabel}</span>
+              </span>
+              <button class="btn btn-sm btn-secondary" onclick="window.open('${mainImgSrc}', '_blank')">🔍 Buka Slide Penuh</button>
             `
             }
           </div>

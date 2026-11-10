@@ -17,9 +17,10 @@ canvas:
 palette:
   bg: "#f7f5f0"          # Latar terang mirip kertas koran editorial (off-white)
   card_bg: "#ffffff"     # Kontainer kartu data
-  ink: "#14202e"         # Teks judul & angka utama (deep navy/slate)
-  ink_secondary: "#2c3e50"
-  accent: "#0f4c81"      # Biru brand editorial
+  ink: "#102b45"         # Navy Blue (Resmi Brand Guidelines - Otoritas & Kredibilitas)
+  ink_secondary: "#1f7e81" # Deep Teal (Resmi Brand Guidelines - Modernitas & Teknologi)
+  accent: "#1f7e81"      # Deep Teal aksen utama
+  highlight: "#d79344"   # Golden Amber (Resmi Brand Guidelines - Energi & Pencerahan)
   muted: "#5a6b7c"       # Label penjelas, caption kecil, dan sumber
   border: "#e2ded4"      # Garis pemisah halus
   up: "#1a7a4f"          # Indikator pasar naik / positif (hijau teduh)
