@@ -3,271 +3,362 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
-  <title>GAPURA MEDIA · Homeless Media Engine</title>
+  <title>RUANG REDAKSI · GAPURA MEDIA</title>
   <link rel="icon" type="image/png" href="/favicon.png">
   <link rel="apple-touch-icon" href="/assets/logo.png">
-  <meta name="theme-color" content="#102B45">
-  <meta name="description" content="Platform Otomasi Konten Niche Data, Hukum & Ekonomi Bursa (@homelessmedia)">
-  <link rel="stylesheet" href="/style.css">
+  <meta name="theme-color" content="#0B0E14">
+  <meta name="description" content="Studio Redaksi Otomasi Konten Niche Data, Hukum & Ekonomi Bursa (@homelessmedia)">
+  <link rel="stylesheet" href="/style.css?v=2.2">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
 <body>
-  <!-- Header Bar -->
-  <header class="app-header">
-    <div class="header-main">
-      <div class="brand-group">
-        <a href="/" class="brand-link">
-          <div class="brand-logo-wrap">
-            <img src="/assets/logo.png" alt="Gapura Media Logo" class="brand-logo-img">
+  <!-- Mobile Top Bar -->
+  <div class="mobile-top-bar">
+    <div class="mobile-brand">
+      <img src="/assets/logo.png" alt="Gapura Logo" style="width: 28px !important; height: 28px !important; border-radius: 4px; object-fit: contain;">
+      <span>GAPURA STUDIO</span>
+    </div>
+    <button class="btn-mobile-menu" id="btn-toggle-sidebar" aria-label="Menu">☰</button>
+  </div>
+
+  <div class="app-container">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar" id="app-sidebar">
+      <div>
+        <div class="sidebar-header">
+          <img src="/assets/logo.png" alt="Gapura Logo" class="sidebar-logo" style="width: 34px !important; height: 34px !important; border-radius: 6px; object-fit: contain; flex-shrink: 0;">
+          <div class="sidebar-brand-title">
+            <div class="sidebar-brand-top"><span class="dot"></span> GAPURA STUDIO</div>
+            <div class="sidebar-brand-handle">@homelessmedia</div>
           </div>
-          <div class="brand-text">
-            <div class="brand-title-row">
-              <span class="brand-title-bold">GAPURA</span>
-              <span class="brand-title-light">MEDIA</span>
-              <span class="brand-badge-pill">HME v2.0</span>
+        </div>
+
+        <nav class="sidebar-nav">
+          <div class="nav-section-label">Redaksi</div>
+          <div class="nav-item active" data-view="view-overview">
+            <div class="nav-item-left"><span>📊</span> <span>Overview</span></div>
+          </div>
+          <div class="nav-item" data-view="view-review">
+            <div class="nav-item-left"><span>📑</span> <span>Antrian Review</span></div>
+            <span class="nav-badge" id="sidebar-review-badge">0</span>
+          </div>
+          <div class="nav-item" data-view="view-topics">
+            <div class="nav-item-left"><span>🎯</span> <span>Radar Topik</span></div>
+          </div>
+
+          <div class="nav-section-label">Sistem & Studio</div>
+          <div class="nav-item" data-view="view-n8n">
+            <div class="nav-item-left"><span>⚡</span> <span>n8n Studio</span></div>
+          </div>
+          <div class="nav-item" data-view="view-tokens">
+            <div class="nav-item-left"><span>🎨</span> <span>Brand Tokens</span></div>
+          </div>
+          <div class="nav-item" data-view="view-audit">
+            <div class="nav-item-left"><span>📜</span> <span>Log Aktivitas</span></div>
+          </div>
+        </nav>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="user-profile">
+          <div class="user-avatar">A</div>
+          <div class="user-info">
+            <span class="user-name">Arya</span>
+            <span class="user-role">Editor In Chief</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Wrapper -->
+    <main class="main-wrapper">
+      <div class="content-body">
+
+        <!-- ================================================================== -->
+        <!-- VIEW 1: OVERVIEW (Ruang Redaksi - Reference s-1.jpg) -->
+        <!-- ================================================================== -->
+        <section id="view-overview" class="view-pane active">
+          <div class="redaksi-header-row">
+            <div class="redaksi-title-block">
+              <span class="redaksi-greeting">Selamat Datang, Arya</span>
+              <h1 class="redaksi-title">RUANG REDAKSI</h1>
+              <div class="redaksi-pills">
+                <span class="pill-status">Mode: Otomatis penuh</span>
+                <span class="pill-status active"><span class="dot"></span> AI aktif · jam kerja 07.00–22.00 WIB</span>
+              </div>
             </div>
-            <p class="brand-sub">Platform Otomasi Konten Niche Data, Hukum & Ekonomi Bursa (@homelessmedia)</p>
+            <div class="redaksi-actions-right">
+              <span class="cost-chip">✨ AI Hari ini: Rp 0 · 4 Agen Siap</span>
+              <button class="btn btn-lime" id="btn-run-pipeline-top">
+                <span>🔄</span> <span>Cari topik sekarang</span>
+              </button>
+            </div>
           </div>
-        </a>
+
+          <!-- 4 Stat Metric Cards -->
+          <div class="metrics-row">
+            <div class="metric-stat-card">
+              <span class="metric-stat-label">Topik Masuk 24 Jam</span>
+              <span class="metric-stat-val" id="ov-raw-val">0</span>
+              <span class="metric-stat-sub">Item berita resmi tersaring</span>
+            </div>
+            <div class="metric-stat-card">
+              <span class="metric-stat-label">Lolos Analis 24 Jam</span>
+              <span class="metric-stat-val" id="ov-passed-val">0</span>
+              <span class="metric-stat-sub"><span id="ov-fastfail-val">0</span> gugur / fast-fail</span>
+            </div>
+            <div class="metric-stat-card highlight-card">
+              <span class="metric-stat-label">Siap Direview</span>
+              <span class="metric-stat-val" id="ov-pending-val">0</span>
+              <span class="metric-stat-sub" style="color: var(--lime);">Butuh approval tim</span>
+            </div>
+            <div class="metric-stat-card">
+              <span class="metric-stat-label">Terjadwal</span>
+              <span class="metric-stat-val" id="ov-scheduled-val">0</span>
+              <span class="metric-stat-sub">Antrean postingan tayang</span>
+            </div>
+          </div>
+
+          <!-- 4 Agent Status Cards -->
+          <div class="agents-row">
+            <div class="agent-status-card">
+              <div class="agent-icon-circle agent-icon-scout">📡</div>
+              <div class="agent-info">
+                <div class="agent-name-row">Scout <span class="dot"></span></div>
+                <div class="agent-desc">Pemantau topik</div>
+                <div class="agent-sub">Standby · 11 sumber aktif</div>
+              </div>
+            </div>
+            <div class="agent-status-card">
+              <div class="agent-icon-circle agent-icon-analis">🎯</div>
+              <div class="agent-info">
+                <div class="agent-name-row">Analis <span class="dot"></span></div>
+                <div class="agent-desc">Skor 0–100 & Fast-fail</div>
+                <div class="agent-sub">Standby · ambang skor 75</div>
+              </div>
+            </div>
+            <div class="agent-status-card">
+              <div class="agent-icon-circle agent-icon-copy">✍️</div>
+              <div class="agent-info">
+                <div class="agent-name-row">Copywriter <span class="dot"></span></div>
+                <div class="agent-desc">Headline & editorial</div>
+                <div class="agent-sub">Standby · 5 slide carousel</div>
+              </div>
+            </div>
+            <div class="agent-status-card">
+              <div class="agent-icon-circle agent-icon-designer">🎨</div>
+              <div class="agent-info">
+                <div class="agent-name-row">Designer <span class="dot"></span></div>
+                <div class="agent-desc">Render deterministik</div>
+                <div class="agent-sub">Standby · 1080×1350 PNG</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Aktivitas Redaksi (Live Stream) -->
+          <div class="activity-card">
+            <div class="activity-header">
+              <div class="activity-title"><span class="dot"></span> Aktivitas Redaksi</div>
+              <span class="activity-auto">update otomatis</span>
+            </div>
+            <div class="activity-list" id="activity-feed-list">
+              <!-- Rendered by JS -->
+            </div>
+          </div>
+        </section>
+
+
+        <!-- ================================================================== -->
+        <!-- VIEW 2: ANTRIAN REVIEW (Gallery Grid & Detail Editor) -->
+        <!-- ================================================================== -->
+        <section id="view-review" class="view-pane">
+
+          <!-- SUB-VIEW A: GALLERY GRID (Reference s-3.jpg) -->
+          <div id="review-gallery-subview">
+            <div style="margin-bottom: 20px;">
+              <span class="redaksi-greeting">Meja Editor</span>
+              <h2 style="font-family: 'Archivo Black', sans-serif; font-size: 28px; color: #fff; margin-bottom: 6px;">ANTRIAN REVIEW</h2>
+              <p style="font-size: 13px; color: var(--muted);">Cek fakta, edit kalau perlu, lalu setujui dan jadwalkan. Tidak ada yang terposting tanpa persetujuan tim.</p>
+            </div>
+
+            <div class="gallery-filter-tabs">
+              <button class="gallery-tab-btn active" data-filter="all">Semua (<span id="count-all">0</span>)</button>
+              <button class="gallery-tab-btn" data-filter="draft">Perlu review (<span id="count-pending">0</span>)</button>
+              <button class="gallery-tab-btn" data-filter="scheduled">Terjadwal (<span id="count-scheduled">0</span>)</button>
+              <button class="gallery-tab-btn" data-filter="approved">Disetujui (<span id="count-approved">0</span>)</button>
+              <button class="gallery-tab-btn" data-filter="rejected">Ditolak (<span id="count-rejected">0</span>)</button>
+            </div>
+
+            <div class="gallery-cards-grid" id="gallery-cards-container">
+              <!-- Rendered by JS -->
+            </div>
+          </div>
+
+          <!-- SUB-VIEW B: DETAILED SLIDE EDITOR (Reference IMG_20261110_205004_739.jpg & s-2.jpg) -->
+          <div id="review-editor-subview" style="display: none;">
+            <div class="editor-top-bar">
+              <button class="btn-back-link" id="btn-back-to-gallery">
+                <span>←</span> <span>Kembali ke antrian review</span>
+              </button>
+
+              <div class="editor-actions-group">
+                <span class="editor-source-chip" id="editor-source-link">🔗 Link sumber</span>
+                <button class="btn btn-lime" id="btn-action-post-now">📸 Posting sekarang</button>
+                <button class="btn btn-dark" id="btn-action-approve-auto">⏱️ Setujui (Auto)</button>
+                <button class="btn btn-dark" id="btn-action-approve-manual">✈️ Sudah diposting manual</button>
+                <button class="btn btn-danger" id="btn-action-reject">❌ Tolak</button>
+              </div>
+            </div>
+
+            <div class="editor-main-grid">
+              <!-- Left Column: Carousel Preview -->
+              <div class="editor-preview-column">
+                <div class="carousel-phone-frame">
+                  <img id="editor-main-slide-img" class="carousel-phone-img" src="" alt="Slide Preview">
+                  <button class="carousel-nav-arrow left" id="btn-slide-prev">&#10094;</button>
+                  <button class="carousel-nav-arrow right" id="btn-slide-next">&#10095;</button>
+                </div>
+
+                <div class="editor-thumbs-strip" id="editor-thumbs-strip">
+                  <!-- Thumbnails rendered by JS -->
+                </div>
+
+                <div class="editor-preview-btns">
+                  <button class="btn btn-dark" id="btn-download-all-slides">⬇ Download semua slide</button>
+                  <button class="btn btn-dark" id="btn-copy-caption-full">📋 Copy caption + hashtag</button>
+                  <button class="btn btn-dark" id="btn-open-single-slide">🔍 Buka slide resolusi penuh ↗</button>
+                </div>
+              </div>
+
+              <!-- Right Column: Slide Form Editor -->
+              <div class="editor-form-column">
+                <div class="editor-form-card">
+                  <div class="editor-form-card-title">
+                    <span id="editor-slide-heading">Slide 1 · Cover</span>
+                    <span style="font-size: 11px; color: var(--muted);" id="editor-layout-name">cover-stat</span>
+                  </div>
+
+                  <div class="form-group-editor">
+                    <label class="form-label-editor">Headline Teks di Slide</label>
+                    <textarea class="form-input-dark" id="editor-input-slide-text" rows="3" placeholder="Teks headline..."></textarea>
+                  </div>
+
+                  <div class="form-group-editor">
+                    <label class="form-label-editor">Caption Editorial Instagram</label>
+                    <textarea class="form-input-dark" id="editor-input-caption" rows="6" placeholder="Caption..."></textarea>
+                  </div>
+
+                  <div class="form-group-editor">
+                    <label class="form-label-editor">Hashtags</label>
+                    <input type="text" class="form-input-dark" id="editor-input-hashtags" placeholder="#HomelessMedia #IHSG...">
+                  </div>
+
+                  <div style="display: flex; gap: 10px; margin-top: 20px;">
+                    <button class="btn btn-lime" id="btn-save-and-rerender">🔄 Simpan & Render Ulang</button>
+                    <button class="btn btn-dark" id="btn-save-text-only">Simpan Teks Saja</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </section>
+
+
+        <!-- ================================================================== -->
+        <!-- VIEW 3: RADAR TOPIK (Reference IMG_20261110_204957_926.jpg) -->
+        <!-- ================================================================== -->
+        <section id="view-topics" class="view-pane">
+          <div style="margin-bottom: 24px;">
+            <span class="redaksi-greeting">Evaluasi Analis (0–100)</span>
+            <h2 style="font-family: 'Archivo Black', sans-serif; font-size: 28px; color: #fff; margin-bottom: 6px;">RADAR TOPIK</h2>
+            <p style="font-size: 13px; color: var(--muted);">Hasil kurasi sumber niche terverifikasi: BPS, Bank Indonesia, OJK, Mahkamah Konstitusi, dan bursa.</p>
+          </div>
+
+          <div class="gallery-filter-tabs">
+            <button class="gallery-tab-btn active btn-topic-filter" data-status="">Semua Topik</button>
+            <button class="gallery-tab-btn btn-topic-filter" data-status="scored">Lolos (>=75)</button>
+            <button class="gallery-tab-btn btn-topic-filter" data-status="rejected">Gugur / Fast-Fail</button>
+            <button class="gallery-tab-btn btn-topic-filter" data-status="produced">Diproduksi</button>
+          </div>
+
+          <div class="radar-list" id="radar-list-container">
+            <!-- Rendered by JS -->
+          </div>
+        </section>
+
+
+        <!-- ================================================================== -->
+        <!-- VIEW 4: N8N STUDIO -->
+        <!-- ================================================================== -->
+        <section id="view-n8n" class="view-pane">
+          <div style="margin-bottom: 24px;">
+            <span class="redaksi-greeting">Mesin Otomasi</span>
+            <h2 style="font-family: 'Archivo Black', sans-serif; font-size: 28px; color: #fff; margin-bottom: 6px;">N8N WORKFLOW STUDIO</h2>
+            <p style="font-size: 13px; color: var(--muted);">Orkestrasi terjadwal setiap 30 menit memicu pipeline 4 agen AI dan notifikasi review.</p>
+          </div>
+
+          <div style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;">
+            <a href="https://n8n.avenia.my.id" target="_blank" class="btn btn-lime">🚀 Buka Canvas n8n Studio ↗</a>
+            <button class="btn btn-dark" id="btn-toggle-wf-dark">⚡ Aktifkan Otomasi</button>
+            <button class="btn btn-dark" id="btn-copy-wf-json-dark">📋 Salin JSON Workflow</button>
+          </div>
+
+          <div>
+            <textarea id="workflow-json-viewer-dark" class="code-editor-dark" readonly spellcheck="false"></textarea>
+          </div>
+        </section>
+
+
+        <!-- ================================================================== -->
+        <!-- VIEW 5: BRAND TOKENS -->
+        <!-- ================================================================== -->
+        <section id="view-tokens" class="view-pane">
+          <div style="margin-bottom: 24px;">
+            <span class="redaksi-greeting">Design Tokens System</span>
+            <h2 style="font-family: 'Archivo Black', sans-serif; font-size: 28px; color: #fff; margin-bottom: 6px;">TOKENS.YAML</h2>
+            <p style="font-size: 13px; color: var(--muted);">Satu berkas mengontrol seluruh warna (Navy, Deep Teal, Golden Amber), tipografi, dan gaya chart flat.</p>
+          </div>
+
+          <div style="display: flex; gap: 12px; margin-bottom: 20px;">
+            <button class="btn btn-lime" id="btn-save-tokens-dark">💾 Simpan & Muat Ulang Tokens</button>
+          </div>
+
+          <div>
+            <textarea id="tokens-editor-dark" class="code-editor-dark" spellcheck="false"></textarea>
+          </div>
+        </section>
+
+
+        <!-- ================================================================== -->
+        <!-- VIEW 6: AUDIT TRAIL -->
+        <!-- ================================================================== -->
+        <section id="view-audit" class="view-pane">
+          <div style="margin-bottom: 24px;">
+            <span class="redaksi-greeting">Jejak Keputusan</span>
+            <h2 style="font-family: 'Archivo Black', sans-serif; font-size: 28px; color: #fff; margin-bottom: 6px;">AUDIT LOG</h2>
+            <p style="font-size: 13px; color: var(--muted);">Setiap persetujuan, penolakan, editan slide, dan eksekusi agen terekam secara permanen.</p>
+          </div>
+
+          <div class="activity-card">
+            <div class="activity-header">
+              <span class="activity-title">Riwayat Aksi Redaksi & Engine</span>
+            </div>
+            <div class="activity-list" id="audit-full-list">
+              <!-- Rendered by JS -->
+            </div>
+          </div>
+        </section>
+
       </div>
-
-      <div class="header-actions">
-        <div class="system-status-group">
-          <span class="status-pill status-ok" id="status-db" title="PostgreSQL Database Connected">
-            <span class="dot"></span> DB PostgreSQL
-          </span>
-          <span class="status-pill status-ok" id="status-render" title="Render Service Satori+Sharp Ready">
-            <span class="dot"></span> Render Service
-          </span>
-          <a href="https://n8n.avenia.my.id" target="_blank">
-            <span class="status-pill status-ok" id="status-n8n" title="n8n Automation Engine Online">
-              <span class="dot"></span> n8n Studio ↗
-            </span>
-          </a>
-        </div>
-
-        <div class="header-buttons">
-          <a href="https://n8n.avenia.my.id" target="_blank" class="btn btn-secondary btn-header">
-            <span class="icon">🛠️</span> <span class="btn-text">n8n Canvas</span>
-          </a>
-          <button class="btn btn-primary btn-header" id="btn-run-pipeline">
-            <span class="icon">⚡</span> <span class="btn-text">Jalankan Pipeline</span>
-          </button>
-        </div>
-      </div>
-    </div>
-  </header>
-
-  <!-- Metric Overview Cards -->
-  <section class="metrics-grid">
-    <div class="metric-card">
-      <div class="metric-label">Bahan Mentah (Scout)</div>
-      <div class="metric-val" id="metric-raw">0</div>
-      <div class="metric-desc">Item berita resmi tersaring dedup</div>
-    </div>
-    <div class="metric-card">
-      <div class="metric-label">Topik Teranalisis</div>
-      <div class="metric-val" id="metric-topics">0</div>
-      <div class="metric-desc"><span id="metric-passed">0</span> lolos skor, <span id="metric-fastfail">0</span> fast-failed</div>
-    </div>
-    <div class="metric-card">
-      <div class="metric-label">Draf Menunggu Review</div>
-      <div class="metric-val accent-val" id="metric-drafts-pending">0</div>
-      <div class="metric-desc">Carousel siap diputuskan admin</div>
-    </div>
-    <div class="metric-card">
-      <div class="metric-label">Antrean Jadwal Tayang</div>
-      <div class="metric-val" id="metric-scheduled">0</div>
-      <div class="metric-desc">Auto-publish jam optimal</div>
-    </div>
-  </section>
-
-  <!-- Main Tabs Navigation -->
-  <div class="nav-tabs-wrapper">
-    <nav class="nav-tabs">
-      <button class="tab-btn active" data-tab="tab-drafts">📑 Antrean Draf Review (<span id="tab-draft-count">0</span>)</button>
-      <button class="tab-btn" data-tab="tab-topics">📊 Radar Topik & Skoring (<span id="tab-topic-count">0</span>)</button>
-      <button class="tab-btn" data-tab="tab-n8n">⚡ n8n Workflow Studio</button>
-      <button class="tab-btn" data-tab="tab-tokens">🎨 Design Tokens (tokens.yaml)</button>
-      <button class="tab-btn" data-tab="tab-audit">📜 Audit Log & Jejak</button>
-    </nav>
+    </main>
   </div>
 
-  <!-- Content Container -->
-  <main class="main-content">
-    <!-- TAB 1: DRAFTS REVIEW -->
-    <section id="tab-drafts" class="tab-pane active">
-      <div class="section-toolbar">
-        <h2>Antrean Carousel Siap Review (Human-in-the-Loop)</h2>
-        <div class="filter-group">
-          <button class="btn btn-sm btn-filter active" data-filter="all">Semua Status</button>
-          <button class="btn btn-sm btn-filter" data-filter="draft">Perlu Diputuskan</button>
-          <button class="btn btn-sm btn-filter" data-filter="scheduled">Terjadwal</button>
-          <button class="btn btn-sm btn-filter" data-filter="rejected">Ditolak</button>
-        </div>
-      </div>
-      <div id="drafts-container" class="drafts-list">
-        <!-- Rendered by JS -->
-      </div>
-    </section>
-
-    <!-- TAB 2: TOPICS RADAR -->
-    <section id="tab-topics" class="tab-pane">
-      <div class="section-toolbar">
-        <h2>Radar Topik & Evaluasi Skor Analis (0–100)</h2>
-        <div class="filter-group">
-          <button class="btn btn-sm btn-topic-filter active" data-status="">Semua Topik</button>
-          <button class="btn btn-sm btn-topic-filter" data-status="scored">Lolos (>=75)</button>
-          <button class="btn btn-sm btn-topic-filter" data-status="rejected">Gugur / Fast-Fail</button>
-          <button class="btn btn-sm btn-topic-filter" data-status="produced">Diproduksi</button>
-        </div>
-      </div>
-      <div class="table-card">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th width="60">ID</th>
-              <th width="140">Sumber Primer</th>
-              <th>Judul Topik & Rangkuman Berita</th>
-              <th width="110">Skor Total</th>
-              <th width="110">Status</th>
-              <th width="130">Aksi</th>
-            </tr>
-          </thead>
-          <tbody id="topics-table-body">
-            <!-- Rendered by JS -->
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <!-- TAB 3: N8N WORKFLOW STUDIO -->
-    <section id="tab-n8n" class="tab-pane">
-      <div class="section-toolbar">
-        <h2>Studio Orkestrasi Workflow n8n</h2>
-        <a href="https://n8n.avenia.my.id" target="_blank" class="btn btn-primary">
-          🚀 Buka Visual Canvas Editor ↗
-        </a>
-      </div>
-      <p class="section-desc">n8n Community Engine berjalan mandiri di background dan mengorkestrasikan trigger polling berkala (setiap 30 menit), eksekusi pipeline agen, monitoring database, dan pengiriman notifikasi Telegram.</p>
-
-      <div class="two-col-grid">
-        <div class="metric-card" style="padding: 20px;">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
-            <div class="metric-label">Workflow Terdaftar</div>
-            <span id="wf-status-badge" class="badge" style="font-size: 11px;">Memuat status...</span>
-          </div>
-          <h3 style="font-size: 16px; font-weight: 700; color: var(--navy); margin-bottom: 6px;">Homeless Media Engine - Content Pipeline</h3>
-          <p style="font-size: 12.5px; color: var(--muted); margin-bottom: 14px;">ID: <code>d3j0Kr9koCQFlRIG</code> · Tipe: Cron & Event-Driven Automation</p>
-          <div style="background: #f8fafc; border: 1px solid var(--border); border-radius: 6px; padding: 12px; font-size: 12.5px; line-height: 1.6;">
-            <div><b>Node 1:</b> ⏰ Schedule Trigger (Polling setiap 30 menit)</div>
-            <div><b>Node 2:</b> ⚙️ Execute Command (Menjalankan 4 Agen AI)</div>
-            <div><b>Node 3:</b> 🗄️ Query PostgreSQL (Cek status & kuota draf)</div>
-            <div><b>Node 4:</b> 📲 Telegram Bot (Notifikasi review ke admin)</div>
-          </div>
-          <div style="margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap;">
-            <button id="btn-toggle-wf" class="btn btn-primary" style="font-size: 12.5px;">
-              ⚡ Aktifkan Otomasi n8n
-            </button>
-            <a href="https://n8n.avenia.my.id/workflow/d3j0Kr9koCQFlRIG" target="_blank" class="btn btn-secondary" style="font-size: 12.5px;">
-              ✏️ Buka di Canvas n8n ↗
-            </a>
-          </div>
-        </div>
-
-        <div class="metric-card" style="padding: 20px;">
-          <div class="metric-label" style="margin-bottom: 12px;">Panduan Akses & Penyesuaian</div>
-          <div style="font-size: 12.5px; color: var(--ink); line-height: 1.7;">
-            <p style="margin-bottom: 8px;"><b>1. Mengubah Jadwal Polling:</b> Buka node <i>Schedule Trigger</i> di canvas n8n untuk mengubah frekuensi (misal dari 30 menit ke 15 atau 60 menit).</p>
-            <p style="margin-bottom: 8px;"><b>2. Menambahkan Notifikasi / Webhook:</b> Anda dapat menambah node Slack, Discord, Email, atau webhook kustom langsung dengan drag-and-drop.</p>
-            <p><b>3. Kredensial Terenkripsi:</b> Kredensial database dan Telegram disimpan aman dengan kunci enkripsi AES-256 bawaan n8n.</p>
-          </div>
-        </div>
-      </div>
-
-      <div class="section-toolbar" style="margin-top: 24px;">
-        <h3>Definisi JSON Workflow (Ekspor / Cadangan)</h3>
-        <button class="btn btn-sm btn-secondary" id="btn-copy-workflow-json">📋 Salin JSON Workflow</button>
-      </div>
-      <div>
-        <textarea id="workflow-json-viewer" class="code-editor" readonly spellcheck="false"></textarea>
-      </div>
-    </section>
-
-    <!-- TAB 4: DESIGN TOKENS -->
-    <section id="tab-tokens" class="tab-pane">
-      <div class="section-toolbar">
-        <h2>Design Tokens Brand (Corporate Guidelines)</h2>
-        <button class="btn btn-primary" id="btn-save-tokens">💾 Simpan & Muat Ulang Tokens</button>
-      </div>
-      <p class="section-desc">Satu berkas <code>tokens.yaml</code> mengontrol seluruh identitas visual, tipografi, warna (Navy, Teal, Amber), dan chart flat. Perubahan otomatis memicu hot-reload pada Render Service.</p>
-      <div>
-        <textarea id="tokens-editor" class="code-editor" spellcheck="false"></textarea>
-      </div>
-    </section>
-
-    <!-- TAB 5: AUDIT LOG -->
-    <section id="tab-audit" class="tab-pane">
-      <div class="section-toolbar">
-        <h2>Audit Log Keputusan Admin (Append-Only)</h2>
-      </div>
-      <div class="table-card">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th width="80">Log ID</th>
-              <th width="100">Entitas</th>
-              <th width="100">ID Entitas</th>
-              <th width="140">Aksi</th>
-              <th width="120">Aktor</th>
-              <th>Detail Payload</th>
-              <th width="180">Waktu</th>
-            </tr>
-          </thead>
-          <tbody id="audit-table-body">
-            <!-- Rendered by JS -->
-          </tbody>
-        </table>
-      </div>
-    </section>
-  </main>
-
-  <!-- MODAL EDIT SLIDE -->
-  <div id="edit-modal" class="modal-overlay">
-    <div class="modal-card">
-      <div class="modal-header">
-        <h3>Edit Teks Slide & Render Ulang</h3>
-        <button class="modal-close" id="modal-close">&times;</button>
-      </div>
-      <div class="modal-body">
-        <p class="modal-info" style="font-size: 12.5px; color: var(--muted); margin-bottom: 14px;">Mengedit teks slide akan langsung memicu Render Service (Satori + Sharp) dan memperbarui file PNG deterministik:</p>
-        <div class="form-group">
-          <label>Pilih Nomor Slide:</label>
-          <select id="edit-slide-no" class="form-control">
-            <option value="1">Slide 1 (Hook / Cover)</option>
-            <option value="2">Slide 2 (Konteks)</option>
-            <option value="3">Slide 3 (Bukti / Chart / Regulasi)</option>
-            <option value="4">Slide 4 (Implikasi)</option>
-            <option value="5">Slide 5 (CTA Close)</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Teks Baru:</label>
-          <textarea id="edit-slide-text" class="form-control" rows="4"></textarea>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" id="modal-cancel">Batal</button>
-        <button class="btn btn-primary" id="btn-submit-edit">🚀 Render Ulang Slide</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- TOAST NOTIFICATION -->
+  <!-- Toast -->
   <div id="toast" class="toast"></div>
 
-  <script src="/app.js"></script>
+  <script src="/app.js?v=2.2"></script>
 </body>
 </html>

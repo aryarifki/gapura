@@ -225,6 +225,46 @@ app.post('/api/drafts/:id/edit-slide', async (req, res) => {
   }
 });
 
+// 5b. Update Draft Full (caption, slides, schedule)
+app.post('/api/drafts/:id/update-full', async (req, res) => {
+  const draftId = parseInt(req.params.id);
+  const { caption, slides, scheduled_at, mode = 'auto' } = req.body;
+  try {
+    if (caption) {
+      await pool.query('UPDATE drafts SET caption = $1, updated_at = NOW() WHERE id = $2', [caption, draftId]);
+    }
+    if (slides && Array.isArray(slides)) {
+      await pool.query('UPDATE drafts SET slides = $1, updated_at = NOW() WHERE id = $2', [JSON.stringify(slides), draftId]);
+      await fetch(`${RENDER_SERVICE_URL}/render`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Render-Secret': RENDER_SECRET },
+        body: JSON.stringify({ draft_id: draftId, slides }),
+      });
+      // Update draft_slides snapshots
+      for (const s of slides) {
+        await pool.query(
+          'UPDATE draft_slides SET text_snapshot = $1, rendered_at = NOW() WHERE draft_id = $2 AND slide_no = $3',
+          [s.teks || '', draftId, s.no]
+        );
+      }
+    }
+    if (scheduled_at) {
+      await pool.query("UPDATE drafts SET status = 'scheduled', updated_at = NOW() WHERE id = $1", [draftId]);
+      await pool.query(
+        "INSERT INTO scheduled_posts (draft_id, mode, scheduled_at, status) VALUES ($1, $2, $3, 'pending')",
+        [draftId, mode, new Date(scheduled_at)]
+      );
+      await pool.query(
+        "INSERT INTO audit_log (entity, entity_id, action, actor, payload) VALUES ('draft', $1, 'scheduled_custom', 'web_admin', $2)",
+        [draftId, JSON.stringify({ scheduled_at, mode })]
+      );
+    }
+    res.json({ status: 'success', draftId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 6. Topics List with Scores
 app.get('/api/topics', async (req, res) => {
   const { status, limit = 50 } = req.query;
