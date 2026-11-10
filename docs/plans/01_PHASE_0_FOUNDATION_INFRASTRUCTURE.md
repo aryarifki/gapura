@@ -1,11 +1,94 @@
 # DOKUMEN 01: FASE 0 — FONDASI & INFRASTRUKTUR
 ## Homeless Media Engine (HME) v2.0
 
-Dokumen ini memuat spesifikasi teknis lengkap untuk mendirikan infrastruktur dasar HME di mesin Debian server, mencakup orkestrasi kontainer Docker Compose, inisialisasi basis data PostgreSQL 16 (12 tabel inti, relasi, indeks, dan ekstensi `pg_trgm`), konfigurasi Cloudflare Tunnel, serta registrasi Telegram Bot API.
+Dokumen ini memuat spesifikasi teknis lengkap untuk mendirikan infrastruktur dasar HME di mesin Debian server. Dokumen ini mendukung dua pendekatan runtime:
+1. **Opsi A: Bare-Metal Native Systemd (Rekomendasi Utama — Hemat Storage & RAM):** Menggunakan PostgreSQL 17, Node.js 24, n8n via npm, dan cloudflared yang berjalan langsung di OS host tanpa kontainer. Sangat ideal untuk server dengan sisa penyimpanan terbatas (< 7 GB) karena **menghemat 2,5–3,5 GB** ruang disk.
+2. **Opsi B: Docker Compose (4 Kontainer Terisolasi):** Alternatif kontainerisasi penuh menggunakan `docker-compose.yml`.
 
 ---
 
-## 1. Spesifikasi Docker Compose (4 Kontainer)
+## 1. Opsi A: Bare-Metal Native Systemd (Storage-Optimized)
+
+### 1.1 Perbandingan Penggunaan Resource
+
+| Aspek | Opsi A: Bare-Metal Native Systemd | Opsi B: Docker Compose |
+| :--- | :--- | :--- |
+| **Konsumsi Disk** | **~400–500 MB** total | **~3.000–4.000 MB** (Image + Base layers) |
+| **Konsumsi RAM Overhead** | **0 MB** overhead (proses langsung) | **150–250 MB** overhead Docker daemon & bridge |
+| **PostgreSQL** | Memakai PostgreSQL 17 lokal yang sudah aktif | Image postgres baru di volume terpisah |
+| **Node.js & Tooling** | Memakai Node.js v24 yang sudah terpasang | Image node alpine terpisah |
+| **Manajemen Service** | Unit `systemd` standar Debian (`systemctl`) | `docker compose up/down` |
+
+### 1.2 Topologi Port & Keamanan Bare-Metal
+Semua service mendengarkan (*listen*) **hanya** pada interface loopback lokal (`127.0.0.1`), sehingga tidak ada port yang terbuka ke jaringan publik/LAN luar tanpa melalui Cloudflare Tunnel:
+- `PostgreSQL 17`: `127.0.0.1:5432`
+- `n8n Web Engine`: `127.0.0.1:5678`
+- `Render Service`: `127.0.0.1:3000` (diproteksi header `X-Render-Secret`)
+- `Cloudflare Tunnel`: Membuka outbound tunnel ke domain admin aman.
+
+### 1.3 Konfigurasi Unit Systemd
+
+#### A. Service Render (`/etc/systemd/system/hme-render.service`)
+```ini
+[Unit]
+Description=Homeless Media Engine - Render Service (Satori + Sharp)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/gapura/services/render
+EnvironmentFile=/root/gapura/.env
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+```
+
+#### B. Service n8n (`/etc/systemd/system/hme-n8n.service`)
+```ini
+[Unit]
+Description=Homeless Media Engine - n8n Workflow Engine
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=root
+EnvironmentFile=/root/gapura/.env
+ExecStart=/usr/bin/n8n
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+```
+
+#### C. Service Cloudflare Tunnel (`/etc/systemd/system/cloudflared.service`)
+```ini
+[Unit]
+Description=Cloudflare Tunnel for HME
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/cloudflared tunnel run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+---
+
+## 2. Opsi B: Spesifikasi Docker Compose (Alternatif 4 Kontainer)
 
 Arsitektur terdiri dari 4 layanan yang diisolasi dalam satu jaringan internal Docker (`hme-network`), tanpa membuka port database atau render service ke jaringan publik host secara sembarangan.
 

@@ -29,7 +29,14 @@ Setiap pagi, admin cukup membuka Telegram di ponsel cerdas, meninjau carousel dr
 
 ## 2. Arsitektur Sistem Global
 
-Sistem berjalan di atas 4 kontainer Docker Compose di jaringan internal:
+Sistem dapat dijalankan dengan dua opsi runtime: **Opsi Bare-Metal Native Systemd (Rekomendasi Utama: Hemat Disk Space & RAM)** atau **Opsi Docker Compose**.
+
+Pada server dengan ruang penyimpanan terbatas (tersedia < 7 GB), opsi **Bare-Metal Native** menghemat 2,5–3 GB ruang penyimpanan karena memanfaatkan komponen yang sudah terpasang di host:
+- PostgreSQL 17 (sudah aktif di host)
+- Node.js v24 (sudah aktif di host)
+- cloudflared (sudah terpasang di host)
+- n8n (diinstal via npm dan dikelola systemd)
+- render-service (dikelola systemd)
 
 ```mermaid
 flowchart TD
@@ -42,8 +49,8 @@ flowchart TD
         News["Media Pasar (Kontan/Bisnis/CNBC)"]
     end
 
-    subgraph DockerHost["Server Debian (Docker Compose)"]
-        subgraph n8n_Core["n8n Orchestration Engine"]
+    subgraph NativeHost["Server Debian (Bare-Metal Systemd Services)"]
+        subgraph n8n_Core["hme-n8n.service (Port 127.0.0.1:5678)"]
             ScoutWF["Workflow Scout (Polling 30m)"]
             AnalisWF["Workflow Analis (Score 0-100)"]
             CopyWF["Workflow Copywriter (JSON Slides)"]
@@ -51,19 +58,19 @@ flowchart TD
             PubWF["Workflow Publisher (Meta / Reminder)"]
         end
 
-        subgraph Render_Service["Render Service (Node.js)"]
+        subgraph Render_Service["hme-render.service (Port 127.0.0.1:3000)"]
             Satori["Satori (JSX -> SVG)"]
             Sharp["Sharp (SVG -> PNG 1080x1350)"]
             Tokens["tokens.yaml + Layouts"]
         end
 
-        subgraph Database["PostgreSQL 16"]
+        subgraph Database["postgresql.service (Port 127.0.0.1:5432)"]
             DB_HME[(Database: hme)]
             DB_N8N[(Database: n8n)]
         end
 
-        subgraph Ingress["Cloudflare Tunnel"]
-            CFTunnel["cloudflared daemon"]
+        subgraph Ingress["cloudflared.service"]
+            CFTunnel["cloudflared tunnel (Zero Port Forwarding)"]
         end
     end
 
