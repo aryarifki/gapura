@@ -1,0 +1,51 @@
+# ==============================================================================
+# Homeless Media Engine (HME) v2.0 - Design Tokens
+# File: /root/gapura/design-system/tokens.yaml
+# Single Source of Truth for Visual Identity
+# ==============================================================================
+
+brand:
+  name: "Homeless Media"
+  handle: "@homelessmedia"
+  tagline: "Data, Hukum & Ekonomi Bursa"
+
+canvas:
+  width: 1080
+  height: 1350
+  aspect_ratio: "4:5"
+
+palette:
+  bg: "#f7f5f0"          # Latar terang mirip kertas koran editorial (off-white)
+  card_bg: "#ffffff"     # Kontainer kartu data
+  ink: "#14202e"         # Teks judul & angka utama (deep navy/slate)
+  ink_secondary: "#2c3e50"
+  accent: "#0f4c81"      # Biru brand editorial
+  muted: "#5a6b7c"       # Label penjelas, caption kecil, dan sumber
+  border: "#e2ded4"      # Garis pemisah halus
+  up: "#1a7a4f"          # Indikator pasar naik / positif (hijau teduh)
+  down: "#b23a48"        # Indikator pasar turun / negatif (merah bata teduh)
+
+typography:
+  display_font: "Archivo Black" # Angka raksasa, persentase, dan judul utama
+  text_font: "Inter"            # Teks narasi, pasal hukum, label, dan sumber
+  weights:
+    regular: 400
+    medium: 500
+    bold: 700
+  scale:
+    hero: 72       # px - Angka stat utama di cover
+    title: 44      # px - Judul slide
+    subtitle: 28   # px - Subjudul / headline pasal
+    body: 20       # px - Paragraf narasi dan poin aturan
+    caption: 14    # px - Label unit, metadata, dan atribusi sumber
+
+grid:
+  margin: 72       # px - Padding tepi kanvas (dikunci di semua slide)
+  gutter: 24       # px - Jarak antar kolom / elemen
+  accent_rule: 6   # px - Ketebalan garis aksen visual
+
+chart:
+  gridline_style: "dashed" # dashed, solid, none
+  gridline_color: "#d0cbc0"
+  show_source: true        # Wajib mencetak sumber data di kaki chart
+  max_series: 2            # Maksimal 2 seri data agar tetap flat & bersih

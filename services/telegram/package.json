@@ -1,0 +1,11 @@
+{
+  "name": "hme-telegram-service",
+  "version": "2.0.0",
+  "description": "Telegram approval bot and notification dispatcher for Homeless Media Engine",
+  "main": "bot.js",
+  "type": "module",
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "pg": "^8.13.1"
+  }
+}

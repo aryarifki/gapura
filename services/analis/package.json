@@ -1,0 +1,11 @@
+{
+  "name": "hme-analis-service",
+  "version": "2.0.0",
+  "description": "Analis fast-fail filter and 0-100 scoring engine for Homeless Media Engine",
+  "main": "analis.js",
+  "type": "module",
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "pg": "^8.13.1"
+  }
+}
