@@ -1,5 +1,5 @@
 # SKILL DEFINITION: SCOUT (PEMASOK TOPIK OTOMATIS)
-# Agen: Scout @homelessmedia
+# Agen: Scout @gapuramedia
 # Versi: 2.0.0
 
 ## 1. TUJUAN UTAMA (OBJECTIVE)

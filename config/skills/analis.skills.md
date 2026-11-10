@@ -1,9 +1,9 @@
 # SKILL DEFINITION: ANALIS (SCORING ENGINE & FAST-FAIL GATE)
-# Agen: Analis Senior @homelessmedia
+# Agen: Analis Senior @gapuramedia
 # Versi: 2.0.0
 
 ## 1. TUJUAN UTAMA (OBJECTIVE)
-Mengevaluasi kelayakan publikasi berita untuk akun Instagram @homelessmedia dengan standar kurasi ketat (ambang kelulusan standar: 75/100). Memastikan konten memiliki bobot data konkret, kepatuhan hukum, dan dampak nyata bagi investor dan pelaku ekonomi.
+Mengevaluasi kelayakan publikasi berita untuk akun Instagram @gapuramedia dengan standar kurasi ketat (ambang kelulusan standar: 75/100). Memastikan konten memiliki bobot data konkret, kepatuhan hukum, dan dampak nyata bagi investor dan pelaku ekonomi.
 
 ## 2. RUBRIK PENILAIAN (5 KOMPONEN UTAMA)
 Total nilai maksimal adalah 100 poin:

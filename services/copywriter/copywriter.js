@@ -108,7 +108,7 @@ export function buildDeterministicCarouselSlides(topic) {
       title: topic.title,
       category: categoryName,
     },
-    source: topic.primary_source || '@homelessmedia',
+    source: topic.primary_source || '@gapuramedia',
   });
 
   // Slide 2: Big Statement (Konteks Inti Berita)
@@ -120,7 +120,7 @@ export function buildDeterministicCarouselSlides(topic) {
       author: topic.primary_source || 'Otoritas Terkait',
       category: 'FAKTA KUNCI',
     },
-    source: topic.primary_source || '@homelessmedia',
+    source: topic.primary_source || '@gapuramedia',
   });
 
   // Slide 3: Evidence (Menyesuaikan Otomatis Isi Berita)
@@ -133,7 +133,7 @@ export function buildDeterministicCarouselSlides(topic) {
         title: pojkMatch ? pojkMatch[0] : 'POIN KETENTUAN & REGULASI',
         category: 'HUKUM & REGULASI',
       },
-      source: topic.primary_source || '@homelessmedia',
+      source: topic.primary_source || '@gapuramedia',
     });
   } else {
     // Siapkan items untuk stat-grid dari fakta yang terdeteksi di berita
@@ -152,7 +152,7 @@ export function buildDeterministicCarouselSlides(topic) {
           items: statItems.slice(0, 4),
           category: 'BEDAH DATA',
         },
-        source: topic.primary_source || '@homelessmedia',
+        source: topic.primary_source || '@gapuramedia',
       });
     } else {
       slides.push({
@@ -163,7 +163,7 @@ export function buildDeterministicCarouselSlides(topic) {
           author: topic.primary_source,
           category: 'SOROTAN DATA',
         },
-        source: topic.primary_source || '@homelessmedia',
+        source: topic.primary_source || '@gapuramedia',
       });
     }
   }
@@ -184,7 +184,7 @@ export function buildDeterministicCarouselSlides(topic) {
       },
       category: 'ANALISIS DAMPAK',
     },
-    source: topic.primary_source || '@homelessmedia',
+    source: topic.primary_source || '@gapuramedia',
   });
 
   // Slide 5: CTA Close (Penutup, Pertanyaan Diskusi & Disclaimer)
@@ -201,18 +201,18 @@ export function buildDeterministicCarouselSlides(topic) {
     layout: 'cta-close',
     teks: questionTopic,
     data: {
-      cta: 'Simpan postingan ini & ikuti @homelessmedia untuk update data, hukum, dan ekonomi bursa harian.',
+      cta: 'Simpan postingan ini & ikuti @gapuramedia untuk update data, hukum, dan ekonomi bursa harian.',
       disclaimer: isRegulasi
         ? 'Konten ini disajikan untuk edukasi hukum & regulasi publik, bukan merupakan nasihat hukum resmi.'
         : 'Konten ini disajikan untuk edukasi data pasar publik, bukan merupakan rekomendasi investasi beli/jual saham.',
     },
-    source: '@homelessmedia',
+    source: '@gapuramedia',
   });
 
   const caption = `${topic.title}\n\n${topic.summary || ''}\n\nAnalisis Editorial:\nLangkah dan data yang dilaporkan oleh ${topic.primary_source || 'otoritas'} ini memperlihatkan perkembangan penting yang patut dicermati oleh pelaku pasar, investor, dan pengambil keputusan. Informasi faktual ini memberikan gambaran objektif mengenai arah kebijakan dan stabilitas fundamental ekonomi nasional.\n\nSumber Data: ${topic.primary_source} (${topic.url})\n\n---\nDisclaimer: Informasi disajikan untuk tujuan edukasi publik dan bukan merupakan rekomendasi investasi beli/jual saham atau nasihat hukum resmi.`;
 
   const hashtags = [
-    '#HomelessMedia',
+    '#GapuraMedia',
     '#DataEkonomi',
     '#BursaSaham',
     '#IHSG',

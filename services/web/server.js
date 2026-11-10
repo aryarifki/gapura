@@ -15,6 +15,7 @@ import yaml from 'js-yaml';
 import { exec } from 'child_process';
 import { produceSingleTopicDraft } from '../copywriter/copywriter.js';
 import { loadAgentsConfig, loadAgentSkills, saveAgentSkills } from '../common/llm.js';
+import { runScout } from '../scout/scout.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -464,12 +465,36 @@ app.get('/api/tokens', (req, res) => {
   }
 });
 
-app.post('/api/tokens', async (req, res) => {
-  const { yaml_content } = req.body;
+// 9. Tokens API (Live Design Studio & Realtime Preview Support)
+app.get('/api/tokens', (req, res) => {
   try {
-    // Validate yaml
-    yaml.load(yaml_content);
-    fs.writeFileSync(TOKENS_PATH, yaml_content, 'utf8');
+    const raw = fs.readFileSync(TOKENS_PATH, 'utf8');
+    const parsed = yaml.load(raw);
+    res.json({ raw, parsed });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/tokens', async (req, res) => {
+  const { yaml_content, brand, palette, typography } = req.body;
+  try {
+    let finalYaml = '';
+    if (yaml_content) {
+      yaml.load(yaml_content);
+      finalYaml = yaml_content;
+    } else {
+      let existingTokens = {};
+      if (fs.existsSync(TOKENS_PATH)) {
+        existingTokens = yaml.load(fs.readFileSync(TOKENS_PATH, 'utf8')) || {};
+      }
+      if (brand) existingTokens.brand = { ...(existingTokens.brand || {}), ...brand };
+      if (palette) existingTokens.palette = { ...(existingTokens.palette || {}), ...palette };
+      if (typography) existingTokens.typography = { ...(existingTokens.typography || {}), ...typography };
+      finalYaml = yaml.dump(existingTokens);
+    }
+
+    fs.writeFileSync(TOKENS_PATH, finalYaml, 'utf8');
 
     // Reload tokens in Render Service
     await fetch(`${RENDER_SERVICE_URL}/tokens/reload`, {
@@ -477,9 +502,52 @@ app.post('/api/tokens', async (req, res) => {
       headers: { 'X-Render-Secret': RENDER_SECRET },
     });
 
-    res.json({ status: 'success', message: 'Tokens updated and reloaded.' });
+    // Sinkronisasi juga ke config/agents.json jika designer.tokens ada
+    try {
+      if (fs.existsSync(AGENTS_CONFIG_PATH)) {
+        const parsedTokens = yaml.load(finalYaml);
+        const agentsConfig = JSON.parse(fs.readFileSync(AGENTS_CONFIG_PATH, 'utf8'));
+        if (agentsConfig.designer) {
+          agentsConfig.designer.tokens = {
+            palette: parsedTokens.palette || {},
+            typography: parsedTokens.typography || {},
+          };
+          fs.writeFileSync(AGENTS_CONFIG_PATH, JSON.stringify(agentsConfig, null, 2), 'utf8');
+        }
+      }
+    } catch (syncErr) {
+      console.warn('[Web API] Warning sync to agents.json:', syncErr.message);
+    }
+
+    res.json({ status: 'success', message: 'Tokens desain berhasil disimpan dan disinkronkan ke Render Engine.' });
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+// 9b. Render Single Slide Preview (Proxy ke Render Service Port 3000)
+app.post('/api/render/preview', async (req, res) => {
+  try {
+    const renderRes = await fetch(`${RENDER_SERVICE_URL}/render/preview`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Render-Secret': RENDER_SECRET,
+      },
+      body: JSON.stringify(req.body),
+    });
+
+    if (!renderRes.ok) {
+      const errText = await renderRes.text();
+      return res.status(renderRes.status).send(errText);
+    }
+
+    const pngBuffer = await renderRes.arrayBuffer();
+    res.set('Content-Type', 'image/png');
+    res.send(Buffer.from(pngBuffer));
+  } catch (err) {
+    console.error('[Web API] Error proxying render preview:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -659,6 +727,142 @@ app.post('/api/workflow/toggle', async (req, res) => {
 
     res.json({ status: 'success', active: isActive });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==============================================================================
+// 12. News Sources Management API (User Request)
+// ==============================================================================
+// Get all sources with statistics
+app.get('/api/sources', async (req, res) => {
+  try {
+    const query = `
+      SELECT s.*, 
+             COUNT(r.id)::int AS total_items_fetched, 
+             MAX(r.fetched_at) AS last_item_at
+      FROM sources s
+      LEFT JOIN raw_items r ON s.id = r.source_id
+      GROUP BY s.id
+      ORDER BY s.id ASC;
+    `;
+    const { rows } = await pool.query(query);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Add new news source
+app.post('/api/sources', async (req, res) => {
+  const { name, type = 'rss', url_or_query, category = 'news_pasar', poll_interval_mins = 30, is_active = true } = req.body;
+  if (!name || !url_or_query) {
+    return res.status(400).json({ error: 'Nama sumber dan URL/Query wajib diisi.' });
+  }
+
+  try {
+    const query = `
+      INSERT INTO sources (name, type, url_or_query, category, poll_interval_mins, is_active, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+      RETURNING *;
+    `;
+    const { rows } = await pool.query(query, [
+      name.trim(),
+      type.trim(),
+      url_or_query.trim(),
+      category.trim(),
+      parseInt(poll_interval_mins) || 30,
+      Boolean(is_active),
+    ]);
+
+    await pool.query(
+      "INSERT INTO audit_log (entity, entity_id, action, actor, payload) VALUES ('sources', $1, 'create_source', 'web_admin', $2)",
+      [rows[0].id, JSON.stringify({ name, url_or_query, category })]
+    );
+
+    res.json({ status: 'success', source: rows[0], message: `Sumber "${name}" berhasil ditambahkan.` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update existing news source
+app.put('/api/sources/:id', async (req, res) => {
+  const id = parseInt(req.params.id);
+  const { name, type = 'rss', url_or_query, category = 'news_pasar', poll_interval_mins = 30, is_active = true } = req.body;
+  if (!name || !url_or_query) {
+    return res.status(400).json({ error: 'Nama sumber dan URL/Query wajib diisi.' });
+  }
+
+  try {
+    const query = `
+      UPDATE sources
+      SET name = $1, type = $2, url_or_query = $3, category = $4, poll_interval_mins = $5, is_active = $6, updated_at = NOW()
+      WHERE id = $7
+      RETURNING *;
+    `;
+    const { rows } = await pool.query(query, [
+      name.trim(),
+      type.trim(),
+      url_or_query.trim(),
+      category.trim(),
+      parseInt(poll_interval_mins) || 30,
+      Boolean(is_active),
+      id,
+    ]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Sumber tidak ditemukan.' });
+    }
+
+    await pool.query(
+      "INSERT INTO audit_log (entity, entity_id, action, actor, payload) VALUES ('sources', $1, 'update_source', 'web_admin', $2)",
+      [id, JSON.stringify({ name, url_or_query, category, is_active })]
+    );
+
+    res.json({ status: 'success', source: rows[0], message: `Sumber "${name}" berhasil diperbarui.` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete or toggle news source
+app.delete('/api/sources/:id', async (req, res) => {
+  const id = parseInt(req.params.id);
+  try {
+    const hasItems = await pool.query('SELECT 1 FROM raw_items WHERE source_id = $1 LIMIT 1', [id]);
+    if (hasItems.rowCount > 0) {
+      await pool.query('UPDATE sources SET is_active = FALSE, updated_at = NOW() WHERE id = $1', [id]);
+      await pool.query(
+        "INSERT INTO audit_log (entity, entity_id, action, actor, payload) VALUES ('sources', $1, 'deactivate_source', 'web_admin', $2)",
+        [id, JSON.stringify({ reason: 'Has associated raw_items' })]
+      );
+      return res.json({ status: 'deactivated', message: 'Sumber dinonaktifkan karena memiliki riwayat berita terhubung.' });
+    } else {
+      await pool.query('DELETE FROM sources WHERE id = $1', [id]);
+      await pool.query(
+        "INSERT INTO audit_log (entity, entity_id, action, actor, payload) VALUES ('sources', $1, 'delete_source', 'web_admin', $2)",
+        [id, JSON.stringify({ id })]
+      );
+      return res.json({ status: 'deleted', message: 'Sumber berhasil dihapus permanen.' });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Trigger Scout Polling immediately
+app.post('/api/sources/poll', async (req, res) => {
+  try {
+    console.log('[Web API] Memulai tarikan manual Scout RSS Poller...');
+    const result = await runScout();
+    res.json({
+      status: 'success',
+      message: `Scout selesai: ${result.totalFetched} berita dipindai, ${result.totalDuplicates} duplikat diabaikan, ${result.totalNew} topik baru masuk ke Radar!`,
+      result,
+    });
+  } catch (err) {
+    console.error('[Web API] Error running scout poll:', err);
     res.status(500).json({ error: err.message });
   }
 });

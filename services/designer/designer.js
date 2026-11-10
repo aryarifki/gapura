@@ -58,7 +58,7 @@ Kembalikan HANYA format JSON valid berikut tanpa markdown wrap:
         "subtitle": "Kategori / Keterangan ringkas",
         "category": "Kategori Niche"
       },
-      "source": "${topic.primary_source || '@homelessmedia'}"
+      "source": "${topic.primary_source || '@gapuramedia'}"
     }
   ],
   "design_rationale": "Alasan pertimbangan visual AI mengapa memilih komposisi slide dan layout ini",
@@ -72,7 +72,7 @@ Kembalikan HANYA format JSON valid berikut tanpa markdown wrap:
         // Normalisasi nomor slide
         parsed.slides.forEach((s, idx) => {
           s.no = idx + 1;
-          if (!s.source) s.source = topic.primary_source || '@homelessmedia';
+          if (!s.source) s.source = topic.primary_source || '@gapuramedia';
         });
         console.log(`[AI Designer] Sukses merancang ${parsed.slides.length} slide carousel adaptif via AI!`);
         return parsed.slides;

@@ -74,9 +74,9 @@ app.post('/render', authenticate, async (req, res) => {
   }
 });
 
-// 3. Single Slide Preview (Returns PNG image buffer directly)
+// 3. Single Slide Preview (Returns PNG image buffer directly, supports override tokens)
 app.post('/render/preview', authenticate, async (req, res) => {
-  const { slide, slide_no, total_slides } = req.body;
+  const { slide, slide_no, total_slides, tokens } = req.body;
 
   if (!slide || !slide.teks) {
     return res.status(400).json({ error: 'Invalid payload: slide object with teks is required' });
@@ -86,7 +86,8 @@ app.post('/render/preview', authenticate, async (req, res) => {
     const pngBuffer = await engine.renderSlideToBuffer(
       slide,
       slide_no || 1,
-      total_slides || 1
+      total_slides || 1,
+      tokens || null
     );
     res.set('Content-Type', 'image/png');
     res.send(pngBuffer);

@@ -55,12 +55,14 @@ function setupNavigation() {
         showGalleryView();
       } else if (viewId === 'view-topics') {
         loadTopics();
+      } else if (viewId === 'view-sources') {
+        loadSources();
       } else if (viewId === 'view-agents') {
         loadAgentsConfigUI();
       } else if (viewId === 'view-n8n') {
         loadWorkflow();
       } else if (viewId === 'view-tokens') {
-        loadTokens();
+        loadDesignStudio();
       } else if (viewId === 'view-audit') {
         loadAuditFull();
       }
@@ -184,11 +186,11 @@ function setupNavigation() {
   document.getElementById('btn-action-reject').onclick = rejectCurrentDraft;
 
   // n8n Controls
-  document.getElementById('btn-toggle-wf-dark').onclick = toggleWorkflowState;
-  document.getElementById('btn-copy-wf-json-dark').onclick = copyWorkflowJson;
+  if (document.getElementById('btn-toggle-wf-dark')) document.getElementById('btn-toggle-wf-dark').onclick = toggleWorkflowState;
+  if (document.getElementById('btn-copy-wf-json-dark')) document.getElementById('btn-copy-wf-json-dark').onclick = copyWorkflowJson;
 
-  // Tokens Save
-  document.getElementById('btn-save-tokens-dark').onclick = saveTokensYaml;
+  // Tokens Save (Fallback / Legacy)
+  if (document.getElementById('btn-save-tokens-dark')) document.getElementById('btn-save-tokens-dark').onclick = saveTokensYaml;
 }
 
 // 2. Fetch Overview Stats
@@ -214,6 +216,15 @@ async function loadStats() {
     if (badge) {
       badge.textContent = pendingDrafts;
       badge.style.display = pendingDrafts > 0 ? 'inline-block' : 'none';
+    }
+
+    // Update Sources Count in Sidebar
+    const sRes = await fetch('/api/sources').catch(() => null);
+    if (sRes && sRes.ok) {
+      const sources = await sRes.json();
+      const activeCount = sources.filter((s) => s.is_active).length;
+      const sBadge = document.getElementById('sidebar-sources-badge');
+      if (sBadge) sBadge.textContent = activeCount;
     }
   } catch (err) {
     console.error('Error loadStats:', err);
@@ -975,15 +986,322 @@ function copyWorkflowJson() {
   }
 }
 
-// 9. Tokens System
-async function loadTokens() {
+// ==============================================================================
+// 9. Design Studio & Realtime Canvas Preview (User Request)
+// ==============================================================================
+let designStudioDebounceTimer = null;
+let designStudioInitialized = false;
+
+async function loadDesignStudio() {
+  setupDesignStudioEvents();
   try {
     const res = await fetch('/api/tokens');
+    if (!res.ok) return;
     const data = await res.json();
+    const parsed = data.parsed || {};
+    const brand = parsed.brand || {};
+    const palette = parsed.palette || {};
+    const typography = parsed.typography || {};
+
+    // Raw YAML Editor
     const ed = document.getElementById('tokens-editor-dark');
     if (ed) ed.value = data.raw || '';
+
+    // Brand inputs
+    if (document.getElementById('studio-brand-handle')) {
+      document.getElementById('studio-brand-handle').value = brand.handle || '@gapuramedia';
+    }
+    if (document.getElementById('studio-brand-name')) {
+      document.getElementById('studio-brand-name').value = brand.name || 'Gapura Media';
+    }
+    if (document.getElementById('studio-brand-tagline')) {
+      document.getElementById('studio-brand-tagline').value = brand.tagline || 'Data, Hukum & Ekonomi Bursa';
+    }
+
+    // Palette inputs
+    const colorKeys = ['bg', 'ink', 'accent', 'highlight', 'up', 'down'];
+    colorKeys.forEach((k) => {
+      const val = palette[k] || (k === 'bg' ? '#f7f5f0' : k === 'ink' ? '#102b45' : '#1f7e81');
+      const pEl = document.getElementById(`studio-color-${k}`);
+      const hEl = document.getElementById(`studio-color-${k}-hex`);
+      if (pEl) pEl.value = val;
+      if (hEl) hEl.value = val;
+    });
+
+    // Typography inputs
+    if (document.getElementById('studio-font-display')) {
+      document.getElementById('studio-font-display').value = typography.display_font || 'Archivo Black';
+    }
+    if (document.getElementById('studio-font-body')) {
+      document.getElementById('studio-font-body').value = typography.text_font || 'Inter';
+    }
+
+    // Trigger initial render preview
+    triggerStudioPreview();
   } catch (err) {
-    console.error('Error loadTokens:', err);
+    console.error('Error loadDesignStudio:', err);
+  }
+}
+
+function setupDesignStudioEvents() {
+  if (designStudioInitialized) return;
+  designStudioInitialized = true;
+
+  // Sync color pickers and hex inputs
+  ['bg', 'ink', 'accent', 'highlight', 'up', 'down'].forEach((k) => {
+    const pEl = document.getElementById(`studio-color-${k}`);
+    const hEl = document.getElementById(`studio-color-${k}-hex`);
+    if (pEl && hEl) {
+      pEl.addEventListener('input', () => {
+        hEl.value = pEl.value;
+        triggerStudioPreview();
+      });
+      hEl.addEventListener('input', () => {
+        if (/^#[0-9A-Fa-f]{6}$/.test(hEl.value)) {
+          pEl.value = hEl.value;
+          triggerStudioPreview();
+        }
+      });
+    }
+  });
+
+  // Text inputs live trigger
+  ['studio-brand-handle', 'studio-brand-name', 'studio-brand-tagline', 'studio-font-display', 'studio-font-body'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('input', triggerStudioPreview);
+    }
+  });
+
+  const previewTypeSelect = document.getElementById('studio-preview-type');
+  if (previewTypeSelect) {
+    previewTypeSelect.addEventListener('change', renderStudioPreview);
+  }
+
+  const refreshBtn = document.getElementById('btn-refresh-preview');
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', renderStudioPreview);
+  }
+
+  const saveBtn = document.getElementById('btn-save-design-studio');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', saveDesignStudio);
+  }
+
+  const saveRawBtn = document.getElementById('btn-save-tokens-raw');
+  if (saveRawBtn) {
+    saveRawBtn.addEventListener('click', saveTokensYaml);
+  }
+}
+
+function triggerStudioPreview() {
+  clearTimeout(designStudioDebounceTimer);
+  designStudioDebounceTimer = setTimeout(() => {
+    renderStudioPreview();
+  }, 250);
+}
+
+async function renderStudioPreview() {
+  const spinner = document.getElementById('live-preview-spinner');
+  if (spinner) spinner.style.display = 'flex';
+
+  const previewType = document.getElementById('studio-preview-type')?.value || 'cover';
+  const brandName = document.getElementById('studio-brand-name')?.value || 'Gapura Media';
+  const brandHandle = document.getElementById('studio-brand-handle')?.value || '@gapuramedia';
+  const brandTagline = document.getElementById('studio-brand-tagline')?.value || 'Data, Hukum & Ekonomi Bursa';
+
+  const tokensOverride = {
+    brand: {
+      name: brandName,
+      handle: brandHandle,
+      tagline: brandTagline,
+    },
+    palette: {
+      bg: document.getElementById('studio-color-bg-hex')?.value || '#f7f5f0',
+      ink: document.getElementById('studio-color-ink-hex')?.value || '#102b45',
+      accent: document.getElementById('studio-color-accent-hex')?.value || '#1f7e81',
+      highlight: document.getElementById('studio-color-highlight-hex')?.value || '#d79344',
+      up: document.getElementById('studio-color-up-hex')?.value || '#1a7a4f',
+      down: document.getElementById('studio-color-down-hex')?.value || '#b23a48',
+    },
+    typography: {
+      display_font: document.getElementById('studio-font-display')?.value || 'Archivo Black',
+      text_font: document.getElementById('studio-font-body')?.value || 'Inter',
+    },
+  };
+
+  // Mock slide data based on previewType
+  let slideData = {};
+  if (previewType === 'cover') {
+    slideData = {
+      no: 1,
+      layout: 'cover-stat',
+      teks: 'Cadangan devisa Indonesia melonjak ke level tertinggi 2026 didorong arus modal masuk dan penerbitan sukuk global.',
+      data: {
+        value: 'USD 151,2 M',
+        unit: 'POSISI REKOR TERTINGGI 2026',
+        title: 'Lonjakan Cadangan Devisa RI',
+        category: 'MAKRO & MONETER',
+      },
+      source: 'Bank Indonesia',
+    };
+  } else if (previewType === 'cards') {
+    slideData = {
+      no: 2,
+      layout: 'stat-grid',
+      teks: 'Indikator Utama Pasar Modal & Keuangan',
+      data: {
+        items: [
+          { label: 'IHSG Sesi II', value: '7.850,2' },
+          { label: 'Net Foreign Buy', value: '+Rp 1,4 T' },
+          { label: 'Volume Transaksi', value: 'Rp 14,8 T' },
+          { label: 'Kurs IDR/USD', value: 'Rp 15.650' },
+        ],
+        category: 'PASAR SAHAM',
+      },
+      source: 'Bursa Efek Indonesia',
+    };
+  } else if (previewType === 'compare') {
+    slideData = {
+      no: 3,
+      layout: 'comparison',
+      teks: 'Dampak Pengetatan Kebijakan Likuiditas Terhadap Sektor Perbankan',
+      data: {
+        left: {
+          title: 'SEBELUMNYA (Q3 2025)',
+          text: 'Pertumbuhan kredit melambat ke 8,2% yoy akibat kenaikan biaya dana perbankan.',
+        },
+        right: {
+          title: 'SAAT INI (Q1 2026)',
+          text: 'Pemberian insentif likuiditas makroprudensial mendorong penyaluran kredit hingga 11,5% yoy.',
+        },
+        category: 'KEBIJAKAN MONETER',
+      },
+      source: 'Kementerian Keuangan RI',
+    };
+  } else if (previewType === 'quote') {
+    slideData = {
+      no: 4,
+      layout: 'big-statement',
+      teks: 'Stabilitas sistem keuangan tetap terjaga solid di tengah dinamika pasar keuangan global yang belum menentu.',
+      data: {
+        author: 'Gubernur Bank Indonesia',
+        category: 'PERNYATAAN RESMI',
+      },
+      source: 'Siaran Pers BI',
+    };
+  } else if (previewType === 'regulasi') {
+    slideData = {
+      no: 5,
+      layout: 'regulasi',
+      teks: 'Kewajiban Pengungkapan Transaksi Afiliasi dan Benturan Kepentingan Emiten',
+      data: {
+        title: 'POJK NOMOR 12 TAHUN 2026 / PASAL 14',
+        callout: 'Setiap emiten wajib mempublikasikan keterbukaan informasi transaksi material dalam jangka waktu paling lambat 2 hari kerja.',
+        category: 'HUKUM & REGULASI',
+      },
+      source: 'Otoritas Jasa Keuangan',
+    };
+  }
+
+  try {
+    const res = await fetch('/api/render/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        slide: slideData,
+        slide_no: slideData.no,
+        total_slides: 5,
+        tokens: tokensOverride,
+      }),
+    });
+
+    if (res.ok) {
+      const blob = await res.blob();
+      const img = document.getElementById('live-design-preview-img');
+      if (img) {
+        if (img.dataset.objectUrl) {
+          URL.revokeObjectURL(img.dataset.objectUrl);
+        }
+        const objUrl = URL.createObjectURL(blob);
+        img.src = objUrl;
+        img.dataset.objectUrl = objUrl;
+      }
+    }
+  } catch (err) {
+    console.warn('Error rendering live preview:', err);
+  } finally {
+    if (spinner) spinner.style.display = 'none';
+  }
+}
+
+async function saveDesignStudio() {
+  const btn = document.getElementById('btn-save-design-studio');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span>⏳</span> <span>Menyimpan ke Render Engine...</span>';
+  }
+
+  const brandName = document.getElementById('studio-brand-name')?.value || 'Gapura Media';
+  const brandHandle = document.getElementById('studio-brand-handle')?.value || '@gapuramedia';
+  const brandTagline = document.getElementById('studio-brand-tagline')?.value || 'Data, Hukum & Ekonomi Bursa';
+
+  const payload = {
+    brand: {
+      name: brandName,
+      handle: brandHandle,
+      tagline: brandTagline,
+    },
+    palette: {
+      bg: document.getElementById('studio-color-bg-hex')?.value || '#f7f5f0',
+      ink: document.getElementById('studio-color-ink-hex')?.value || '#102b45',
+      accent: document.getElementById('studio-color-accent-hex')?.value || '#1f7e81',
+      highlight: document.getElementById('studio-color-highlight-hex')?.value || '#d79344',
+      up: document.getElementById('studio-color-up-hex')?.value || '#1a7a4f',
+      down: document.getElementById('studio-color-down-hex')?.value || '#b23a48',
+    },
+    typography: {
+      display_font: document.getElementById('studio-font-display')?.value || 'Archivo Black',
+      text_font: document.getElementById('studio-font-body')?.value || 'Inter',
+    },
+  };
+
+  try {
+    const res = await fetch('/api/tokens', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    showToast(data.message || '✅ Desain identitas brand & username berhasil diterapkan ke Render Engine!');
+    
+    // Update sidebar brand handle text
+    const sbHandle = document.querySelector('.sidebar-brand-handle');
+    if (sbHandle) sbHandle.textContent = brandHandle;
+
+    // Refresh raw editor
+    const getRes = await fetch('/api/tokens');
+    if (getRes.ok) {
+      const gData = await getRes.json();
+      const ed = document.getElementById('tokens-editor-dark');
+      if (ed) ed.value = gData.raw || '';
+    }
+
+    renderStudioPreview();
+  } catch (err) {
+    console.error('Error saveDesignStudio:', err);
+    showToast(`Gagal menyimpan desain: ${err.message}`);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<span>💾</span> <span>Simpan & Terapkan ke Render Engine</span>';
+    }
   }
 }
 
@@ -998,11 +1316,277 @@ async function saveTokensYaml() {
     });
     if (res.ok) {
       showToast('tokens.yaml berhasil disimpan & direload di Render Service!');
+      loadDesignStudio();
     }
   } catch (err) {
     showToast(`Error: ${err.message}`);
   }
 }
+
+// ==============================================================================
+// 10. News Sources Management (User Request)
+// ==============================================================================
+let sourcesDataCache = [];
+let sourcesInitialized = false;
+
+async function loadSources() {
+  setupSourcesEvents();
+  const tbody = document.getElementById('sources-table-body');
+  if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 30px; color: var(--muted);">Memuat daftar sumber berita...</td></tr>`;
+
+  try {
+    const res = await fetch('/api/sources');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const sources = await res.json();
+    sourcesDataCache = sources;
+
+    // Update Statistics
+    const totalActive = sources.filter((s) => s.is_active).length;
+    const regulasiCount = sources.filter((s) => ['ojk_regulasi', 'jdih_hukum'].includes(s.category)).length;
+    const marketCount = sources.filter((s) => s.category === 'news_pasar').length;
+    const primerCount = sources.filter((s) => ['data_bps', 'bi_moneter'].includes(s.category)).length;
+
+    if (document.getElementById('stat-sources-active')) document.getElementById('stat-sources-active').textContent = totalActive;
+    if (document.getElementById('stat-sources-regulasi')) document.getElementById('stat-sources-regulasi').textContent = regulasiCount;
+    if (document.getElementById('stat-sources-market')) document.getElementById('stat-sources-market').textContent = marketCount;
+    if (document.getElementById('stat-sources-primer')) document.getElementById('stat-sources-primer').textContent = primerCount;
+    if (document.getElementById('sidebar-sources-badge')) document.getElementById('sidebar-sources-badge').textContent = totalActive;
+
+    if (!sources || sources.length === 0) {
+      if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 30px; color: var(--muted);">Belum ada sumber berita terdaftar.</td></tr>`;
+      return;
+    }
+
+    const categoryLabels = {
+      news_pasar: { label: 'Pasar Modal', color: 'var(--up)' },
+      ojk_regulasi: { label: 'Regulasi OJK', color: 'var(--highlight)' },
+      jdih_hukum: { label: 'Hukum & MK', color: 'var(--accent)' },
+      bi_moneter: { label: 'BI Moneter', color: '#38bdf8' },
+      data_bps: { label: 'Data BPS', color: '#a855f7' },
+      umum: { label: 'Ekonomi Umum', color: 'var(--muted)' },
+    };
+
+    let html = '';
+    sources.forEach((src) => {
+      const catInfo = categoryLabels[src.category] || { label: src.category, color: 'var(--muted)' };
+      const isActive = src.is_active;
+
+      html += `
+        <tr style="border-bottom: 1px solid var(--border); transition: background 0.2s;" class="source-row">
+          <td style="padding: 14px 16px;">
+            <div style="font-weight: 700; color: #fff; margin-bottom: 2px;">${escapeHtml(src.name)}</div>
+            <div style="font-size: 11px; color: var(--muted); text-transform: uppercase;">ID: #${src.id} • ${src.type}</div>
+          </td>
+          <td style="padding: 14px 16px;">
+            <span style="display: inline-block; padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 700; background: rgba(255,255,255,0.06); color: ${catInfo.color}; border: 1px solid ${catInfo.color}33;">
+              ${catInfo.label}
+            </span>
+          </td>
+          <td style="padding: 14px 16px; max-width: 300px;">
+            <a href="${escapeHtml(src.url_or_query)}" target="_blank" rel="noopener" style="color: var(--accent); text-decoration: none; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(src.url_or_query)}">
+              🔗 ${escapeHtml(src.url_or_query)}
+            </a>
+          </td>
+          <td style="padding: 14px 16px; text-align: center; color: var(--text-dim);">
+            ${src.poll_interval_mins} mnt
+          </td>
+          <td style="padding: 14px 16px; text-align: center; font-weight: 700; color: #fff;">
+            ${src.total_items_fetched || 0}
+          </td>
+          <td style="padding: 14px 16px; text-align: center;">
+            <button onclick="toggleSourceStatus(${src.id}, ${!isActive})" style="background: none; border: none; cursor: pointer; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; ${isActive ? 'color: var(--lime); background: rgba(163, 230, 53, 0.1);' : 'color: var(--muted); background: rgba(255,255,255,0.05);'}">
+              <span>${isActive ? '🟢 Aktif' : '⚪ Nonaktif'}</span>
+            </button>
+          </td>
+          <td style="padding: 14px 16px; text-align: right;">
+            <div style="display: inline-flex; gap: 6px;">
+              <button class="btn btn-outline" onclick="openEditSourceModal(${src.id})" style="padding: 4px 10px; font-size: 12px;" title="Edit Sumber">
+                ✏️ Edit
+              </button>
+              <button class="btn btn-outline" onclick="deleteSource(${src.id}, '${escapeHtml(src.name)}')" style="padding: 4px 8px; font-size: 12px; color: var(--down);" title="Hapus Sumber">
+                🗑️
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    });
+
+    if (tbody) tbody.innerHTML = html;
+  } catch (err) {
+    console.error('Error loadSources:', err);
+    if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 30px; color: var(--down);">Gagal memuat sumber: ${err.message}</td></tr>`;
+  }
+}
+
+function setupSourcesEvents() {
+  if (sourcesInitialized) return;
+  sourcesInitialized = true;
+
+  const addBtn = document.getElementById('btn-open-add-source-modal');
+  if (addBtn) addBtn.onclick = openAddSourceModal;
+
+  const closeBtn = document.getElementById('btn-close-source-modal');
+  if (closeBtn) closeBtn.onclick = closeSourceModal;
+
+  const closeBtnX = document.getElementById('btn-close-source-modal-x');
+  if (closeBtnX) closeBtnX.onclick = closeSourceModal;
+
+  const form = document.getElementById('form-source');
+  if (form) form.onsubmit = handleSaveSource;
+
+  const pollBtn = document.getElementById('btn-poll-sources-now');
+  if (pollBtn) pollBtn.onclick = pollSourcesNow;
+}
+
+window.openAddSourceModal = function () {
+  document.getElementById('modal-source-title').textContent = '➕ Tambah Sumber Berita Baru';
+  document.getElementById('source-input-id').value = '';
+  document.getElementById('source-input-name').value = '';
+  document.getElementById('source-input-type').value = 'rss';
+  document.getElementById('source-input-category').value = 'news_pasar';
+  document.getElementById('source-input-url').value = '';
+  document.getElementById('source-input-interval').value = '30';
+  document.getElementById('source-input-active').checked = true;
+
+  const modal = document.getElementById('modal-source');
+  if (modal) modal.style.display = 'flex';
+};
+
+window.openEditSourceModal = function (id) {
+  const src = sourcesDataCache.find((s) => s.id === id);
+  if (!src) return;
+
+  document.getElementById('modal-source-title').textContent = `✏️ Edit Sumber: ${src.name}`;
+  document.getElementById('source-input-id').value = src.id;
+  document.getElementById('source-input-name').value = src.name || '';
+  document.getElementById('source-input-type').value = src.type || 'rss';
+  document.getElementById('source-input-category').value = src.category || 'news_pasar';
+  document.getElementById('source-input-url').value = src.url_or_query || '';
+  document.getElementById('source-input-interval').value = src.poll_interval_mins || 30;
+  document.getElementById('source-input-active').checked = src.is_active !== false;
+
+  const modal = document.getElementById('modal-source');
+  if (modal) modal.style.display = 'flex';
+};
+
+window.closeSourceModal = function () {
+  const modal = document.getElementById('modal-source');
+  if (modal) modal.style.display = 'none';
+};
+
+window.handleSaveSource = async function (e) {
+  e.preventDefault();
+  const id = document.getElementById('source-input-id')?.value;
+  const name = document.getElementById('source-input-name')?.value;
+  const type = document.getElementById('source-input-type')?.value;
+  const category = document.getElementById('source-input-category')?.value;
+  const url_or_query = document.getElementById('source-input-url')?.value;
+  const poll_interval_mins = parseInt(document.getElementById('source-input-interval')?.value || '30');
+  const is_active = document.getElementById('source-input-active')?.checked;
+
+  const submitBtn = document.getElementById('btn-save-source-submit');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Menyimpan...';
+  }
+
+  try {
+    const isEdit = Boolean(id);
+    const url = isEdit ? `/api/sources/${id}` : '/api/sources';
+    const method = isEdit ? 'PUT' : 'POST';
+
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, type, category, url_or_query, poll_interval_mins, is_active }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    showToast(data.message || '✅ Sumber berhasil disimpan!');
+    closeSourceModal();
+    loadSources();
+  } catch (err) {
+    console.error('Error saving source:', err);
+    showToast(`Gagal: ${err.message}`);
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Simpan Sumber';
+    }
+  }
+};
+
+window.toggleSourceStatus = async function (id, newStatus) {
+  const src = sourcesDataCache.find((s) => s.id === id);
+  if (!src) return;
+
+  try {
+    const res = await fetch(`/api/sources/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...src,
+        is_active: newStatus,
+      }),
+    });
+
+    if (res.ok) {
+      showToast(`Sumber "${src.name}" kini ${newStatus ? 'diaktifkan' : 'dinonaktifkan'}.`);
+      loadSources();
+    }
+  } catch (err) {
+    showToast(`Error: ${err.message}`);
+  }
+};
+
+window.deleteSource = async function (id, name) {
+  if (!confirm(`Apakah Anda yakin ingin menghapus atau menonaktifkan sumber "${name}"?`)) {
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/sources/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    showToast(data.message || 'Sumber berhasil dihapus.');
+    loadSources();
+  } catch (err) {
+    showToast(`Gagal: ${err.message}`);
+  }
+};
+
+window.pollSourcesNow = async function () {
+  const btn = document.getElementById('btn-poll-sources-now');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span>⏳</span> <span>Scout Sedang Memindai Feed...</span>';
+  }
+
+  try {
+    const res = await fetch('/api/sources/poll', { method: 'POST' });
+    const data = await res.json();
+    if (res.ok) {
+      showToast(data.message || '✅ Pemindaian Scout selesai!');
+      loadSources();
+      loadTopics();
+    } else {
+      throw new Error(data.error || 'Gagal memindai');
+    }
+  } catch (err) {
+    console.error('Error polling sources:', err);
+    showToast(`Gagal polling: ${err.message}`);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<span>⚡</span> <span>Tarik Berita Sekarang (Scout)</span>';
+    }
+  }
+};
 
 // 10. Audit Full
 async function loadAuditFull() {
@@ -1075,12 +1659,14 @@ function switchToView(viewId) {
     showGalleryView();
   } else if (viewId === 'view-topics') {
     loadTopics();
+  } else if (viewId === 'view-sources') {
+    loadSources();
   } else if (viewId === 'view-agents') {
     loadAgentsConfigUI();
   } else if (viewId === 'view-n8n') {
     loadWorkflow();
   } else if (viewId === 'view-tokens') {
-    loadTokens();
+    loadDesignStudio();
   } else if (viewId === 'view-audit') {
     loadAuditFull();
   }

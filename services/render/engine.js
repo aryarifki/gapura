@@ -776,7 +776,7 @@ export class RenderEngine {
       }
 
       case 'cta-close': {
-        const ctaText = slide.data?.cta || 'Ikuti @homelessmedia untuk data & regulasi harian.';
+        const ctaText = slide.data?.cta || `Ikuti ${this.tokens.brand?.handle || '@gapuramedia'} untuk data & regulasi harian.`;
         const disclaimer = slide.data?.disclaimer || 'Informasi disajikan untuk tujuan edukasi publik dan bukan merupakan nasihat investasi keuangan.';
 
         return this.wrapSlide(
@@ -1308,15 +1308,31 @@ export class RenderEngine {
     );
   }
 
-  // Render Single Slide to PNG Buffer
-  async renderSlideToBuffer(slide, slideIndex, totalSlides) {
-    const vdom = this.resolveLayout(slide, slideIndex, totalSlides);
-    const svg = await satori(vdom, {
-      width: 1080,
-      height: 1350,
-      fonts: this.fonts,
-    });
-    return await sharp(Buffer.from(svg)).png({ quality: 95 }).toBuffer();
+  // Render Single Slide to PNG Buffer (supports overrideTokens for live realtime preview)
+  async renderSlideToBuffer(slide, slideIndex, totalSlides, overrideTokens = null) {
+    const originalTokens = this.tokens;
+    if (overrideTokens && typeof overrideTokens === 'object') {
+      this.tokens = {
+        ...this.tokens,
+        ...overrideTokens,
+        brand: { ...(this.tokens.brand || {}), ...(overrideTokens.brand || {}) },
+        palette: { ...(this.tokens.palette || {}), ...(overrideTokens.palette || {}) },
+        typography: { ...(this.tokens.typography || {}), ...(overrideTokens.typography || {}) },
+      };
+    }
+    try {
+      const vdom = this.resolveLayout(slide, slideIndex, totalSlides);
+      const svg = await satori(vdom, {
+        width: 1080,
+        height: 1350,
+        fonts: this.fonts,
+      });
+      return await sharp(Buffer.from(svg)).png({ quality: 95 }).toBuffer();
+    } finally {
+      if (overrideTokens) {
+        this.tokens = originalTokens;
+      }
+    }
   }
 
   // Batch Render Carousel to Disk

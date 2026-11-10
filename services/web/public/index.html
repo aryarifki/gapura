@@ -7,7 +7,7 @@
   <link rel="icon" type="image/png" href="/favicon.png">
   <link rel="apple-touch-icon" href="/assets/logo.png">
   <meta name="theme-color" content="#0B0E14">
-  <meta name="description" content="Studio Redaksi Otomasi Konten Niche Data, Hukum & Ekonomi Bursa (@homelessmedia)">
+  <meta name="description" content="Studio Redaksi Otomasi Konten Niche Data, Hukum & Ekonomi Bursa (@gapuramedia)">
   <link rel="stylesheet" href="/style.css?v=2.6">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -31,7 +31,7 @@
           <img src="/assets/logo.png" alt="Gapura Logo" class="sidebar-logo" style="width: 34px !important; height: 34px !important; border-radius: 6px; object-fit: contain; flex-shrink: 0;">
           <div class="sidebar-brand-title">
             <div class="sidebar-brand-top"><span class="dot"></span> GAPURA STUDIO</div>
-            <div class="sidebar-brand-handle">@homelessmedia</div>
+            <div class="sidebar-brand-handle">@gapuramedia</div>
           </div>
         </div>
 
@@ -47,6 +47,10 @@
           <div class="nav-item" data-view="view-topics">
             <div class="nav-item-left"><span>🎯</span> <span>Radar Topik</span></div>
           </div>
+          <div class="nav-item" data-view="view-sources">
+            <div class="nav-item-left"><span>📡</span> <span>Sumber Berita</span></div>
+            <span class="nav-badge" id="sidebar-sources-badge">11</span>
+          </div>
 
           <div class="nav-section-label">Sistem & Studio</div>
           <div class="nav-item" data-view="view-agents">
@@ -56,7 +60,7 @@
             <div class="nav-item-left"><span>⚡</span> <span>n8n Studio</span></div>
           </div>
           <div class="nav-item" data-view="view-tokens">
-            <div class="nav-item-left"><span>🎨</span> <span>Brand Tokens</span></div>
+            <div class="nav-item-left"><span>🎨</span> <span>Studio Desain & Live Preview</span></div>
           </div>
           <div class="nav-item" data-view="view-audit">
             <div class="nav-item-left"><span>📜</span> <span>Log Aktivitas</span></div>
@@ -342,23 +346,319 @@
 
 
         <!-- ================================================================== -->
-        <!-- VIEW 5: BRAND TOKENS -->
+        <!-- VIEW 5: STUDIO DESAIN & LIVE REAL-TIME PREVIEW -->
         <!-- ================================================================== -->
         <section id="view-tokens" class="view-pane">
-          <div style="margin-bottom: 24px;">
-            <span class="redaksi-greeting">Design Tokens System</span>
-            <h2 style="font-family: 'Archivo Black', sans-serif; font-size: 28px; color: #fff; margin-bottom: 6px;">TOKENS.YAML</h2>
-            <p style="font-size: 13px; color: var(--muted);">Satu berkas mengontrol seluruh warna (Navy, Deep Teal, Golden Amber), tipografi, dan gaya chart flat.</p>
+          <div class="redaksi-header-row" style="margin-bottom: 24px;">
+            <div class="redaksi-title-block">
+              <span class="redaksi-greeting">Visual Identity & Live Canvas</span>
+              <h2 style="font-family: 'Archivo Black', sans-serif; font-size: 28px; color: #fff; margin-bottom: 6px;">STUDIO DESAIN & LIVE PREVIEW</h2>
+              <p style="font-size: 13px; color: var(--muted); max-width: 650px;">
+                Sesuaikan username media sosial (@gapuramedia), palet warna identitas brand, dan tipografi. Seluruh perubahan langsung dirender realtime pada kanvas 1080×1350 px di sisi kanan.
+              </p>
+            </div>
+            <div class="redaksi-actions-right">
+              <button class="btn btn-lime" id="btn-save-design-studio">
+                <span>💾</span> <span>Simpan & Terapkan ke Render Engine</span>
+              </button>
+            </div>
           </div>
 
-          <div style="display: flex; gap: 12px; margin-bottom: 20px;">
-            <button class="btn btn-lime" id="btn-save-tokens-dark">💾 Simpan & Muat Ulang Tokens</button>
-          </div>
+          <!-- 2-Column Split: Controls on Left, Realtime Preview on Right -->
+          <div class="design-studio-split" style="display: grid; grid-template-columns: minmax(340px, 1.2fr) minmax(360px, 1fr); gap: 24px; align-items: start;">
+            
+            <!-- Left Column: Design Controls -->
+            <div class="design-controls-pane" style="display: flex; flex-direction: column; gap: 20px;">
+              
+              <!-- Brand Identity Box -->
+              <div class="agent-config-card" style="margin: 0;">
+                <div class="agent-card-title-row">
+                  <h3 class="agent-card-title">🏷️ Identitas Media & Handle Sosial</h3>
+                  <span class="pill-status active"><span class="dot"></span> Header & Footer Otomatis</span>
+                </div>
+                <div class="form-grid-2col">
+                  <div class="form-group-editor">
+                    <label class="form-label-editor">Username / Handle Medsos (Footer)</label>
+                    <input type="text" id="studio-brand-handle" class="form-input-dark" value="@gapuramedia" placeholder="@gapuramedia">
+                    <span class="form-help-text">Muncul di pojok kanan bawah setiap slide carousel.</span>
+                  </div>
+                  <div class="form-group-editor">
+                    <label class="form-label-editor">Nama Media Brand (Header)</label>
+                    <input type="text" id="studio-brand-name" class="form-input-dark" value="Gapura Media" placeholder="Gapura Media">
+                    <span class="form-help-text">Muncul di pojok kiri atas setiap slide.</span>
+                  </div>
+                </div>
+                <div class="form-group-editor" style="margin-bottom: 0;">
+                  <label class="form-label-editor">Tagline Brand</label>
+                  <input type="text" id="studio-brand-tagline" class="form-input-dark" value="Data, Hukum & Ekonomi Bursa" placeholder="Tagline">
+                </div>
+              </div>
 
-          <div>
-            <textarea id="tokens-editor-dark" class="code-editor-dark" spellcheck="false"></textarea>
+              <!-- Color Palette Box -->
+              <div class="agent-config-card" style="margin: 0;">
+                <div class="agent-card-title-row">
+                  <h3 class="agent-card-title">🎨 Palet Warna Identitas (Design Tokens)</h3>
+                  <span class="pill-status active"><span class="dot"></span> Sinkronisasi Instan</span>
+                </div>
+                <div class="palette-pickers-grid">
+                  <div class="color-item-box">
+                    <span class="color-item-label">Background (bg)</span>
+                    <div class="color-picker-row">
+                      <input type="color" id="studio-color-bg" class="color-picker-input" value="#f7f5f0">
+                      <input type="text" id="studio-color-bg-hex" class="form-input-dark color-hex-text" value="#f7f5f0">
+                    </div>
+                  </div>
+                  <div class="color-item-box">
+                    <span class="color-item-label">Ink Teks Utama (ink)</span>
+                    <div class="color-picker-row">
+                      <input type="color" id="studio-color-ink" class="color-picker-input" value="#102b45">
+                      <input type="text" id="studio-color-ink-hex" class="form-input-dark color-hex-text" value="#102b45">
+                    </div>
+                  </div>
+                  <div class="color-item-box">
+                    <span class="color-item-label">Accent (Deep Teal)</span>
+                    <div class="color-picker-row">
+                      <input type="color" id="studio-color-accent" class="color-picker-input" value="#1f7e81">
+                      <input type="text" id="studio-color-accent-hex" class="form-input-dark color-hex-text" value="#1f7e81">
+                    </div>
+                  </div>
+                  <div class="color-item-box">
+                    <span class="color-item-label">Highlight (Golden Amber)</span>
+                    <div class="color-picker-row">
+                      <input type="color" id="studio-color-highlight" class="color-picker-input" value="#d79344">
+                      <input type="text" id="studio-color-highlight-hex" class="form-input-dark color-hex-text" value="#d79344">
+                    </div>
+                  </div>
+                  <div class="color-item-box">
+                    <span class="color-item-label">Positif / Naik (up)</span>
+                    <div class="color-picker-row">
+                      <input type="color" id="studio-color-up" class="color-picker-input" value="#1a7a4f">
+                      <input type="text" id="studio-color-up-hex" class="form-input-dark color-hex-text" value="#1a7a4f">
+                    </div>
+                  </div>
+                  <div class="color-item-box">
+                    <span class="color-item-label">Negatif / Turun (down)</span>
+                    <div class="color-picker-row">
+                      <input type="color" id="studio-color-down" class="color-picker-input" value="#b23a48">
+                      <input type="text" id="studio-color-down-hex" class="form-input-dark color-hex-text" value="#b23a48">
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Typography & Style Box -->
+              <div class="agent-config-card" style="margin: 0;">
+                <div class="agent-card-title-row">
+                  <h3 class="agent-card-title">🔤 Tipografi & Gaya Kanvas</h3>
+                </div>
+                <div class="form-grid-2col">
+                  <div class="form-group-editor">
+                    <label class="form-label-editor">Display Font (Judul & Angka Hero)</label>
+                    <input type="text" id="studio-font-display" class="form-input-dark" value="Archivo Black">
+                  </div>
+                  <div class="form-group-editor">
+                    <label class="form-label-editor">Body Text Font (Narasi & Data)</label>
+                    <input type="text" id="studio-font-body" class="form-input-dark" value="Inter">
+                  </div>
+                </div>
+              </div>
+
+              <!-- Raw YAML Editor Toggle -->
+              <details style="background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px;">
+                <summary style="font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer;">⚙️ Editor Berkas tokens.yaml Mentah (Advanced Mode)</summary>
+                <div style="margin-top: 12px;">
+                  <textarea id="tokens-editor-dark" class="code-editor-dark" spellcheck="false" style="min-height: 200px; font-size: 12px;"></textarea>
+                  <button class="btn btn-outline" id="btn-save-tokens-raw" style="margin-top: 8px;">Simpan Berkas YAML Mentah</button>
+                </div>
+              </details>
+
+            </div>
+
+            <!-- Right Column: Real-Time Live Preview Canvas -->
+            <div class="design-preview-pane" style="position: sticky; top: 20px;">
+              <div class="agent-config-card" style="margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center;">
+                <div style="width: 100%; display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                  <div>
+                    <h4 style="font-size: 14px; font-weight: 700; color: #fff; margin: 0;">📱 Live Preview Realtime</h4>
+                    <span style="font-size: 11px; color: var(--lime);">● Render Engine Satori + Sharp (Port 3000)</span>
+                  </div>
+                  <div style="display: flex; gap: 8px;">
+                    <select id="studio-preview-type" class="form-input-dark form-select-dark" style="padding: 4px 10px; font-size: 12px; width: auto;">
+                      <option value="cover">Cover Stat Hook</option>
+                      <option value="cards">Metric Cards Grid</option>
+                      <option value="compare">Perbandingan Kolom</option>
+                      <option value="quote">Kutipan Pejabat</option>
+                      <option value="regulasi">Klausul Regulasi</option>
+                    </select>
+                    <button class="btn btn-outline" id="btn-refresh-preview" style="padding: 4px 10px; font-size: 12px;" title="Refresh Canvas">🔄</button>
+                  </div>
+                </div>
+
+                <!-- Preview Canvas Frame (1080x1350 scaled to fit) -->
+                <div class="live-preview-box" style="position: relative; width: 100%; max-width: 360px; aspect-ratio: 4/5; background: #000; border: 2px solid var(--border); border-radius: 12px; overflow: hidden; box-shadow: 0 16px 36px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;">
+                  <img id="live-design-preview-img" alt="Live Preview Carousel" style="width: 100%; height: 100%; object-fit: contain; display: block;">
+                  <div id="live-preview-spinner" style="display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.4); align-items: center; justify-content: center;">
+                    <span style="color: var(--lime); font-size: 14px; font-weight: 600;">⚡ Merender...</span>
+                  </div>
+                </div>
+
+                <div style="margin-top: 14px; font-size: 11px; color: var(--muted); text-align: center; line-height: 1.4;">
+                  Pratinjau langsung 1080×1350 px dengan rasio Instagram 4:5. Warna, nama brand, dan handle diperbarui secara instan.
+                </div>
+              </div>
+            </div>
+
           </div>
         </section>
+
+        <!-- ================================================================== -->
+        <!-- VIEW: SUMBER BERITA & RSS FEEDS (USER REQUEST) -->
+        <!-- ================================================================== -->
+        <section id="view-sources" class="view-pane">
+          <div class="redaksi-header-row" style="margin-bottom: 24px;">
+            <div class="redaksi-title-block">
+              <span class="redaksi-greeting">Radar Ingesti Data</span>
+              <h2 style="font-family: 'Archivo Black', sans-serif; font-size: 28px; color: #fff; margin-bottom: 6px;">SUMBER BERITA & RSS FEEDS</h2>
+              <p style="font-size: 13px; color: var(--muted); max-width: 650px;">
+                Kelola seluruh sumber informasi resmi, portal pasar modal, dan regulasi hukum yang dipantau oleh Agen Scout secara berkala.
+              </p>
+            </div>
+            <div class="redaksi-actions-right" style="display: flex; gap: 10px;">
+              <button class="btn btn-outline" id="btn-poll-sources-now">
+                <span>⚡</span> <span>Tarik Berita Sekarang (Scout)</span>
+              </button>
+              <button class="btn btn-lime" id="btn-open-add-source-modal">
+                <span>➕</span> <span>Tambah Sumber Baru</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Sources Summary Stats -->
+          <div class="overview-stats-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 24px;">
+            <div class="overview-stat-card">
+              <div class="stat-card-header">
+                <span class="stat-card-title">Total Sumber Aktif</span>
+                <span class="stat-card-icon" style="background: rgba(31, 126, 129, 0.2); color: var(--accent);">📡</span>
+              </div>
+              <div class="stat-card-value" id="stat-sources-active">0</div>
+              <div class="stat-card-trend">Dipantau oleh Scout</div>
+            </div>
+            <div class="overview-stat-card">
+              <div class="stat-card-header">
+                <span class="stat-card-title">Regulasi & OJK</span>
+                <span class="stat-card-icon" style="background: rgba(215, 147, 68, 0.2); color: var(--highlight);">⚖️</span>
+              </div>
+              <div class="stat-card-value" id="stat-sources-regulasi">0</div>
+              <div class="stat-card-trend">POJK, PMK, & Mahkamah</div>
+            </div>
+            <div class="overview-stat-card">
+              <div class="stat-card-header">
+                <span class="stat-card-title">Pasar Modal & Bursa</span>
+                <span class="stat-card-icon" style="background: rgba(26, 122, 79, 0.2); color: var(--up);">📈</span>
+              </div>
+              <div class="stat-card-value" id="stat-sources-market">0</div>
+              <div class="stat-card-trend">IHSG, Kontan, CNBC, Bisnis</div>
+            </div>
+            <div class="overview-stat-card">
+              <div class="stat-card-header">
+                <span class="stat-card-title">Data Primer BPS / BI</span>
+                <span class="stat-card-icon" style="background: rgba(16, 43, 69, 0.4); color: #fff;">🏛️</span>
+              </div>
+              <div class="stat-card-value" id="stat-sources-primer">0</div>
+              <div class="stat-card-trend">Siaran Pers Resmi</div>
+            </div>
+          </div>
+
+          <!-- Sources List Table / Card -->
+          <div class="activity-card">
+            <div class="activity-header" style="display: flex; justify-content: space-between; align-items: center;">
+              <span class="activity-title">Daftar Sumber Berita Terdaftar</span>
+              <div style="font-size: 12px; color: var(--muted);">Pembaruan berkala otomatis setiap 30–60 menit</div>
+            </div>
+            <div style="overflow-x: auto;">
+              <table class="sources-table" style="width: 100%; border-collapse: collapse; text-align: left; font-size: 13px;">
+                <thead>
+                  <tr style="border-bottom: 1px solid var(--border); color: var(--muted); font-size: 11px; text-transform: uppercase;">
+                    <th style="padding: 14px 16px;">Nama Sumber</th>
+                    <th style="padding: 14px 16px;">Kategori</th>
+                    <th style="padding: 14px 16px;">URL Feed / Sumber</th>
+                    <th style="padding: 14px 16px; text-align: center;">Interval</th>
+                    <th style="padding: 14px 16px; text-align: center;">Total Berita</th>
+                    <th style="padding: 14px 16px; text-align: center;">Status</th>
+                    <th style="padding: 14px 16px; text-align: right;">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="sources-table-body">
+                  <!-- Rendered by JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- Modal Tambah / Edit Sumber -->
+        <div id="modal-source" class="modal-source-overlay" style="display: none; position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); align-items: center; justify-content: center; padding: 20px;">
+          <div class="modal-content" style="max-width: 540px; width: 100%; background: #131720; border: 1px solid var(--border); border-radius: 12px; padding: 24px; position: relative; box-shadow: 0 20px 40px rgba(0,0,0,0.8);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 14px;">
+              <h3 id="modal-source-title" style="font-family: 'Archivo Black', sans-serif; font-size: 18px; color: #fff; margin: 0;">Tambah Sumber Berita</h3>
+              <button type="button" class="btn-close-modal" id="btn-close-source-modal-x" style="background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer;">✕</button>
+            </div>
+            <form id="form-source">
+              <input type="hidden" id="source-input-id" value="">
+              
+              <div class="form-group-editor" style="margin-bottom: 14px;">
+                <label class="form-label-editor">Nama Sumber</label>
+                <input type="text" id="source-input-name" class="form-input-dark" placeholder="Contoh: BEI Pengumuman Resmi / KSEI" required>
+              </div>
+
+              <div class="form-grid-2col" style="margin-bottom: 14px;">
+                <div class="form-group-editor" style="margin-bottom: 0;">
+                  <label class="form-label-editor">Tipe Ingesti</label>
+                  <select id="source-input-type" class="form-input-dark form-select-dark">
+                    <option value="rss">RSS / Atom XML Feed</option>
+                    <option value="scraper">Web HTML Scraper</option>
+                    <option value="api">REST API</option>
+                  </select>
+                </div>
+                <div class="form-group-editor" style="margin-bottom: 0;">
+                  <label class="form-label-editor">Kategori Berita</label>
+                  <select id="source-input-category" class="form-input-dark form-select-dark">
+                    <option value="news_pasar">Pasar Modal & Saham (news_pasar)</option>
+                    <option value="ojk_regulasi">Regulasi OJK & Sanksi (ojk_regulasi)</option>
+                    <option value="jdih_hukum">Hukum & Putusan MK (jdih_hukum)</option>
+                    <option value="bi_moneter">Bank Indonesia / Moneter (bi_moneter)</option>
+                    <option value="data_bps">BPS / Makroekonomi (data_bps)</option>
+                    <option value="umum">Ekonomi & Bisnis Umum (umum)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-group-editor" style="margin-bottom: 14px;">
+                <label class="form-label-editor">URL Feed / Endpoint RSS</label>
+                <input type="url" id="source-input-url" class="form-input-dark" placeholder="https://example.com/rss.xml" required>
+                <span class="form-help-text">Dapat berupa URL RSS portal berita atau pencarian terfilter Google News.</span>
+              </div>
+
+              <div class="form-grid-2col" style="margin-bottom: 20px;">
+                <div class="form-group-editor" style="margin-bottom: 0;">
+                  <label class="form-label-editor">Interval Polling (Menit)</label>
+                  <input type="number" id="source-input-interval" class="form-input-dark" min="5" max="1440" value="30">
+                </div>
+                <div class="form-group-editor" style="margin-bottom: 0; display: flex; flex-direction: column; justify-content: center;">
+                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #fff; font-weight: 600; font-size: 13px;">
+                    <input type="checkbox" id="source-input-active" checked style="width: 18px; height: 18px; accent-color: var(--lime);">
+                    Status Aktif (Dipantau Scout)
+                  </label>
+                </div>
+              </div>
+
+              <div style="display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid var(--border); padding-top: 16px;">
+                <button type="button" class="btn btn-outline" id="btn-close-source-modal">Batal</button>
+                <button type="submit" class="btn btn-lime" id="btn-save-source-submit">Simpan Sumber</button>
+              </div>
+            </form>
+          </div>
+        </div>
 
 
         <!-- ================================================================== -->
@@ -574,7 +874,7 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
 
               <div class="form-group-editor">
                 <label class="form-label-editor">Instruksi Sistem Analis (System Prompt)</label>
-                <textarea id="analis-prompt" class="form-input-dark form-textarea" rows="3">Anda adalah Analis Senior @homelessmedia untuk pasar modal, hukum, dan makro ekonomi. Nilai kelayakan berita dengan ketat berdasarkan rubrik 5 komponen. Kembalikan format JSON persis sesuai spesifikasi.</textarea>
+                <textarea id="analis-prompt" class="form-input-dark form-textarea" rows="3">Anda adalah Analis Senior @gapuramedia untuk pasar modal, hukum, dan makro ekonomi. Nilai kelayakan berita dengan ketat berdasarkan rubrik 5 komponen. Kembalikan format JSON persis sesuai spesifikasi.</textarea>
               </div>
 
               <div class="form-group-editor" style="margin-top: 15px;">
@@ -658,7 +958,7 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
 
               <div class="form-group-editor">
                 <label class="form-label-editor">Instruksi Sistem Copywriter (System Prompt & Format JSON)</label>
-                <textarea id="copywriter-prompt" class="form-input-dark form-textarea" rows="3">Anda adalah Copywriter Data-Editorial untuk akun Instagram @homelessmedia (niche: data pasar saham, hukum, regulasi, dan ekonomi). Hasilkan teks carousel 5 slide: Cover hook angka, Konteks berita, Bukti data/regulasi, Implikasi kebijakan, dan CTA Penutup. Sisipkan kutipan verbatim dan disclaimer.</textarea>
+                <textarea id="copywriter-prompt" class="form-input-dark form-textarea" rows="3">Anda adalah Copywriter Data-Editorial untuk akun Instagram @gapuramedia (niche: data pasar saham, hukum, regulasi, dan ekonomi). Hasilkan teks carousel multi-slide berkualitas tinggi: Cover hook angka, Konteks berita, Bukti data/regulasi, Implikasi kebijakan, dan CTA Penutup. Sisipkan kutipan verbatim dan disclaimer.</textarea>
               </div>
 
               <div class="form-group-editor" style="margin-top: 15px;">
@@ -714,7 +1014,7 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
 
               <div class="form-group-editor">
                 <label class="form-label-editor">Instruksi Sistem AI Designer (System Prompt)</label>
-                <textarea id="designer-prompt" class="form-input-dark form-textarea" rows="3">Anda adalah AI Creative Director & Visual Architect untuk akun Instagram @homelessmedia (media editorial data pasar saham, hukum, dan ekonomi bursa). Anda memiliki kebebasan penuh merancang arsitektur visual carousel Instagram secara dinamis, adaptif, dan bebas tanpa batasan template kaku. Anda menentukan sendiri jumlah slide, struktur visual setiap slide, penempatan data/angka/kutipan, serta alur narasi agar berita tersampaikan secara utuh, padat data, dan berdampak tinggi.</textarea>
+                <textarea id="designer-prompt" class="form-input-dark form-textarea" rows="3">Anda adalah AI Creative Director & Visual Architect untuk akun Instagram @gapuramedia (media editorial data pasar saham, hukum, dan ekonomi bursa). Anda memiliki kebebasan penuh merancang arsitektur visual carousel Instagram secara dinamis, adaptif, dan bebas tanpa batasan template kaku. Anda menentukan sendiri jumlah slide, struktur visual setiap slide, penempatan data/angka/kutipan, serta alur narasi agar berita tersampaikan secara utuh, padat data, dan berdampak tinggi.</textarea>
               </div>
 
               <div class="form-group-editor" style="margin-top: 15px;">
@@ -826,6 +1126,6 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
   <!-- Toast -->
   <div id="toast" class="toast"></div>
 
-  <script src="/app.js?v=2.8"></script>
+  <script src="/app.js?v=2.9"></script>
 </body>
 </html>

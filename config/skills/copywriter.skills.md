@@ -1,5 +1,5 @@
 # SKILL DEFINITION: COPYWRITER (DATA-EDITORIAL & CAPTION SPECIALIST)
-# Agen: Copywriter @homelessmedia
+# Agen: Copywriter @gapuramedia
 # Versi: 2.0.0
 
 ## 1. TUJUAN UTAMA (OBJECTIVE)

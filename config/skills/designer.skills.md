@@ -1,5 +1,5 @@
 # SKILL DEFINITION: DESIGNER (AI CREATIVE DIRECTOR & VISUAL ARCHITECT)
-# Agen: Designer @homelessmedia
+# Agen: Designer @gapuramedia
 # Versi: 2.1.0
 
 ## 1. TUJUAN UTAMA (OBJECTIVE)
