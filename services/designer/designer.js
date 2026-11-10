@@ -23,44 +23,45 @@ export async function designCarouselSlides(topic, captionBrief = '') {
     try {
       console.log(`[AI Designer] Merancang arsitektur visual carousel untuk #${topic.id}: "${topic.title}" via AI LLM (${designerCfg.model || 'gemini-2.0-flash'})...`);
 
-      const prompt = `Berita yang harus dirancang:
+      const prompt = `Berita yang harus Anda rancang visualnya:
 Judul: ${topic.title}
 Ringkasan Faktual: ${topic.summary || ''}
 Sumber Primer: ${topic.primary_source || ''}
 URL: ${topic.url || ''}
 ${captionBrief ? `Konteks Editorial:\n${captionBrief}` : ''}
 
-TUGAS ANDA SEBAGAI AI CREATIVE DIRECTOR & DESIGNER:
-Tentukan sendiri arsitektur visual carousel Instagram secara cerdas tanpa template kaku:
-1. Tentukan jumlah slide yang paling ideal (antara 4 sampai 7 slide) agar berita tersampaikan secara utuh dan padat fakta.
-2. Tentukan layout yang paling pas untuk SETIAP slide dari 7 layout kanvas berikut:
-   - "cover-stat": Hook angka/persen tajam di cover (data: { value: "...", unit: "...", title: "...", category: "..." })
-   - "big-statement": Kutipan besar pejabat/otoritas atau pernyataan kunci (data: { author: "...", category: "..." })
-   - "stat-grid": 2-4 kotak metrik data/indikator terpisah (data: { items: [{ label: "...", value: "..." }], category: "..." })
-   - "regulasi": Kotak klausul pasal POJK/UU/hukum (data: { title: "Nama Regulasi/Pasal" })
-   - "comparison": Perbandingan sebelum vs sesudah atau katalis vs dampak (data: { left: { title: "...", text: "..." }, right: { title: "...", text: "..." }, category: "..." })
-   - "timeline": Urutan tahapan peristiwa atau kronologi (data: { events: [{ date: "...", text: "..." }] })
-   - "cta-close": Slide penutup berisi pertanyaan reflektif & CTA (data: { cta: "...", disclaimer: "..." })
-3. Ekstrak data dan angka nyata langsung dari teks berita. Dilarang mengarang angka fiktif.
-4. Tulis narasi teks yang mengalir dari slide ke slide (kohesif dan mudah dibaca di smartphone).
+TUGAS ANDA SEBAGAI AI CREATIVE DIRECTOR & VISUAL ARCHITECT:
+Anda memiliki KEBEBASAN PENUH (FULL AUTONOMY). JANGAN KAKU DENGAN TEMPLATE TERTENTU:
+1. Tentukan sendiri jumlah slide yang paling ideal (3 hingga 8 slide) agar cerita tersampaikan secara utuh, berbobot, dan tidak terpotong.
+2. Rancang struktur visual setiap slide secara bebas dan dinamis sesuai kebutuhan esensi berita:
+   - Anda bebas menamai layout atau merancang komposisi bebas (misal: "cover-editorial", "stat-spotlight", "dual-perspective", "deep-analysis", "regulatory-focus", "takeaway-points", "market-snapshot", atau nama deskriptif lainnya).
+   - Anda bebas menyusun elemen visual di dalam objek "data":
+     * Hero angka/stat: "value", "unit", "title", "subtitle"
+     * Kotak/Kartu metrik: "items": [{ "label": "...", "value": "..." }]
+     * Perbandingan dua sisi: "left": { "title": "...", "text": "..." }, "right": { "title": "...", "text": "..." }
+     * Kutipan pejabat/otoritas: "quote": "...", "author": "..."
+     * Poin-poin/list takeaways: "bullets": ["...", "..."]
+     * Klausul hukum/catatan penting: "callout": "..." atau "regulasi": "..."
+     * Ajakan diskusi / CTA: "cta": "..."
+3. Ekstrak data nyata, angka akurat, dan fakta langsung dari teks berita. Dilarang mengarang fakta fiktif.
+4. Tulis narasi teks (prosa editorial berbobot) yang mengalir dari slide ke slide.
 
 Kembalikan HANYA format JSON valid berikut tanpa markdown wrap:
 {
   "slides": [
     {
       "no": 1,
-      "layout": "cover-stat",
-      "teks": "Judul/Hook di Cover",
+      "layout": "nama-layout-bebas-pilihan-ai",
+      "teks": "Teks narasi atau headline utama slide",
       "data": {
-        "value": "Angka/Statistik Besar",
-        "unit": "Unit/Keterangan",
-        "title": "Subjudul",
+        "title": "Judul / Sub-topik slide",
+        "subtitle": "Kategori / Keterangan ringkas",
         "category": "Kategori Niche"
       },
       "source": "${topic.primary_source || '@homelessmedia'}"
     }
   ],
-  "design_rationale": "Alasan singkat pemilihan arsitektur layout",
+  "design_rationale": "Alasan pertimbangan visual AI mengapa memilih komposisi slide dan layout ini",
   "slide_count": 5
 }`;
 

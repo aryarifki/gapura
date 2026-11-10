@@ -842,8 +842,470 @@ export class RenderEngine {
       }
 
       default:
-        throw new Error(`Unknown layout: ${layout}`);
+        return this.renderFluidLayout(slide, slideIndex, totalSlides);
     }
+  }
+
+  // Universal Fluid Layout Renderer (Full AI Adaptive Creative Direction)
+  renderFluidLayout(slide, slideIndex, totalSlides) {
+    const { palette, typography } = this.tokens;
+    const data = slide.data || {};
+    const text = slide.teks || '';
+    const title = data.title || data.headline || (data.value || data.stat || data.items || data.quote ? text : '');
+    const subtitle = data.subtitle || data.subtext || '';
+    const category = data.category || (slideIndex === 1 ? 'LAPORAN UTAMA' : 'ANALISIS EDITORIAL');
+
+    const children = [];
+
+    // 1. Accent Bar & Subtitle Tag
+    children.push({
+      type: 'div',
+      props: {
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+        },
+        children: [
+          {
+            type: 'div',
+            props: {
+              style: {
+                width: '44px',
+                height: '6px',
+                backgroundColor: palette.accent,
+                borderRadius: '3px',
+              },
+            },
+          },
+          subtitle
+            ? {
+                type: 'div',
+                props: {
+                  style: {
+                    fontSize: '20px',
+                    fontWeight: 700,
+                    color: palette.accent,
+                    letterSpacing: '1px',
+                    textTransform: 'uppercase',
+                  },
+                  children: subtitle,
+                },
+              }
+            : null,
+        ].filter(Boolean),
+      },
+    });
+
+    // 2. Title / Main Statement
+    if (title) {
+      const fontSize = title.length > 90 ? '34px' : title.length > 50 ? '42px' : '50px';
+      children.push({
+        type: 'div',
+        props: {
+          style: {
+            fontFamily: 'Archivo Black',
+            fontSize,
+            lineHeight: '1.2',
+            color: palette.ink,
+            letterSpacing: '-0.5px',
+          },
+          children: title,
+        },
+      });
+    }
+
+    // 3. Hero Stat (if present)
+    if (data.value || data.stat) {
+      const val = String(data.value || data.stat);
+      const unit = data.unit || data.label || '';
+      children.push({
+        type: 'div',
+        props: {
+          style: {
+            display: 'flex',
+            flexDirection: 'column',
+            backgroundColor: palette.card_bg,
+            border: `2px solid ${palette.border}`,
+            borderLeft: `8px solid ${palette.highlight}`,
+            borderRadius: '12px',
+            padding: '24px 32px',
+            gap: '8px',
+          },
+          children: [
+            {
+              type: 'div',
+              props: {
+                style: {
+                  fontFamily: 'Archivo Black',
+                  fontSize: val.length > 12 ? '48px' : '64px',
+                  color: palette.ink,
+                  lineHeight: '1.1',
+                },
+                children: val,
+              },
+            },
+            unit
+              ? {
+                  type: 'div',
+                  props: {
+                    style: {
+                      fontSize: '20px',
+                      fontWeight: 700,
+                      color: palette.accent,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                    },
+                    children: unit,
+                  },
+                }
+              : null,
+          ].filter(Boolean),
+        },
+      });
+    }
+
+    // 4. Metric Items / Cards Grid (if present)
+    const items = data.items || data.cards || data.metrics || (Array.isArray(data.list) && typeof data.list[0] === 'object' ? data.list : null);
+    if (Array.isArray(items) && items.length > 0) {
+      children.push({
+        type: 'div',
+        props: {
+          style: {
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '18px',
+            width: '100%',
+          },
+          children: items.slice(0, 4).map((it) => ({
+            type: 'div',
+            props: {
+              style: {
+                display: 'flex',
+                flexDirection: 'column',
+                backgroundColor: palette.card_bg,
+                border: `1px solid ${palette.border}`,
+                borderRadius: '10px',
+                padding: '22px',
+                width: items.length === 1 ? '100%' : '440px',
+                gap: '8px',
+              },
+              children: [
+                {
+                  type: 'div',
+                  props: {
+                    style: {
+                      fontFamily: 'Archivo Black',
+                      fontSize: '38px',
+                      color: palette.accent,
+                      lineHeight: '1.1',
+                    },
+                    children: String(it.value || it.stat || it.number || ''),
+                  },
+                },
+                {
+                  type: 'div',
+                  props: {
+                    style: {
+                      fontSize: '18px',
+                      color: palette.muted,
+                      lineHeight: '1.4',
+                      fontWeight: 600,
+                    },
+                    children: String(it.label || it.title || it.text || ''),
+                  },
+                },
+              ],
+            },
+          })),
+        },
+      });
+    }
+
+    // 5. Comparison / Split Columns (if present)
+    if (data.left && data.right) {
+      children.push({
+        type: 'div',
+        props: {
+          style: {
+            display: 'flex',
+            gap: '20px',
+            width: '100%',
+          },
+          children: [
+            {
+              type: 'div',
+              props: {
+                style: {
+                  flex: 1,
+                  backgroundColor: palette.card_bg,
+                  border: `1px solid ${palette.border}`,
+                  borderTop: `6px solid ${palette.accent}`,
+                  borderRadius: '10px',
+                  padding: '22px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '10px',
+                },
+                children: [
+                  {
+                    type: 'div',
+                    props: {
+                      style: {
+                        fontFamily: 'Archivo Black',
+                        fontSize: '22px',
+                        color: palette.ink,
+                      },
+                      children: data.left.title || 'SEBELUMNYA',
+                    },
+                  },
+                  {
+                    type: 'div',
+                    props: {
+                      style: {
+                        fontSize: '18px',
+                        lineHeight: '1.5',
+                        color: palette.ink_secondary || palette.muted,
+                      },
+                      children: data.left.text || data.left.content || '',
+                    },
+                  },
+                ],
+              },
+            },
+            {
+              type: 'div',
+              props: {
+                style: {
+                  flex: 1,
+                  backgroundColor: palette.card_bg,
+                  border: `1px solid ${palette.border}`,
+                  borderTop: `6px solid ${palette.highlight}`,
+                  borderRadius: '10px',
+                  padding: '22px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '10px',
+                },
+                children: [
+                  {
+                    type: 'div',
+                    props: {
+                      style: {
+                        fontFamily: 'Archivo Black',
+                        fontSize: '22px',
+                        color: palette.ink,
+                      },
+                      children: data.right.title || 'SAAT INI / DAMPAK',
+                    },
+                  },
+                  {
+                    type: 'div',
+                    props: {
+                      style: {
+                        fontSize: '18px',
+                        lineHeight: '1.5',
+                        color: palette.ink_secondary || palette.muted,
+                      },
+                      children: data.right.text || data.right.content || '',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      });
+    }
+
+    // 6. Bullets / Key Points (if present)
+    const bullets = data.bullets || data.points || (Array.isArray(data.list) && typeof data.list[0] === 'string' ? data.list : null);
+    if (Array.isArray(bullets) && bullets.length > 0) {
+      children.push({
+        type: 'div',
+        props: {
+          style: {
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+            width: '100%',
+          },
+          children: bullets.slice(0, 5).map((pt, idx) => ({
+            type: 'div',
+            props: {
+              style: {
+                display: 'flex',
+                alignItems: 'flex-start',
+                backgroundColor: palette.card_bg,
+                border: `1px solid ${palette.border}`,
+                borderRadius: '8px',
+                padding: '16px 20px',
+                gap: '16px',
+              },
+              children: [
+                {
+                  type: 'div',
+                  props: {
+                    style: {
+                      backgroundColor: palette.accent,
+                      color: '#ffffff',
+                      fontFamily: 'Archivo Black',
+                      fontSize: '16px',
+                      borderRadius: '50%',
+                      width: '32px',
+                      height: '32px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    },
+                    children: String(idx + 1),
+                  },
+                },
+                {
+                  type: 'div',
+                  props: {
+                    style: {
+                      fontSize: '19px',
+                      lineHeight: '1.45',
+                      color: palette.ink,
+                      fontWeight: 500,
+                    },
+                    children: pt,
+                  },
+                },
+              ],
+            },
+          })),
+        },
+      });
+    }
+
+    // 7. Quote / Statement Box (if present)
+    if (data.quote || data.author) {
+      children.push({
+        type: 'div',
+        props: {
+          style: {
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '14px',
+            paddingLeft: '24px',
+            borderLeft: `6px solid ${palette.accent}`,
+            margin: '8px 0',
+          },
+          children: [
+            {
+              type: 'div',
+              props: {
+                style: {
+                  fontSize: '26px',
+                  lineHeight: '1.45',
+                  fontWeight: 700,
+                  color: palette.ink,
+                  fontStyle: 'italic',
+                },
+                children: `“${data.quote || text}”`,
+              },
+            },
+            data.author
+              ? {
+                  type: 'div',
+                  props: {
+                    style: {
+                      fontSize: '19px',
+                      color: palette.muted,
+                      fontWeight: 600,
+                    },
+                    children: `— ${data.author}`,
+                  },
+                }
+              : null,
+          ].filter(Boolean),
+        },
+      });
+    }
+
+    // 8. Callout Box / Regulatory clause (if present)
+    if (data.callout || data.regulasi || data.note) {
+      const noteText = data.callout || data.regulasi || data.note;
+      children.push({
+        type: 'div',
+        props: {
+          style: {
+            backgroundColor: '#ffffff',
+            border: `2px solid ${palette.border}`,
+            borderTop: `6px solid ${palette.highlight}`,
+            borderRadius: '10px',
+            padding: '22px 26px',
+            fontSize: '19px',
+            lineHeight: '1.5',
+            color: palette.ink,
+            fontWeight: 500,
+          },
+          children: noteText,
+        },
+      });
+    }
+
+    // 9. Narrative Body Text (if text was not already used as title/quote)
+    if (text && text !== title && !data.quote) {
+      children.push({
+        type: 'div',
+        props: {
+          style: {
+            fontSize: '22px',
+            lineHeight: '1.55',
+            color: palette.ink,
+            backgroundColor: palette.card_bg,
+            border: `1px solid ${palette.border}`,
+            borderRadius: '10px',
+            padding: '22px 26px',
+          },
+          children: text,
+        },
+      });
+    }
+
+    // 10. CTA Button / Footer Action (if present)
+    if (data.cta || (slideIndex === totalSlides && totalSlides > 1)) {
+      const ctaMsg = data.cta || 'Bagikan pandangan Anda di kolom komentar';
+      children.push({
+        type: 'div',
+        props: {
+          style: {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: palette.accent,
+            color: '#ffffff',
+            fontSize: '20px',
+            fontWeight: 700,
+            padding: '16px 28px',
+            borderRadius: '8px',
+            marginTop: '8px',
+            textAlign: 'center',
+          },
+          children: ctaMsg,
+        },
+      });
+    }
+
+    return this.wrapSlide(
+      {
+        type: 'div',
+        props: {
+          style: {
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '22px',
+            width: '100%',
+          },
+          children,
+        },
+      },
+      { slideNo: slideIndex, totalSlides, source: slide.source, category }
+    );
   }
 
   // Render Single Slide to PNG Buffer

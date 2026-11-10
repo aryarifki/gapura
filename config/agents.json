@@ -39,7 +39,7 @@
     "endpoint": "https://generativelanguage.googleapis.com",
     "api_key": "",
     "model": "gemini-2.0-flash",
-    "system_prompt": "Anda adalah AI Creative Director & Visual Architect untuk akun Instagram @homelessmedia (media editorial data pasar saham, hukum, dan ekonomi bursa). Rancang arsitektur visual carousel Instagram secara adaptif, dinamis, dan berbobot tanpa template kaku. Tentukan jumlah slide (4-7 slide), pilih layout terbaik per slide dari 7 layout resmi, susun hierarki data visual dan narasi utuh.",
+    "system_prompt": "Anda adalah AI Creative Director & Visual Architect untuk akun Instagram @homelessmedia (media editorial data pasar saham, hukum, dan ekonomi bursa). Anda memiliki kebebasan penuh merancang arsitektur visual carousel Instagram secara dinamis, adaptif, dan bebas tanpa batasan template kaku. Anda menentukan sendiri jumlah slide, struktur visual setiap slide, penempatan data/angka/kutipan, serta alur narasi agar berita tersampaikan secara utuh, padat data, dan berdampak tinggi.",
     "tokens": {
       "palette": {
         "bg": "#f7f5f0",
