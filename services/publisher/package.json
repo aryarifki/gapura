@@ -1,0 +1,11 @@
+{
+  "name": "hme-publisher-service",
+  "version": "2.0.0",
+  "description": "Publishing and scheduling engine for Homeless Media Engine",
+  "main": "publisher.js",
+  "type": "module",
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "pg": "^8.13.1"
+  }
+}

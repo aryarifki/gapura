@@ -31,8 +31,13 @@ node services/copywriter/copywriter.js
 
 # 4. Telegram Dispatcher: Kirim Draf Baru ke Admin
 echo ""
-echo ">>> [4/4] Menyiapkan Pengiriman Pratinjau Draf ke Telegram..."
+echo ">>> [4/5] Menyiapkan Pengiriman Pratinjau Draf ke Telegram..."
 node -e "import('./services/telegram/bot.js').then(m => m.dispatchPendingDrafts().then(() => process.exit(0)))"
+
+# 5. Publisher Engine: Eksekusi Antrean Tayang (Auto Meta Graph / Reminder Manual)
+echo ""
+echo ">>> [5/5] Menjalankan Publisher Engine (Eksekusi Antrean Tayang)..."
+node services/publisher/publisher.js
 
 echo ""
 echo "=========================================================="
