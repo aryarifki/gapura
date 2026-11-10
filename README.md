@@ -21,8 +21,9 @@ Repositori ini telah dianalisis berdasarkan dokumen produk resmi [`PRD_Homeless_
 
 ## 🏛️ Arsitektur Singkat (Opsi B: Hybrid n8n)
 
-- **Orkestrasi:** n8n Community (Self-Hosted)
-- **Render Engine:** Micro-service Node.js (`satori` + `sharp`, kanvas 1080×1350 px rasio 4:5, penggunaan memori ~30 MB)
-- **Basis Data:** PostgreSQL 16 (`hme` untuk domain & `n8n` untuk log internal)
-- **Human-in-the-Loop Door:** Bot Telegram (Inline Keyboard review mobile)
-- **Akses Aman:** Cloudflare Tunnel + Cloudflare Access SSO (Zero Open Ports)
+- **Aplikasi Web Live:** [https://gapura.avenia.my.id](https://gapura.avenia.my.id) (Dashboard Review, Kontrol Pipeline, Editor Tokens)
+- **Orkestrasi:** n8n Community (Self-Hosted di `127.0.0.1:5678`)
+- **Render Engine:** Micro-service Node.js (`satori` + `sharp`, kanvas 1080×1350 px rasio 4:5, penggunaan memori ~65 MB)
+- **Basis Data:** PostgreSQL 17 (`hme` untuk domain & `n8n` untuk log internal)
+- **Human-in-the-Loop Door:** Web Dashboard & Bot Telegram (Inline Keyboard review mobile)
+- **Akses Aman:** Cloudflare Tunnel + Cloudflare Edge (`gapura.avenia.my.id` -> `localhost:3005`)
