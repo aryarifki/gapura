@@ -234,60 +234,60 @@ export function buildDeterministicCarouselSlides(topic) {
 }
 
 /**
- * Build Carousel Slides: Coba pakai AI LLM dulu, jika gagal fallback ke generator cerdas
+ * Build Carousel Slides: Menggabungkan kekuatan Agen Designer (Full AI) dan Copywriter
  */
 export async function buildCarouselSlides(topic) {
   const cfg = loadAgentsConfig();
   const copyCfg = cfg.copywriter || {};
 
-  // Jika API Key tersedia, gunakan LLM dinamis
-  if (copyCfg.api_key && copyCfg.api_key.trim().length > 0) {
+  // 1. Serahkan perancangan arsitektur visual & layout carousel kepada AI DESIGNER
+  let slides = [];
+  try {
+    const { designCarouselSlides } = await import('../designer/designer.js');
+    slides = await designCarouselSlides(topic);
+  } catch (desErr) {
+    console.warn('[Copywriter] AI Designer error, menggunakan generator adaptif cerdas:', desErr.message);
+  }
+
+  if (!slides || slides.length === 0) {
+    const fallback = buildDeterministicCarouselSlides(topic);
+    slides = fallback.slides;
+  }
+
+  // 2. Susun Caption Editorial & Hashtags oleh AGEN COPYWRITER
+  const isRegulasi = /ojk|pojk|peraturan|uu|hukum|sanksi|denda|aturan/i.test(topic.title);
+  let caption = `${topic.title}\n\n${topic.summary || ''}\n\nAnalisis Editorial:\nLangkah dan data yang dilaporkan oleh ${topic.primary_source || 'otoritas'} ini memperlihatkan perkembangan penting yang patut dicermati oleh pelaku pasar, investor, dan pengambil keputusan. Informasi faktual ini memberikan gambaran objektif mengenai arah kebijakan dan stabilitas fundamental ekonomi nasional.\n\nSumber Data: ${topic.primary_source} (${topic.url})\n\n---\nDisclaimer: Informasi disajikan untuk tujuan edukasi publik dan bukan merupakan rekomendasi investasi beli/jual saham atau nasihat hukum resmi.`;
+  let hashtags = ['#HomelessMedia', '#DataEkonomi', '#BursaSaham', '#IHSG', '#OJK', '#Regulasi', '#PasarModal', '#EkonomiIndonesia', '#KeterbukaanInformasi'];
+
+  const apiKey = copyCfg.api_key || process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY || '';
+  if (apiKey && apiKey.trim().length > 0) {
     try {
-      const prompt = `Analisis mendalam berita berikut dan buat carousel Instagram 5 slide yang MENYAMPAIKAN INFORMASI SECARA UTUH, PADAT FAKTA, dan MENYESUAIKAN DINAMIS DENGAN ISI BERITA:
+      const prompt = `Tuliskan caption editorial Instagram 150-250 kata dan 8-12 hashtag untuk berita berikut:
 Judul: ${topic.title}
-Ringkasan Faktual: ${topic.summary || ''}
-Sumber Primer: ${topic.primary_source || ''}
-URL: ${topic.url || ''}
+Ringkasan: ${topic.summary || ''}
+Sumber: ${topic.primary_source || ''}
 
-PILIH LAYOUT TERBAIK UNTUK SETIAP SLIDE dari 7 opsi layout berikut:
-1. "cover-stat" -> Hook angka/persen tajam di cover (data: { value: "Angka/Stat Besar", unit: "Unit/Keterangan", title: "Judul", category: "Kategori" })
-2. "big-statement" -> Kutipan pernyataan narasumber atau fakta kunci (data: { author: "Narasumber/Instansi", category: "Kategori" })
-3. "stat-grid" -> 2-4 kotak metrik angka penting (data: { items: [{ label: "...", value: "..." }], category: "Kategori" })
-4. "regulasi" -> Poin aturan OJK/UU/POJK/putusan hukum (data: { title: "Nama Regulasi/Pasal" })
-5. "comparison" -> Perbandingan sebelum vs sesudah atau katalis vs dampak (data: { left: { title: "...", text: "..." }, right: { title: "...", text: "..." }, category: "Kategori" })
-6. "timeline" -> Tahapan kronologis peristiwa (data: { events: [{ date: "...", text: "..." }] })
-7. "cta-close" -> Slide penutup berisi pertanyaan reflektif & CTA (data: { cta: "...", disclaimer: "..." })
-
-ATURAN WAJIB:
-- DILARANG MENGGUNAKAN DATA PALSU/FIKTIF. Ekstrak fakta, angka, nama pejabat/instansi langsung dari teks berita di atas.
-- Teks narasi di setiap slide harus padat, informatif, dan mudah dipahami pembaca Instagram.
-- Kembalikan HANYA format JSON valid berikut tanpa markdown wrap:
+Kembalikan HANYA format JSON valid berikut tanpa markdown wrap:
 {
-  "slides": [
-    { "no": 1, "layout": "cover-stat", "teks": "Judul/Hook", "data": { ... }, "source": "..." },
-    { "no": 2, "layout": "big-statement", "teks": "...", "data": { ... }, "source": "..." },
-    { "no": 3, "layout": "stat-grid" | "regulasi" | "big-statement", "teks": "...", "data": { ... }, "source": "..." },
-    { "no": 4, "layout": "comparison" | "big-statement", "teks": "...", "data": { ... }, "source": "..." },
-    { "no": 5, "layout": "cta-close", "teks": "Pertanyaan reflektif?", "data": { "cta": "...", "disclaimer": "..." }, "source": "@homelessmedia" }
-  ],
-  "caption": "Caption 150-250 kata berstruktur rapi...",
-  "hashtags": ["#HomelessMedia", "#DataEkonomi", "#IHSG"],
-  "disclaimer_type": "keuangan" | "hukum",
-  "needs_review": false
+  "caption": "...",
+  "hashtags": ["#HomelessMedia", "#DataEkonomi", "#IHSG"]
 }`;
-
-      const aiResponse = await callAgentLLM('copywriter', prompt, copyCfg.system_prompt || '', true);
-      const parsed = JSON.parse(aiResponse);
-      if (parsed && Array.isArray(parsed.slides) && parsed.slides.length >= 3) {
-        console.log(`[Copywriter] Sukses menghasilkan konten dinamis adaptif via AI LLM (${copyCfg.model || 'llm'})`);
-        return parsed;
-      }
+      const capResp = await callAgentLLM('copywriter', prompt, copyCfg.system_prompt || '', true);
+      const capParsed = JSON.parse(capResp);
+      if (capParsed.caption) caption = capParsed.caption;
+      if (Array.isArray(capParsed.hashtags)) hashtags = capParsed.hashtags;
     } catch (llmErr) {
-      console.warn('[Copywriter] LLM gagal, menggunakan generator cerdas deterministik:', llmErr.message);
+      console.warn('[Copywriter] LLM caption gagal, gunakan caption standar:', llmErr.message);
     }
   }
 
-  return buildDeterministicCarouselSlides(topic);
+  return {
+    slides,
+    caption,
+    hashtags,
+    disclaimer_type: isRegulasi ? 'hukum' : 'keuangan',
+    needs_review: false,
+  };
 }
 
 /**

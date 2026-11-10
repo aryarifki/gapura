@@ -1111,6 +1111,7 @@ async function loadAgentsConfigUI() {
     if (document.getElementById('scout-max-items')) document.getElementById('scout-max-items').value = scout.max_items_per_source ?? 15;
     if (document.getElementById('scout-keywords')) document.getElementById('scout-keywords').value = scout.custom_keywords ?? '';
     if (document.getElementById('scout-rules')) document.getElementById('scout-rules').value = scout.rules ?? '';
+    if (document.getElementById('scout-skills-md')) document.getElementById('scout-skills-md').value = (config.skills && config.skills.scout) || '';
 
     // Analis
     const analis = config.analis || {};
@@ -1133,6 +1134,7 @@ async function loadAgentsConfigUI() {
 
     if (document.getElementById('analis-fastfail')) document.getElementById('analis-fastfail').value = analis.fast_fail_rules ?? '';
     if (document.getElementById('analis-prompt')) document.getElementById('analis-prompt').value = analis.system_prompt ?? '';
+    if (document.getElementById('analis-skills-md')) document.getElementById('analis-skills-md').value = (config.skills && config.skills.analis) || '';
 
     // Copywriter
     const copy = config.copywriter || {};
@@ -1146,9 +1148,17 @@ async function loadAgentsConfigUI() {
     if (document.getElementById('copywriter-disclaimer-fin')) document.getElementById('copywriter-disclaimer-fin').value = copy.disclaimer_financial ?? '';
     if (document.getElementById('copywriter-disclaimer-legal')) document.getElementById('copywriter-disclaimer-legal').value = copy.disclaimer_legal ?? '';
     if (document.getElementById('copywriter-prompt')) document.getElementById('copywriter-prompt').value = copy.system_prompt ?? '';
+    if (document.getElementById('copywriter-skills-md')) document.getElementById('copywriter-skills-md').value = (config.skills && config.skills.copywriter) || '';
 
-    // Designer
+    // Designer (Full AI Creative Director + Design Tokens)
     const designer = config.designer || {};
+    if (document.getElementById('designer-provider')) document.getElementById('designer-provider').value = designer.provider || 'gemini';
+    if (document.getElementById('designer-model')) document.getElementById('designer-model').value = designer.model || 'gemini-2.0-flash';
+    if (document.getElementById('designer-endpoint')) document.getElementById('designer-endpoint').value = designer.endpoint || 'https://generativelanguage.googleapis.com';
+    if (document.getElementById('designer-api-key')) document.getElementById('designer-api-key').value = designer.api_key || '';
+    if (document.getElementById('designer-prompt')) document.getElementById('designer-prompt').value = designer.system_prompt || '';
+    if (document.getElementById('designer-skills-md')) document.getElementById('designer-skills-md').value = (config.skills && config.skills.designer) || '';
+
     const tokens = designer.tokens || {};
     const palette = tokens.palette || {};
 
@@ -1229,6 +1239,11 @@ async function saveAgentsConfigUI() {
         disclaimer_legal: document.getElementById('copywriter-disclaimer-legal')?.value || '',
       },
       designer: {
+        provider: document.getElementById('designer-provider')?.value || 'gemini',
+        endpoint: document.getElementById('designer-endpoint')?.value || 'https://generativelanguage.googleapis.com',
+        api_key: document.getElementById('designer-api-key')?.value || '',
+        model: document.getElementById('designer-model')?.value || 'gemini-2.0-flash',
+        system_prompt: document.getElementById('designer-prompt')?.value || '',
         tokens: {
           palette: {
             bg: document.getElementById('color-bg-hex')?.value || '#f7f5f0',
@@ -1252,6 +1267,12 @@ async function saveAgentsConfigUI() {
           close: document.getElementById('layout-close')?.value || 'cta-close',
         },
         auto_fit_text: document.getElementById('designer-autofit')?.checked !== false,
+      },
+      skills: {
+        scout: document.getElementById('scout-skills-md')?.value || '',
+        analis: document.getElementById('analis-skills-md')?.value || '',
+        copywriter: document.getElementById('copywriter-skills-md')?.value || '',
+        designer: document.getElementById('designer-skills-md')?.value || '',
       },
     };
 

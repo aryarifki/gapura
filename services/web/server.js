@@ -14,7 +14,7 @@ const { Pool } = pkg;
 import yaml from 'js-yaml';
 import { exec } from 'child_process';
 import { produceSingleTopicDraft } from '../copywriter/copywriter.js';
-import { loadAgentsConfig } from '../common/llm.js';
+import { loadAgentsConfig, loadAgentSkills, saveAgentSkills } from '../common/llm.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -487,6 +487,12 @@ app.post('/api/tokens', async (req, res) => {
 app.get('/api/agents/config', (req, res) => {
   try {
     const config = loadAgentsConfig();
+    config.skills = {
+      scout: loadAgentSkills('scout'),
+      analis: loadAgentSkills('analis'),
+      copywriter: loadAgentSkills('copywriter'),
+      designer: loadAgentSkills('designer'),
+    };
     res.json(config);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -500,10 +506,21 @@ app.post('/api/agents/config', async (req, res) => {
       return res.status(400).json({ error: 'Payload konfigurasi tidak valid.' });
     }
 
-    // 1. Simpan ke config/agents.json
-    fs.writeFileSync(AGENTS_CONFIG_PATH, JSON.stringify(newConfig, null, 2), 'utf8');
+    // 1. Simpan skills.md kustom untuk masing-masing agen
+    if (newConfig.skills && typeof newConfig.skills === 'object') {
+      ['scout', 'analis', 'copywriter', 'designer'].forEach((key) => {
+        if (typeof newConfig.skills[key] === 'string') {
+          saveAgentSkills(key, newConfig.skills[key]);
+        }
+      });
+    }
 
-    // 2. Jika konfigurasi designer / tokens ada pembaruan, sinkronisasi ke tokens.yaml dan reload Render Service
+    // 2. Simpan konfigurasi ke config/agents.json (tanpa bloat payload skills)
+    const jsonToSave = { ...newConfig };
+    delete jsonToSave.skills;
+    fs.writeFileSync(AGENTS_CONFIG_PATH, JSON.stringify(jsonToSave, null, 2), 'utf8');
+
+    // 3. Jika konfigurasi designer / tokens ada pembaruan, sinkronisasi ke tokens.yaml dan reload Render Service
     if (newConfig.designer && newConfig.designer.tokens) {
       try {
         let existingTokens = {};
@@ -530,7 +547,7 @@ app.post('/api/agents/config', async (req, res) => {
       }
     }
 
-    // 3. Jika threshold analis diubah, sinkronisasi ke app_settings DB
+    // 4. Jika threshold analis diubah, sinkronisasi ke app_settings DB
     if (newConfig.analis && newConfig.analis.min_score_threshold) {
       try {
         await pool.query(
@@ -545,15 +562,33 @@ app.post('/api/agents/config', async (req, res) => {
       }
     }
 
-    // 4. Catat ke audit_log
+    // 5. Catat ke audit_log
     await pool.query(
       "INSERT INTO audit_log (entity, entity_id, action, actor, payload) VALUES ('ai_agents', 1, 'update_config', 'web_admin', $1)",
       [JSON.stringify({ updated_agents: Object.keys(newConfig) })]
     );
 
-    res.json({ status: 'success', message: 'Konfigurasi Agen AI berhasil disimpan dan diterapkan secara instan ke seluruh sistem.' });
+    res.json({ status: 'success', message: 'Konfigurasi 4 Agen AI dan seluruh berkas skills.md berhasil disimpan dan diterapkan ke seluruh sistem.' });
   } catch (err) {
     console.error('[Web API] Gagal menyimpan config agen:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/agents/:agent/skills', (req, res) => {
+  const { agent } = req.params;
+  const content = loadAgentSkills(agent);
+  res.json({ agent, content });
+});
+
+app.post('/api/agents/:agent/skills', (req, res) => {
+  const { agent } = req.params;
+  const { content } = req.body;
+  if (typeof content !== 'string') return res.status(400).json({ error: 'Content must be string' });
+  try {
+    saveAgentSkills(agent, content);
+    res.json({ status: 'success', agent, message: `Skills untuk agen ${agent} berhasil disimpan.` });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });

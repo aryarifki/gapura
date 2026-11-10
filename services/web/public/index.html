@@ -468,7 +468,13 @@
 
               <div class="form-group-editor">
                 <label class="form-label-editor">Aturan Kurasi & Instruksi Spesifik</label>
-                <textarea id="scout-rules" class="form-input-dark form-textarea" rows="4">Hanya ambil siaran pers resmi, regulasi terverifikasi, dan pergerakan data makro ekonomi.</textarea>
+                <textarea id="scout-rules" class="form-input-dark form-textarea" rows="3">Hanya ambil siaran pers resmi, regulasi terverifikasi, dan pergerakan data makro ekonomi.</textarea>
+              </div>
+
+              <div class="form-group-editor" style="margin-top: 15px;">
+                <label class="form-label-editor">Panduan & Aturan Eksekusi Khusus (skills.md Agen Scout)</label>
+                <textarea id="scout-skills-md" class="form-input-dark form-textarea" rows="6" placeholder="Kustomisasi keterampilan, daftar RSS feed terverifikasi, kriteria eksklusi, atau aturan kurasi Scout..."></textarea>
+                <span class="form-help-text">File tersimpan di <code style="color: var(--lime);">config/skills/scout.skills.md</code> dan otomatis diinjeksi ke alur kurasi Scout.</span>
               </div>
             </div>
           </div>
@@ -567,8 +573,14 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
               </div>
 
               <div class="form-group-editor">
-                <label class="form-label-editor">Instruksi Sistem Analis (System Prompt / Skills)</label>
-                <textarea id="analis-prompt" class="form-input-dark form-textarea" rows="4">Anda adalah Analis Senior @homelessmedia untuk pasar modal, hukum, dan makro ekonomi. Nilai kelayakan berita dengan ketat berdasarkan rubrik 5 komponen. Kembalikan format JSON persis sesuai spesifikasi.</textarea>
+                <label class="form-label-editor">Instruksi Sistem Analis (System Prompt)</label>
+                <textarea id="analis-prompt" class="form-input-dark form-textarea" rows="3">Anda adalah Analis Senior @homelessmedia untuk pasar modal, hukum, dan makro ekonomi. Nilai kelayakan berita dengan ketat berdasarkan rubrik 5 komponen. Kembalikan format JSON persis sesuai spesifikasi.</textarea>
+              </div>
+
+              <div class="form-group-editor" style="margin-top: 15px;">
+                <label class="form-label-editor">Panduan & Rubrik Eksekusi Khusus (skills.md Agen Analis)</label>
+                <textarea id="analis-skills-md" class="form-input-dark form-textarea" rows="6" placeholder="Kustomisasi bobot evaluasi, penalti hoaks, verifikasi cross-sumber, atau kriteria kurasi Analis..."></textarea>
+                <span class="form-help-text">File tersimpan di <code style="color: var(--lime);">config/skills/analis.skills.md</code> dan otomatis diinjeksi ke system prompt LLM Analis.</span>
               </div>
             </div>
           </div>
@@ -646,7 +658,13 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
 
               <div class="form-group-editor">
                 <label class="form-label-editor">Instruksi Sistem Copywriter (System Prompt & Format JSON)</label>
-                <textarea id="copywriter-prompt" class="form-input-dark form-textarea" rows="4">Anda adalah Copywriter Data-Editorial untuk akun Instagram @homelessmedia (niche: data pasar saham, hukum, regulasi, dan ekonomi). Hasilkan teks carousel 5 slide: Cover hook angka, Konteks berita, Bukti data/regulasi, Implikasi kebijakan, dan CTA Penutup. Sisipkan kutipan verbatim dan disclaimer.</textarea>
+                <textarea id="copywriter-prompt" class="form-input-dark form-textarea" rows="3">Anda adalah Copywriter Data-Editorial untuk akun Instagram @homelessmedia (niche: data pasar saham, hukum, regulasi, dan ekonomi). Hasilkan teks carousel 5 slide: Cover hook angka, Konteks berita, Bukti data/regulasi, Implikasi kebijakan, dan CTA Penutup. Sisipkan kutipan verbatim dan disclaimer.</textarea>
+              </div>
+
+              <div class="form-group-editor" style="margin-top: 15px;">
+                <label class="form-label-editor">Panduan & Persona Eksekusi Khusus (skills.md Agen Copywriter)</label>
+                <textarea id="copywriter-skills-md" class="form-input-dark form-textarea" rows="6" placeholder="Kustomisasi ritme headline angka, struktur narasi, gaya bahasa, etika kutipan..."></textarea>
+                <span class="form-help-text">File tersimpan di <code style="color: var(--lime);">config/skills/copywriter.skills.md</code> dan otomatis diinjeksi ke system prompt LLM Copywriter.</span>
               </div>
             </div>
           </div>
@@ -655,14 +673,61 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
           <div class="agent-tab-panel" id="tab-panel-designer">
             <div class="agent-config-card">
               <div class="agent-card-title-row">
-                <h3 class="agent-card-title">🎨 Konfigurasi Agen Designer & Visual Tokens</h3>
-                <span class="pill-status active"><span class="dot"></span> Sinkronisasi Instan ke Render Engine Port 3000</span>
+                <h3 class="agent-card-title">🎨 Konfigurasi Agen Designer (Full AI Visual Architect)</h3>
+                <span class="pill-status active"><span class="dot"></span> AI Dynamic Layouts & Brand Tokens</span>
               </div>
-              <p class="agent-card-desc">Mengatur palet warna identitas brand, tipografi, dan template layout bawaan untuk setiap slide carousel.</p>
+              <p class="agent-card-desc">Agen Designer sepenuhnya otonom ditenagai AI: menentukan jumlah slide (4–7), memilih layout optimal per slide (cover-stat, big-statement, stat-grid, regulasi, comparison, timeline, cta-close), serta mengekstrak data visual dari berita secara cerdas tanpa template kaku.</p>
+
+              <!-- LLM Engine Configuration for Designer -->
+              <div class="form-grid-2col">
+                <div class="form-group-editor">
+                  <label class="form-label-editor">Penyedia LLM (Provider)</label>
+                  <select id="designer-provider" class="form-input-dark form-select-dark">
+                    <option value="gemini">Google Gemini (Native SDK/REST)</option>
+                    <option value="openai">OpenAI (GPT-4o, GPT-4o-mini)</option>
+                    <option value="openrouter">OpenRouter (Multi-Model Hub)</option>
+                    <option value="groq">Groq (Ultra Fast Inference)</option>
+                    <option value="deepseek">DeepSeek (V3, R1)</option>
+                    <option value="custom">Ollama / Custom OpenAI-Compatible</option>
+                  </select>
+                </div>
+                <div class="form-group-editor">
+                  <label class="form-label-editor">Nama Model</label>
+                  <input type="text" id="designer-model" class="form-input-dark" value="gemini-2.0-flash">
+                  <span class="form-help-text">Contoh: gemini-2.0-flash, gpt-4o, deepseek-chat</span>
+                </div>
+              </div>
+
+              <div class="form-grid-2col">
+                <div class="form-group-editor">
+                  <label class="form-label-editor">Base Endpoint URL</label>
+                  <input type="text" id="designer-endpoint" class="form-input-dark" value="https://generativelanguage.googleapis.com">
+                </div>
+                <div class="form-group-editor">
+                  <label class="form-label-editor">API Key</label>
+                  <div class="input-with-toggle">
+                    <input type="password" id="designer-api-key" class="form-input-dark" placeholder="Kosongkan untuk memakai env GEMINI_API_KEY">
+                    <button type="button" class="btn-toggle-pw" onclick="togglePasswordVisibility('designer-api-key')">👁️</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-group-editor">
+                <label class="form-label-editor">Instruksi Sistem AI Designer (System Prompt)</label>
+                <textarea id="designer-prompt" class="form-input-dark form-textarea" rows="3">Anda adalah AI Creative Director & Visual Architect untuk akun Instagram @homelessmedia (media editorial data pasar saham, hukum, dan ekonomi bursa). Rancang arsitektur visual carousel Instagram secara adaptif, dinamis, dan berbobot tanpa template kaku. Tentukan jumlah slide (4-7 slide), pilih layout terbaik per slide dari 7 layout resmi, susun hierarki data visual dan narasi utuh.</textarea>
+              </div>
+
+              <div class="form-group-editor" style="margin-top: 15px;">
+                <label class="form-label-editor">Panduan & Arsitektur Visual Khusus (skills.md Agen Designer)</label>
+                <textarea id="designer-skills-md" class="form-input-dark form-textarea" rows="6" placeholder="Kustomisasi katalog layout resmi, aturan hierarki visual, formula ekstraksi data numerik, styling carousel..."></textarea>
+                <span class="form-help-text">File tersimpan di <code style="color: var(--lime);">config/skills/designer.skills.md</code> dan otomatis diinjeksi ke system prompt AI Designer.</span>
+              </div>
+
+              <hr style="border: 0; border-top: 1px solid var(--border); margin: 24px 0;">
 
               <!-- Color Palette Config -->
               <div style="margin-bottom: 20px;">
-                <label class="form-label-editor" style="color: #fff; margin-bottom: 12px;">Palet Warna Identitas Brand (Design Tokens)</label>
+                <label class="form-label-editor" style="color: #fff; margin-bottom: 12px;">Palet Warna Identitas Brand (Design Tokens Render Engine)</label>
                 <div class="palette-pickers-grid">
                   <div class="color-item-box">
                     <span class="color-item-label">Background (bg)</span>
@@ -723,9 +788,9 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
                 </div>
               </div>
 
-              <!-- Default Slide Layouts -->
+              <!-- Default Fallback Slide Layouts -->
               <div style="margin-bottom: 20px;">
-                <label class="form-label-editor" style="color: #fff; margin-bottom: 12px;">Layout Bawaan Slide Carousel (Slot 1–5)</label>
+                <label class="form-label-editor" style="color: #fff; margin-bottom: 12px;">Layout Cadangan (Fallback Template Jika AI Mengalami Gangguan Jaringan)</label>
                 <div class="rubric-grid">
                   <div class="rubric-box">
                     <span class="rubric-label">Slide 1: Cover</span>
@@ -793,6 +858,6 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
   <!-- Toast -->
   <div id="toast" class="toast"></div>
 
-  <script src="/app.js?v=2.6"></script>
+  <script src="/app.js?v=2.7"></script>
 </body>
 </html>

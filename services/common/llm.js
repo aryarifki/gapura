@@ -11,6 +11,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const CONFIG_PATH = path.resolve(__dirname, '../../config/agents.json');
+const SKILLS_DIR = path.resolve(__dirname, '../../config/skills');
 
 export function loadAgentsConfig() {
   try {
@@ -25,8 +26,43 @@ export function loadAgentsConfig() {
 }
 
 /**
+ * Membaca berkas skills.md spesifik untuk tiap agen
+ * @param {'scout' | 'analis' | 'copywriter' | 'designer'} agentKey
+ */
+export function loadAgentSkills(agentKey) {
+  try {
+    const skillPath = path.join(SKILLS_DIR, `${agentKey}.skills.md`);
+    if (fs.existsSync(skillPath)) {
+      return fs.readFileSync(skillPath, 'utf8');
+    }
+  } catch (err) {
+    console.warn(`[LLM Client] Gagal membaca skills.md untuk agen ${agentKey}:`, err.message);
+  }
+  return '';
+}
+
+/**
+ * Menyimpan berkas skills.md untuk tiap agen
+ * @param {'scout' | 'analis' | 'copywriter' | 'designer'} agentKey
+ * @param {string} content
+ */
+export function saveAgentSkills(agentKey, content) {
+  try {
+    if (!fs.existsSync(SKILLS_DIR)) {
+      fs.mkdirSync(SKILLS_DIR, { recursive: true });
+    }
+    const skillPath = path.join(SKILLS_DIR, `${agentKey}.skills.md`);
+    fs.writeFileSync(skillPath, content, 'utf8');
+    return true;
+  } catch (err) {
+    console.error(`[LLM Client] Gagal menyimpan skills.md untuk agen ${agentKey}:`, err);
+    throw err;
+  }
+}
+
+/**
  * Universal call to an LLM provider based on Agent configuration
- * @param {'analis' | 'copywriter'} agentKey
+ * @param {'scout' | 'analis' | 'copywriter' | 'designer'} agentKey
  * @param {string} promptText
  * @param {string} systemPrompt
  * @param {boolean} jsonMode
@@ -44,15 +80,22 @@ export async function callAgentLLM(agentKey, promptText, systemPrompt = '', json
     throw new Error(`API Key untuk agen ${agentKey} belum dikonfigurasi.`);
   }
 
+  // Gabungkan System Prompt bawaan dengan skills.md kustom agen
+  const skillsMd = loadAgentSkills(agentKey);
+  const effectiveSystemPrompt = [
+    agentCfg.system_prompt || systemPrompt || '',
+    skillsMd ? `\n--- SKILLS.MD KUSTOM (PANDUAN EKSEKUSI AGEN ${agentKey.toUpperCase()}) ---\n${skillsMd}` : '',
+  ].filter(Boolean).join('\n\n');
+
   // 1. Google Gemini Provider
   if (provider === 'gemini') {
     const cleanEndpoint = endpoint.replace(/\/+$/, '');
     const url = `${cleanEndpoint}/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     const contents = [];
-    if (systemPrompt) {
-      contents.push({ role: 'user', parts: [{ text: `Instruksi Sistem:\n${systemPrompt}` }] });
-      contents.push({ role: 'model', parts: [{ text: 'Baik, saya memahami seluruh aturan dan instruksi sistem tersebut.' }] });
+    if (effectiveSystemPrompt) {
+      contents.push({ role: 'user', parts: [{ text: `Instruksi Sistem & Skills:\n${effectiveSystemPrompt}` }] });
+      contents.push({ role: 'model', parts: [{ text: 'Baik, saya memahami seluruh aturan, instruksi sistem, dan keterampilan (skills) tersebut.' }] });
     }
     contents.push({ role: 'user', parts: [{ text: promptText }] });
 
@@ -85,8 +128,8 @@ export async function callAgentLLM(agentKey, promptText, systemPrompt = '', json
   const url = cleanEndpoint.endsWith('/chat/completions') ? cleanEndpoint : `${cleanEndpoint}/v1/chat/completions`;
 
   const messages = [];
-  if (systemPrompt) {
-    messages.push({ role: 'system', content: systemPrompt });
+  if (effectiveSystemPrompt) {
+    messages.push({ role: 'system', content: effectiveSystemPrompt });
   }
   messages.push({ role: 'user', content: promptText });
 
