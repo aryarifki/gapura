@@ -38,6 +38,15 @@ const pool = new Pool({
   database: process.env.HME_DB_NAME || 'hme',
 });
 
+const n8nPool = new Pool({
+  host: process.env.DB_POSTGRESDB_HOST || '127.0.0.1',
+  port: parseInt(process.env.DB_POSTGRESDB_PORT || '5432'),
+  user: process.env.DB_POSTGRESDB_USER || 'hme_user',
+  password: process.env.DB_POSTGRESDB_PASSWORD,
+  database: process.env.DB_POSTGRESDB_DATABASE || 'n8n',
+  max: 3,
+});
+
 // Serve static assets
 app.use('/storage', express.static(STORAGE_PATH));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -310,6 +319,66 @@ app.get('/api/audit-log', async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM audit_log ORDER BY id DESC LIMIT 50');
     res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 11. Workflow API
+app.get('/api/workflow', async (req, res) => {
+  try {
+    const workflowPath = path.resolve(__dirname, '../../workflows/HME_Content_Pipeline.json');
+    let workflowJson = {};
+    if (fs.existsSync(workflowPath)) {
+      workflowJson = JSON.parse(fs.readFileSync(workflowPath, 'utf8'));
+    }
+
+    let dbWorkflow = null;
+    try {
+      const { rows } = await n8nPool.query(
+        'SELECT id, name, active, "updatedAt" FROM workflow_entity WHERE id = $1 LIMIT 1',
+        ['d3j0Kr9koCQFlRIG']
+      );
+      if (rows.length > 0) {
+        dbWorkflow = rows[0];
+      }
+    } catch (dbErr) {
+      console.warn('[Web API] Query n8n DB error:', dbErr.message);
+    }
+
+    res.json({
+      id: dbWorkflow ? dbWorkflow.id : 'd3j0Kr9koCQFlRIG',
+      name: dbWorkflow ? dbWorkflow.name : 'Homeless Media Engine - Content Pipeline',
+      active: dbWorkflow ? dbWorkflow.active : false,
+      updated_at: dbWorkflow ? dbWorkflow.updatedAt : null,
+      canvas_url: 'https://n8n.avenia.my.id/workflow/d3j0Kr9koCQFlRIG',
+      json: workflowJson,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/workflow/toggle', async (req, res) => {
+  const { active } = req.body;
+  try {
+    const isActive = Boolean(active);
+    await n8nPool.query(
+      'UPDATE workflow_entity SET active = $1, "updatedAt" = NOW() WHERE id = $2',
+      [isActive, 'd3j0Kr9koCQFlRIG']
+    );
+
+    // Reload / restart n8n to apply schedule triggers cleanly
+    exec('systemctl restart hme-n8n', (err) => {
+      if (err) console.error('[Web API] Failed to restart hme-n8n:', err);
+    });
+
+    await pool.query(
+      "INSERT INTO audit_log (entity, entity_id, action, actor, payload) VALUES ('workflow', 1, $1, 'web_admin', $2)",
+      [isActive ? 'activated' : 'deactivated', JSON.stringify({ active: isActive })]
+    );
+
+    res.json({ status: 'success', active: isActive });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

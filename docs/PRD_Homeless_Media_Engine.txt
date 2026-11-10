@@ -1,0 +1,1839 @@
+PRODUCT REQUIREMENTS DOCUMENT · V2.0
+
+HOMELESS MEDIA
+ENGINE
+Sistem otomasi konten self-hosted untuk akun niche
+data, hukum, dan ekonomi bursa. Empat agen AI
+berjalan di atas orkestrasi n8n — mengubah puluhan
+sumber resmi menjadi draf carousel tersaring skor,
+menunggu satu persetujuanmu di Telegram.
+
+Homeless Media
+Dokumen produk internal · ditulis untuk pengembangan berbantuan AI
+
+NOVEMBER 2026 · V2.0 · HYBR I D N8N · S EL F-HOS T ED
+
+PRD - Homeless Media Engine
+
+Daftar Isi
+1. Ringkasan Eksekutif
+
+1
+
+2. Latar Belakang & Masalah
+
+2
+
+3. Niche & Strategi Konten
+
+3
+
+4. Visi, Tujuan & Metrik Keberhasilan
+
+4
+
+5. Pengguna & User Stories
+
+5
+
+6. Spesifikasi Fitur: Empat Agen & Alur Approval
+
+7
+
+6.0 Pipeline Estafet Secara Menyeluruh . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 7
+6.1 Agen Scout — Memantau Sumber Niche Tanpa Henti . . . . . . . . . . . . . . . . . . . . . . . . . . 8
+6.2 Agen Analis — Skor 0–100 sebagai Gerbang . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 9
+6.3 Agen Copywriter — Suara Data-Editorial dalam Bentuk Teks . . . . . . . . . . . . . . . . . . . . . . 11
+6.4 Agen Designer — Render Service Deterministik, Bukan AI Gambar . . . . . . . . . . . . . . . . . . 11
+6.5 Approval Telegram — Satu Pintu Sejak Hari Pertama . . . . . . . . . . . . . . . . . . . . . . . . . . 12
+6.6 Publishing & Jadwal — Hybrid Sesuai Risiko Konten . . . . . . . . . . . . . . . . . . . . . . . . . . 12
+
+7. Sistem Desain Anti-Slop
+
+13
+
+7.1 Design Tokens — Satu Berkas, Seluruh Gaya . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 13
+7.2 Pustaka Template — Format Konten Jadi Layout . . . . . . . . . . . . . . . . . . . . . . . . . . . . 14
+7.3 Dua Jalur Mengubah Gaya: Manual dan AI Design Director . . . . . . . . . . . . . . . . . . . . . . . 14
+7.4 Aturan Anti-Slop yang Dikunci di Sistem . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 15
+
+8. Arsitektur Opsi B: Hybrid n8n + Render Service
+
+16
+
+8.1 Keputusan Arsitektur: Mengapa Hybrid . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 17
+
+9. Desain Database PostgreSQL
+
+18
+
+10. Integrasi & Kontrak API
+
+20
+
+11. Keamanan, Privasi & Kepemilikan Data
+
+20
+
+12. Estimasi Biaya Operasional
+
+21
+
+13. Roadmap Pengembangan
+
+22
+
+14. Risiko & Mitigasi
+
+23
+
+Homeless Media · PRD v2.0
+
+i
+
+PRD - Homeless Media Engine
+
+1. Ringkasan Eksekutif
+Homeless Media Engine (HME) adalah aplikasi self-hosted yang mengotomatiskan seluruh alur
+kerja konten akun Instagram Homeless Media — akun niche data, hukum, dan ekonomi dengan
+fokus bursa saham, termasuk politik domestik dan internasional sejauh memengaruhi pasar. Di
+dalamnya bekerja empat agen AI secara estafet: Scout memantau sumber-sumber resmi — BPS,
+Bank Indonesia, IDX, OJK, JDIH, media pasar — setiap 30 menit, Analis memberi skor 0–100 dan
+menggugurkan topik lemah secara otomatis, Copywriter menulis teks slide, caption, dan hashtag
+dengan gaya data-editorial yang selalu menyertakan sumber, dan Designer merender desain dari
+template brand melalui render service deterministik. Semua draf mendarat di satu antrian dan
+disetujui lewat Telegram — tidak ada satu pun konten tayang tanpa persetujuan eksplisit admin.
+
+2–4
+
+3–4 minggu
+
+4
+
+100%
+
+konten tayang per hari
+
+menuju MVP berjalan
+
+agen AI bergantian kerja
+
+data milikmu sendiri
+
+Dokumen ini adalah revisi kedua (v2.0) yang mengunci keputusan arsitektur pada opsi hybrid: orkestrasi
+memakai n8n Community (self-hosted, gratis untuk pemakaian internal), sementara satu-satunya
+komponen kustom adalah micro-service render berbasis satori dan sharp. Keputusan ini memangkas
+estimasi pengembangan dari 8–13 minggu menjadi 3–4 minggu, menurunkan kebutuhan RAM dari 2–3
+GB menjadi sekitar 1–1,5 GB, dan tetap memenuhi seluruh syarat produk — termasuk sistem desain
+yang bisa diubah secara manual maupun oleh agen AI tanpa jatuh menjadi AI slop. Alasan lengkap
+perbandingan ketiga opsi arsitektur dibahas pada Bab 8.
+HME sengaja dirancang bukan sebagai layanan langganan. Seluruh sistem berjalan di server milik
+sendiri — mesin Debian CLI di rumah — dalam empat kontainer Docker Compose yang diakses aman
+melalui Cloudflare Tunnel. Database PostgreSQL, file gambar, template desain, dan workflow n8n
+semuanya tersimpan lokal dan bisa diekspor kapan saja: workflow diekspor ke Git, database ke dump
+SQL, aset ke arsip PNG. Tidak ada telemetri, tidak ada vendor lock, dan tidak ada data konten yang
+keluar dari rumah kecuali teks topik yang memang perlu diproses oleh API AI.
+Dokumen ini menetapkan niche dan strategi konten, user story, spesifikasi empat agen, sistem desain
+anti-slop, arsitektur hybrid, skema database PostgreSQL, kontrak API, estimasi biaya, roadmap empat
+fase (3–4 minggu), serta risiko dan mitigasinya — setiap fase dengan kriteria keluar terukur sehingga bisa
+dieksekusi bertahap lewat konfigurasi workflow n8n dan diverifikasi oleh satu orang reviewer.
+
+Aturan emas HME
+AI memproduksi, manusia memutuskan. Tidak ada konten yang naik tanpa disetujui dulu — aturan ini
+berlaku pada level arsitektur, bukan hanya kebiasaan.
+
+Homeless Media · PRD v2.0
+
+1
+
+PRD - Homeless Media Engine
+
+2. Latar Belakang & Masalah
+Admin Homeless Media hari ini menjalankan empat pekerjaan manual yang berulang setiap hari. Pagi
+dimulai dengan membuka belasan tab: rilis BPS dan Bank Indonesia, portal pasar, trending X, dan kanal
+Telegram — memindai satu per satu mencari topik yang layak dikontenkan. Setelah topik ditemukan,
+berita tersebut harus ditulis ulang menjadi versi khas akun, dilengkapi caption dan hashtag. Berikutnya
+carousel didesain slide demi slide, dan terakhir dipilih jam posting yang tepat. Seluruh siklus ini
+memakan 2–3 jam per hari, dan yang paling melelahkan justru bagian yang tidak pernah menghasilkan
+konten apa pun: proses menyaring berita yang ujung-ujungnya banyak yang tidak dipakai.
+Konsekuensinya, topik bagus sering lewat karena terlewat di antara puluhan sumber, ritme posting tidak
+konsisten, dan kualitas desain naik-turun bergantung sisa energi. Tool SaaS penjadwal plus AI writer bisa
+membantu, tetapi membawa biaya langganan yang terus berjalan, data yang tertahan di pihak ketiga, dan
+gaya bahasa generik yang tidak terdengar seperti akun data-hukum-ekonomi yang serius.
+HME membalik urutan kerjanya: penyaringan dilakukan lebih dulu oleh model AI yang murah, dan
+produksi konten hanya dijalankan untuk topik yang lolos skor — waktu review maupun biaya token tidak
+pernah dibuang untuk berita yang tidak akan dipakai. Tabel berikut memetakan setiap masalah ke
+solusinya.
+
+Penanggung
+jawab
+
+Masalah harian
+
+Dampak
+
+Solusi di HME
+
+Mantau puluhan sumber
+tiap pagi
+
+1–1,5 jam hanya untuk
+mencari; topik mudah
+lolos
+
+Polling otomatis semua sumber tiap
+30 menit dengan dedup
+
+Agen Scout
+
+Nulis ulang + caption +
+hashtag
+
+30–60 menit menulis;
+gaya tidak konsisten
+
+Draf carousel, caption, dan hashtag
+dari brand voice profile
+
+Agen Copywriter
+
+Desain carousel satu per
+satu
+
+30–60 menit per konten;
+kualitas naik-turun
+
+Render otomatis dari template
+brand via render service
+
+Agen Designer
+
+Mikirin jam posting
+
+Jam tayang tidak optimal,
+sering lupa
+
+Jadwal jam optimal otomatis +
+reminder Telegram
+
+Node schedule n8n
+
+Berita dicek tapi tidak
+terpakai
+
+Waktu dan biaya token
+terbuang
+
+Skor 0–100 lebih dulu; hanya topik
+lolos yang diproduksi
+
+Agen Analis
+
+Tabel 1. Pemetaan masalah operasional ke solusi HME.
+
+Tiga prinsip desain yang memandu semua keputusan teknis
+1) AI memproduksi, manusia memutuskan. 2) Saring dulu, baru produksi — topik lemah tidak pernah
+menyentuh model mahal. 3) Satu pintu review — semua keputusan lewat satu antrian, bukan tersebar
+di beberapa aplikasi.
+
+Homeless Media · PRD v2.0
+
+2
+
+PRD - Homeless Media Engine
+
+3. Niche & Strategi Konten
+Versi 2.0 menajamkan teritori konten Homeless Media menjadi satu identitas yang jelas: data, hukum,
+dan ekonomi — dengan ekonomi berfokus pada bursa saham, serta politik domestik dan internasional
+sejauh memengaruhi ekonomi. Pilihan niche ini bukan sekadar selera, melainkan keputusan strategis
+yang pasangan sempurna untuk pipeline otomatis: data statistik punya sumber primer resmi yang rutin
+menerbitkan rilis, regulasi punya dokumen resmi yang bisa dikutip verbatim, dan pergerakan pasar punya
+angka yang bisa digrafikkan. Artinya, hampir semua konten terbaik niche ini lahir dari struktur — bukan
+dari kebetulan viral — dan struktur adalah hal yang paling bisa diotomasi dengan aman.
+Fokus pada sumber primer sekaligus menjadi tameng reputasi. Akun keuangan hidup dari kepercayaan:
+satu angka salah atau satu kutipan pasal yang melenceng bisa meruntuhkan kredibilitas yang dibangun
+berbulan-bulan. Karena itu Scout memprioritaskan sumber resmi (BPS, BI, IDX, OJK, JDIH) sebagai
+pemicu topik, media pasar sekunder (Kontan, Bisnis Indonesia, CNBC Indonesia) dipakai untuk
+momentum dan kutipan analis, dan Analis menilai kredibilitas sumber sebagai komponen skor tersendiri.
+Hasilnya, sebagian besar draf lahir dari bahan yang bisa diverifikasi siapa pun lewat tautan resmi.
+
+Pilar
+
+Cakupan
+
+Contoh konten khas
+
+Data & statistik
+
+Inflasi, PDB, BI rate, cadangan devisa,
+pengangguran (BPS, BI, OJK)
+
+Stat card: inflasi 2,12% dan tiga pemicu
+utamanya
+
+Bursa saham
+
+IHSG, sektor, IPO, arus dana asing, ritel vs asing
+
+Chart card: IHSG turun 1,8% dan tiga
+pemicunya
+
+Hukum &
+regulasi
+
+UU, PP, POJK, putusan MK, kebijakan fiskal
+(JDIH, siaran pers)
+
+Explainer: 5 poin POJK baru soal pasar modal
+
+Politik &
+geopolitik
+
+Anggaran, perang dagang, tarif, konflik,
+komoditas dunia
+
+Timeline: tarif naik dan sektor yang kena
+
+Tabel 2. Empat pilar konten akun beserta cakupan dan contoh khasnya.
+
+Niche ini juga menentukan format carousel. Enam format khas dipakai berulang sehingga audiens cepat
+mengenali dan produksi tetap efisien: stat card (satu angka besar sebagai hook), chart card (grafik
+sederhana dengan sumber tercetak), explainer regulasi (poin bernomor dari satu pasal atau aturan),
+timeline kebijakan (kronologi singkat), perbandingan (sebelum-sesudah atau dampak per sektor), dan
+market wrap (rangkuman harian pasar dalam 3–4 angka). Setiap format dipetakan satu-satu ke layout
+template di Bab 7, sehingga Copywriter tidak pernah menggambar bebas — ia memilih format dan
+mengisinya dengan data.
+Konten pasar dan hukum punya risiko kepatuhan yang tidak dimiliki konten hiburan, dan tiga aturan
+berlaku mutlak tanpa bisa dilewati agen mana pun: akun tidak pernah memberi rekomendasi membeli
+
+Homeless Media · PRD v2.0
+
+3
+
+PRD - Homeless Media Engine
+
+atau
+
+menjual
+
+saham
+
+spesifik;
+
+caption
+
+konten
+
+pasar
+
+wajib
+
+menyertakan
+
+disclaimer
+
+bukan-nasihat-keuangan dan konten hukum bukan-nasihat-hukum; serta setiap angka wajib punya
+sumber primer yang disebut di slide. Aturan ini dieksekusi di gate Analis (Bab 6.2) dan dikunci di prompt
+Copywriter (Bab 6.3).
+
+Kepatuhan konten finansial
+Angka harus punya sumber, pasal harus dikutip verbatim, dan tidak pernah ada rekomendasi beli-jual.
+Tiga aturan ini adalah fondasi kepercayaan akun.
+
+4. Visi, Tujuan & Metrik Keberhasilan
+Visi produk HME sederhana: setiap pagi, admin membuka Telegram, menyapu daftar draf yang sudah
+tersaring skor, menyetujui yang cocok, mengedit yang hampir cocok, dan menolak yang tidak pas — lalu
+menutup HP dengan konten hari itu sudah aman. Seluruh keputusan arsitektur dan fitur di dokumen ini
+diuji dengan satu pertanyaan: apakah ini mendekatkan kita ke pagi seperti itu?
+Agar visi tidak berhenti sebagai slogang, tujuan produk diturunkan menjadi target terukur: konsistensi
+tayang 2–4 konten per hari; waktu kerja konten harian di bawah 20 menit; rasio persetujuan draf minimal
+50 persen sebagai tanda filter skor yang sehat; nol konten tayang tanpa persetujuan; dan biaya operasional
+bulanan di bawah Rp300 ribu agar selalu lebih murah daripada langganan SaaS padanannya.
+
+Buka Telegram sambil ngopi, sapu tombol approve yang cocok — konten hari itu
+aman.
+Sama pentingnya, dokumen ini menetapkan non-goals agar ruang lingkup tidak melebar: versi 1.0 tidak
+menangani multi-platform (hanya Instagram), tidak mendukung multi-brand atau tim multi-user, tidak
+menyediakan mode autopost tanpa review, dan tidak memproses video atau Reels. Dashboard web penuh
+sengaja ditunda ke Fase 4 — pada fase awal review berjalan penuh di Telegram — dan sisanya masuk
+kandidat versi 2 setelah pipeline stabil berjalan beberapa bulan.
+
+Metrik
+
+Cara ukur
+
+Baseline (manual)
+
+Target 90 hari
+
+Waktu kerja konten per hari
+
+Catatan harian admin
+
+2–3 jam
+
+Di bawah 20 menit
+
+Frekuensi posting
+
+Statistik akun IG
+
+1–2/hari, tidak teratur
+
+2–4/hari konsisten
+
+Topik dievaluasi per hari
+
+Hitungan topic_scores
+
+±10 (manual)
+
+40–80 (otomatis)
+
+Rasio draf di-approve
+
+approved ÷ total draf
+
+Belum diukur
+
+≥ 50%
+
+Konten tayang tanpa
+approval
+
+Audit log
+
+0 (berkat disiplin)
+
+0 (dijamin arsitektur)
+
+Homeless Media · PRD v2.0
+
+4
+
+PRD - Homeless Media Engine
+
+Metrik
+
+Cara ukur
+
+Biaya operasional bulanan
+
+agent_runs + tagihan API
+
+Baseline (manual)
+Rp0 + 2–3 jam waktu
+
+Target 90 hari
+≤ Rp300 ribu
+
+Tabel 3. Metrik keberhasilan: baseline manual versus target 90 hari pertama.
+
+5. Pengguna & User Stories
+Versi 1.0 sengaja melayani satu peran saja: ADMIN — pemilik akun Homeless Media yang sekaligus
+bertindak sebagai kurator, editor, dan penerbit. Persona ini menjaga desain tetap sederhana: satu nomor
+bot, satu antrian, dan hanya tiga keputusan per draf — setujui, edit lalu setujui, atau tolak — yang
+dilayani seluruh fitur lain. Berikut sepuluh user story inti beserta kriteria penerimaannya; setiap story
+menjadi dasar acceptance test pada roadmap di Bab 13.
+
+US-01 — Menemukan topik tanpa scroll manual
+Sebagai admin, saya ingin Scout memantau semua sumber setiap 30 menit sehingga saya tidak perlu
+membuka belasan tab rilis dan portal pasar setiap pagi.
+– Semua sumber aktif dipolling maksimal setiap 35 menit.
+– Item duplikat (URL atau judul serupa) tidak pernah muncul dua kali.
+– Topik baru masuk pipeline maksimal 5 menit setelah sumber menerbitkan.
+
+US-02 — Topik lemah tidak pernah sampai ke saya
+Sebagai admin, saya ingin setiap topik diberi skor 0–100 dan yang rendah gugur otomatis, sehingga yang
+sampai ke Telegram hanya topik berpeluang rame dan kredibel.
+– Topik di bawah ambang tidak masuk antrian produksi; skor dan alasannya tersimpan.
+– Topik gugur tetap bisa dilihat dan dipromosikan manual bila saya berbeda pendapat.
+
+US-03 — Review 20 draf dalam 15–20 menit
+Sebagai admin, saya ingin draf tiba di Telegram berisi preview carousel dan tombol keputusan sehingga
+saya bisa memutuskan dalam dua klik per draf dari HP.
+– Setiap draf mengirim album gambar plus caption dengan tiga tombol: Setujui, Edit, Tolak.
+– Tolak wajib alasan singkat via quick reply; semua keputusan tercatat di audit_log.
+– Sejak Fase 4, dashboard web menyediakan scroll massal, filter skor, dan pintasan keyboard.
+
+Homeless Media · PRD v2.0
+
+5
+
+PRD - Homeless Media Engine
+
+US-04 — Edit ringan tanpa aplikasi desain
+Sebagai admin, saya ingin memperbaiki satu angka atau satu kata lalu merender ulang tanpa membuka
+Canva.
+– Edit via Telegram: kirim teks pengganti atas slide atau caption yang ditandai.
+– Render ulang satu slide selesai di bawah 10 detik; versi sebelumnya tersimpan di riwayat.
+
+US-05 — Jadwal dan publikasi fleksibel
+Sebagai admin, saya ingin memilih saat approve: auto-post di jam optimal atau mode manual dengan
+reminder, tergantung isi kontennya.
+– Approve menyediakan dua mode: auto (Meta Graph API) atau manual (reminder Telegram).
+– Auto-publish menjalankan retry 3 kali ber-jeda bertingkat; kegagalan mengirim notifikasi dan status
+
+menjadi failed.
+
+US-06 — Tahu kabar sistem tanpa membuka apa pun
+Sebagai admin, saya ingin bot Telegram memberi tahu saat draf baru siap, konten sudah terbit, atau
+sistem bermasalah.
+– Notifikasi harian: jumlah draf menunggu, terbit, dan gagal.
+– Error pipeline mengirim pesan dalam 5 menit; reminder manual menyertakan gambar dan caption
+
+siap salin.
+
+US-07 — Gaya bahasa akun tetap khas
+Sebagai admin, saya ingin sistem belajar dari caption-caption lama yang saya anggap paling khas,
+sehingga hasil AI tidak terdengar generik.
+– Brand settings menyimpan contoh caption terpilih, kata khas, dan kata terlarang.
+– Copywriter selalu memakai brand voice profile terbaru; contoh bisa saya ganti kapan saja.
+
+US-08 — Data milikku dan bisa dibawa pergi
+Sebagai admin, saya ingin seluruh data ter-backup otomatis dan bisa direstorasi di server lain tanpa proses
+rumit.
+– Backup database harian ke NAS dengan retensi 7 harian dan 4 mingguan.
+– Workflow n8n diekspor otomatis ke repo Git setiap kali berubah.
+– Ekspor satu perintah menghasilkan paket SQL plus seluruh file PNG.
+
+Homeless Media · PRD v2.0
+
+6
+
+PRD - Homeless Media Engine
+
+US-09 — Mengganti gaya desain secara manual
+Sebagai admin, saya ingin mengubah palet warna, pasangan font, dan aturan layout lewat satu berkas
+design tokens, sehingga identitas desain bisa di-refresh tanpa menyentuh kode.
+– tokens.yaml adalah satu-satunya sumber kebenaran gaya; semua template mengikutinya.
+– Setiap perubahan token memicu render preview seluruh layout sebelum diaktifkan.
+– Perubahan gaya terversi di Git dan bisa dikembalikan dengan satu perintah.
+
+US-10 — AI mengusulkan arah desain tanpa menjadi AI slop
+Sebagai admin, saya ingin agen AI mengusulkan varian gaya — misalnya nuansa khusus peliputan APBN
+— tetapi tetap dalam batas sistem desain yang sudah ditetapkan.
+– AI Design Director hanya boleh mengubah nilai token atau memilih template dari pustaka.
+– Setiap usulan dirender preview dan dikirim ke Telegram; aktif hanya setelah persetujuan.
+
+6. Spesifikasi Fitur: Empat Agen & Alur
+Approval
+6.0 Pipeline Estafet Secara Menyeluruh
+Keempat agen bekerja seperti estafet: Scout menyerahkan bahan mentah ke Analis, Analis meneruskan
+hanya yang lolos ke Copywriter, Copywriter menyerahkan teks ke Designer, dan hasil akhirnya
+menunggu di antrian sampai admin memutuskan. Setiap tangan menerima input dan output terstruktur
+sehingga setiap tahap bisa diuji, diulang, dan dimonitor secara terpisah. Seluruh estafet hidup sebagai
+workflow n8n — kecuali render service yang menjadi satu-satunya layanan kustom — sehingga
+penjadwalan, retry, dan penanganan error memakai mekanisme bawaan n8n. Gambar berikut merangkum
+alurnya, termasuk posisi gate skor yang menjadi kunci efisiensi biaya.
+
+Homeless Media · PRD v2.0
+
+7
+
+PRD - Homeless Media Engine
+
+Gambar 1. Pipeline estafet empat agen di atas orkestrasi n8n, dari sumber niche hingga publikasi.
+
+6.1 Agen Scout — Memantau Sumber Niche Tanpa Henti
+Scout adalah pekerja paling rajin di sistem: setiap 30 menit node schedule n8n memicu penarikan isi
+semua sumber aktif secara paralel, dengan batas waktu per sumber agar satu portal lambat tidak menahan
+yang lain. Setiap item dinormalisasi menjadi bentuk standar — judul, ringkasan 2–3 kalimat, URL
+sumber, waktu terbit, dan angka intinya bila ada. Dedup berlapis mencegah topik kembar: hash unik
+URL, lalu kemiripan judul (pg_trgm, ambang 0,85) untuk menangkap media yang menyalin berita sama
+dengan judul berbeda. Hasilnya disimpan sebagai raw_items, lalu yang lolos dinaikkan menjadi topics
+berstatus baru, siap diskor — daftar sumbernya mengikuti niche Bab 3 dengan prioritas sumber primer:
+
+Sumber
+
+Metode ambil
+
+Catatan & risiko
+
+BPS (bps.go.id)
+
+RSS siaran pers & rilis data
+
+Sumber primer statistik; jadwal rilis teratur —
+pemicu topik terbaik
+
+Bank Indonesia (bi.go.id)
+
+RSS siaran pers
+
+BI rate, cadangan devisa, kebijakan moneter; teks
+resmi siap kutip
+
+IDX & Bursa Efek
+Indonesia
+
+Halaman pengumuman + data
+pasar via agregator
+
+Sumber primer pasar; parsing disesuaikan bila
+struktur halaman berubah
+
+OJK (ojk.go.id)
+
+RSS siaran pers & regulasi
+
+Regulasi sektor keuangan; volume rendah, kualitas
+tinggi
+
+JDIH & peraturan.go.id
+
+RSS peraturan
+
+Sumber primer hukum; metadata lengkap untuk
+kutipan verbatim
+
+Homeless Media · PRD v2.0
+
+8
+
+PRD - Homeless Media Engine
+
+Sumber
+
+Metode ambil
+
+Catatan & risiko
+
+Mahkamah Konstitusi
+
+RSS putusan & siaran pers
+
+Momentum besar saat sidang penting; frekuensi
+rendah
+
+Kontan, Bisnis Indonesia,
+CNBC Indonesia
+
+RSS
+
+Momentum dan kutipan analis; sebagian artikel
+berpaywall
+
+Reuters & BBC (kanal
+ekonomi)
+
+RSS
+
+Driver internasional; berbahasa Inggris — Copywriter
+menyesuaikan bahasa
+
+Google News
+
+RSS per kata kunci (10–15
+query: IHSG, POJK, APBN,
+tarif)
+
+Cakupan luas; butuh kurasi query agar tidak bising
+
+Reddit r/indonesia + X via
+agregator
+
+JSON publik / RSS agregator
+
+Sentimen publik; opsional di v1 — API X resmi
+mahal, agregator bisa tidak stabil
+
+Tabel 4. Daftar sumber niche yang dipantau Scout beserta metode dan catatan risikonya.
+
+6.2 Agen Analis — Skor 0–100 sebagai Gerbang
+Analis mengubah banjir topik menjadi antrian pendek yang layak dibaca. Untuk setiap topik, satu
+panggilan model AI murah (kelas Gemini Flash atau GPT-4o-mini) menerima isi topik ditambah konteks
+brand — deskripsi niche Bab 3, daftar kata kunci, dan daftar sumber tepercaya — lalu mengembalikan
+JSON berisi skor per komponen, verdict, dan alasan singkat maksimal 40 kata. Skor total 0–100 dihitung
+dari lima komponen berbobot yang menyesuaikan niche: relevansi niche, kualitas data dan kredibilitas
+sumber, momentum, potensi interaksi, serta keamanan dan kepatuhan. Aturan gagal-cepat berjalan lebih
+dulu tanpa LLM: duplikat topik 7 hari terakhir, pola pump-and-dump atau ajakan membeli saham
+spesifik, klaim pasar tanpa sumber, klaim hukum tanpa sumber primer, SARA, dan klaim medis
+sensasional langsung gugur — hemat biaya sekaligus memastikan filter kepatuhan tidak bergantung pada
+model.
+
+Homeless Media · PRD v2.0
+
+9
+
+PRD - Homeless Media Engine
+
+Gambar 2. Bobot lima komponen skor Agen Analis (total 100 poin).
+
+Komponen
+
+Bobot
+
+Apa yang dinilai
+
+Contoh pemicu gagal-cepat
+
+Relevansi niche
+
+30 poin
+
+Kedekatan dengan data, hukum, bursa,
+atau politik yang menggerakkan pasar
+
+Berita olahraga atau hiburan tanpa sisi
+ekonomi
+
+Kualitas data &
+kredibilitas
+
+25 poin
+
+Ada angka yang bisa diverifikasi;
+sumber primer versus rumor
+
+Klaim tanpa sumber; angka dari
+tangkapan layar anonim
+
+Momentum &
+kesegaran
+
+20 poin
+
+Umur berita, arah tren, jadwal rilis
+resmi
+
+Berita 3 hari lalu; rilis lama yang
+resirkulasi
+
+Potensi interaksi
+
+15 poin
+
+Relevansi dompet pembaca, daya
+pancing diskusi sehat
+
+Berita administratif tanpa sisi manusia
+
+Keamanan &
+kepatuhan
+
+10 poin
+
+Risiko hoaks, pump-dump, SARA
+politik, batas kebijakan IG
+
+Ajakan membeli saham tertentu; konten
+grafis kekerasan
+
+Tabel 5. Rubrik penilaian Agen Analis beserta contoh pemicu gagal-cepat.
+
+Ambang kelulusan default adalah 70 dan bisa diubah kapan saja; pada bulan-bulan awal disarankan 75
+agar lebih selektif sementara prompt masih dalam kalibrasi. Topik yang gugur tidak dibuang gelap:
+statusnya menjadi rejected bersama alasannya, tampil di tab Topik Gugur, dan bisa dipromosikan manual
+oleh admin yang berbeda pendapat — setiap promosi manual tercatat sebagai bahan kalibrasi mingguan.
+Dua indikator kesehatan dipantau: rasio lolos harian (ideal 10–25 persen) dan korelasi skor dengan
+performa posting nyata.
+
+Homeless Media · PRD v2.0
+
+10
+
+PRD - Homeless Media Engine
+
+6.3 Agen Copywriter — Suara Data-Editorial dalam Bentuk Teks
+Copywriter hanya menerima topik yang lolos gate, sehingga model flagship yang lebih mahal tidak
+pernah terbuang untuk bahan lemah. Input ia terima mencakup topik terpilih plus brand voice profile:
+5–10 contoh caption terbaik pilihan admin, kata khas, kata terlarang, dan aturan gaya data-editorial —
+netral, edukatif, angka di depan. Untuk niche ini prompt menambahkan tiga larangan keras: tidak
+menambah fakta di luar sumber, tidak memberi rekomendasi beli-jual, dan tidak menebak isi pasal —
+kutipan regulasi wajib verbatim dari bahan Scout. Output wajib JSON terstruktur berikut; perhatikan
+blok data yang membuat chart card menjadi mungkin:
+
+{
+"slides": [
+{"no": 1, "layout": "cover-stat",
+"teks": "Inflasi Agustus 2,12%", "data": {"unit": "YoY"}},
+{"no": 2, "layout": "chart-line", "teks": "Tren 12 bulan terakhir",
+"data": {"labels": ["Mar","Apr","Mei","Jun","Jul","Agu"],
+"values": [3.05, 2.87, 2.84, 2.51, 2.37, 2.12],
+"source": "BPS"}},
+{"no": 3, "layout": "regulasi", "teks": "Poin pentingnya..."},
+{"no": 4, "layout": "timeline", "teks": "Kronologi singkat..."},
+{"no": 5, "layout": "cta-close", "teks": "Ikuti untuk konten data harian"}
+],
+"caption": "Hook 2 kalimat + isi 150-300 kata + disclaimer",
+"hashtags": {"branded": ["#HomelessMedia"],
+"niche": ["#IHSG", "#Inflasi"], "trending": []}, // 15-25 tag
+"alt_text": "Deskripsi gambar untuk aksesibilitas",
+"disclaimer": "keuangan",
+// atau "hukum" | null
+"needs_review": false
+}
+
+Tiga pengaman menjaga kualitas. Pertama, anti-halusinasi: bila angka yang dibutuhkan tidak ada di
+bahan, model wajib menandai needs_review alih-alih mengarang — draf bertanda ini muncul dengan
+sorotan khusus. Kedua, kutipan pasal harus verbatim dan disclaimer disisipkan otomatis sesuai field
+disclaimer. Ketiga, hasil yang gagal diparse sebagai JSON diulang maksimal dua kali sebelum ditandai
+untuk ditinjau. Carousel fleksibel 5–8 slide dengan urutan naratif standar: hook angka, konteks, bukti
+(chart atau pasal), implikasi, lalu penutup ber-CTA plus disclaimer.
+
+6.4 Agen Designer — Render Service Deterministik, Bukan AI
+Gambar
+Designer di HME sengaja bukan generator gambar AI dan bukan pula LLM — ia adalah render service
+deterministik yang dirinci di Bab 7 dan 8. Desain dibuat dari pustaka template yang mengonsumsi design
+tokens; service merender dengan satori (JSX menjadi SVG tanpa browser) lalu sharp (SVG menjadi PNG
+berukuran 1080 × 1350 piksel, rasio 4:5 optimal untuk feed Instagram). Pendekatan ini menghabiskan
+sekitar 30 MB RAM per render — dibanding 500 MB lebih bila memakai Chromium — menghasilkan
+output yang identik saat dirender ulang, dan berbiaya nol per gambar. Blok data dari Copywriter dirender
+menjadi chart card bergaya flat: bar dan line sederhana dengan gridline putus-putus dan sumber tercetak
+
+Homeless Media · PRD v2.0
+
+11
+
+PRD - Homeless Media Engine
+
+di kaki slide.
+Pengaman utama Designer adalah auto-fit: setiap slot teks punya kapasitas karakter yang dihitung dari
+ukuran font; bila teks meluap, ukuran diturunkan bertahap sampai batas keterbacaan, dan bila tetap tidak
+muat slide ditandai needs_review alih-alih dipotong diam-diam. Template dan tokens tersimpan sebagai
+berkas di dalam volume sehingga bisa diperbarui tanpa deploy ulang, dan setiap perubahan gaya otomatis
+memicu render ulang preview.
+
+6.5 Approval Telegram — Satu Pintu Sejak Hari Pertama
+Pada versi 2.0, pintu review adalah bot Telegram — berjalan sejak hari pertama tanpa satu baris pun
+kode frontend. Draf baru dikirim sebagai album gambar carousel plus caption, hashtag, dan alasan skor,
+dilengkapi tiga tombol inline: Setujui (memilih mode auto atau manual beserta jadwal), Edit (memandu
+kirim teks pengganti per slide atau caption), dan Tolak (alasan wajib via quick reply, masuk log
+kalibrasi). Keamanan dijaga whitelist chat_id plus validasi setiap callback. Untuk sesi review massal —
+20 draf dalam 15–20 menit — dashboard web menyusul di Fase 4 dengan scroll, filter skor, dan pintasan
+keyboard.
+
+6.6 Publishing & Jadwal — Hybrid Sesuai Risiko Konten
+Setelah approve, admin memilih salah satu dari dua jalur. Jalur auto memakai Meta Graph API (syarat:
+akun IG Business atau Creator yang terhubung Facebook Page) untuk menerbitkan carousel di jam
+optimal — default 07.00, 12.00, 18.00, dan 21.00 WIB yang bisa diatur — dengan penjaga jarak minimal
+3 jam antar posting dan retry tiga kali ber-jeda bertingkat. Jalur manual mengirim reminder Telegram
+berisi seluruh file PNG dan caption siap salin, lalu admin menandai konten sebagai tayang. Kombinasi ini
+menjaga sistem tetap berjalan bahkan ketika API Meta sedang bermasalah atau token kedaluwarsa.
+
+Status
+
+Arti
+
+Transisi selanjutnya
+
+draft
+
+Draf baru selesai diproduksi render service
+
+approved atau rejected (hanya via admin)
+
+approved
+
+Disetujui admin; menunggu jadwal
+
+scheduled (auto) atau published (manual)
+
+scheduled
+
+Masuk antrean jam tayang
+
+published saat jadwal tiba; failed bila API
+menolak
+
+published
+
+Tayang di Instagram
+
+Status akhir; metric performa dicatat
+
+rejected
+
+Ditolak admin dengan alasan
+
+Status akhir; masuk log kalibrasi
+
+failed
+
+Gagal publish setelah retry
+
+Notifikasi Telegram; bisa dijadwalkan ulang
+
+Tabel 6. Mesin status draf: setiap perpindahan status tercatat di audit_log.
+
+Homeless Media · PRD v2.0
+
+12
+
+PRD - Homeless Media Engine
+
+Hard rule publikasi
+Tidak ada node mana pun di workflow yang dapat menerbitkan draf dengan status selain approved.
+Mesin status ini diuji otomatis pada setiap rilis.
+
+7. Sistem Desain Anti-Slop
+Persyaratan paling penting dari pendirian produk ini: desain harus punya identitas autentik dan bisa
+berubah — secara manual maupun lewat AI — tanpa jatuh menjadi AI slop. Akar AI slop adalah
+generasi bebas: layout atau gambar dibuat dari nol oleh model setiap kali, sehingga hasilnya generik,
+inkonsisten, dan mudah dikenali sebagai “buatan AI”. HME membalik arahnya: identitas desain hidup di
+dalam sistem — design tokens dan pustaka template yang ditetapkan manusia — dan AI hanya
+mengisinya atau mengusulkan perubahan di dalam batas sistem. Desain menjadi keputusan yang tidak
+acak: setiap slide yang tayang selalu konsisten dengan brand, dan setiap perubahan gaya terjadi secara
+sadar lewat approval.
+
+7.1 Design Tokens — Satu Berkas, Seluruh Gaya
+Satu berkas tokens.yaml menjadi sumber kebenaran seluruh gaya: palet warna, pasangan font, skala
+tipografi, grid, dan gaya chart. Semua template tanpa kecuali mengonsumsi token — tidak ada satu pun
+warna atau ukuran yang diketik manual di dalam template. Konsekuensinya, mengubah identitas visual
+cukup mengedit satu berkas: seluruh layout, semua slide, dan semua preview mengikuti secara serentak.
+Berikut struktur token versi 1.0 — semua nilai adalah titik awal contoh yang bebas kamu ubah:
+
+# tokens.yaml - sumber kebenaran identitas visual akun
+brand:
+name: "Homeless Media"
+handle: "@homelessmedia"
+palette:
+bg:
+"#f7f5f0"
+# latar terang seperti kertas
+ink:
+"#14202e"
+# teks utama
+accent: "#0f4c81"
+# biru brand - aksen kecil
+muted:
+"#5a6b7c"
+# label & sumber
+up:
+"#1a7a4f"
+# pasar naik
+down:
+"#b23a48"
+# pasar turun
+typography:
+display: "Archivo Black"
+# angka hero & judul
+text:
+"Inter"
+# isi & label
+scale:
+[64, 34, 22, 16, 12] # px pada kanvas 1080x1350
+grid:
+margin: 72
+# px; tak pernah berubah antar slide
+gutter: 24
+accent_rule: 6
+chart:
+gridline: "dashed"
+# flat, tanpa 3D, tanpa pelangi
+show_source: true
+# sumber tercetak di kaki slide
+
+Homeless Media · PRD v2.0
+
+13
+
+PRD - Homeless Media Engine
+
+Token ini dikonsumsi render service sebagai variabel; setiap perubahan memicu render ulang preview
+seluruh layout, dan aktivasi hanya setelah admin menyetujui preview lewat Telegram (US-09). Karena
+tokens.yaml hidup di repo Git, riwayat gaya akun bisa ditelusuri — kapan warna berubah, kenapa, dan
+hasilnya seperti apa. Inilah jalur manual yang diminta: identitas berubah lewat keputusan yang terekam,
+bukan lewat kebetulan render.
+
+7.2 Pustaka Template — Format Konten Jadi Layout
+Di atas token berdiri pustaka template: sembilan layout yang masing-masing memetakan satu format
+konten Bab 3. Template ditulis sebagai berkas JSX kompatibel satori di dalam repo — menambah layout
+berarti menambah satu berkas, tanpa menyentuh workflow maupun kode service. Copywriter memilih
+layout lewat field layout pada JSON-nya; bila pilihan tidak tersedia atau teks meluap melewati auto-fit,
+slide jatuh ke layout fallback dan ditandai needs_review.
+
+Layout
+
+Dipakai untuk
+
+Aturan kunci
+
+cover-stat
+
+Slide 1: hook angka
+
+Satu angka raksasa + satu kalimat; tanpa ornamen lain
+
+big-statement
+
+Pernyataan kunci / kutipan pejabat
+
+Kutipan verbatim; atribusi wajib di kaki
+
+stat-grid
+
+3–4 angka pendukung
+
+Angka sama besar; label kecil muted; unit konsisten
+
+chart-bar
+
+Perbandingan antar kategori
+
+Gridline dashed; nilai tercetak; sumber di kaki
+
+chart-line
+
+Tren waktu
+
+Maksimal 2 garis; titik akhir diberi label nilai
+
+regulasi
+
+Kutipan pasal / poin aturan
+
+Pasal verbatim dalam blok; nomor dan tahun terlihat
+
+timeline
+
+Kronologi kebijakan
+
+Maksimal 5 titik; satu baris per titik
+
+comparison
+
+Sebelum-sesudah / dampak per sektor
+
+Dua kolom seimbang; header jelas; tanpa warna emosional
+
+cta-close
+
+Slide penutup
+
+CTA satu kalimat + handle + disclaimer bila perlu
+
+Tabel 7. Pustaka sembilan layout template beserta aturan kuncinya.
+
+7.3 Dua Jalur Mengubah Gaya: Manual dan AI Design Director
+Jalur pertama adalah manual: edit tokens.yaml atau berkas layout langsung di repo, lalu render preview
+semua layout dengan satu perintah. Jalur ini untuk perubahan besar yang kamu putuskan sendiri —
+rebrand, nuansa musim khusus, eksperimen tipografi — dan karena semuanya di Git, setiap perubahan
+bisa dibandingkan, dibatalkan, atau dipindahkan antar waktu. Tidak ada langkah yang butuh deploy ulang:
+render service memuat ulang token dengan satu endpoint.
+Jalur kedua adalah AI Design Director — workflow n8n terpisah yang dijalankan saat diminta, bukan
+otomatis tiap hari. Ia menerima konteks: token saat ini, daftar layout, aturan anti-slop, dan arahan teks
+
+Homeless Media · PRD v2.0
+
+14
+
+PRD - Homeless Media Engine
+
+dari admin (misalnya “nuansa lebih serius untuk minggu sidang APBN”). LLM kemudian
+mengembalikan proposal terbatas: daftar perubahan nilai token atau pemilihan template default per
+format konten — bukan CSS, bukan gambar, bukan layout baru. Proposal dirender menjadi preview dan
+dikirim ke Telegram; gaya baru hanya aktif setelah tombol Setujui ditekan (US-10). Dengan kata lain, AI
+bermain di dalam pagar sistem desain: ia bisa memutar knob sebanyak apa pun yang tersedia, tetapi tidak
+pernah bisa menambah knob di luar pagar.
+Pola “AI dalam pagar” inilah yang mencegah AI slop secara struktural, bukan sekadar imbauan prompt:
+jalur render hanya menerima token, layout, teks, dan data, sehingga tidak mungkin ada slide yang
+digambar bebas oleh model — dan selera manusia tetap menjadi pemutus akhir.
+
+7.4 Aturan Anti-Slop yang Dikunci di Sistem
+• Maksimal dua keluarga font: satu display untuk angka dan judul, satu teks untuk isi dan label.
+• Satu warna aksen; warna kedua hanya untuk makna pasar — hijau naik, merah turun, keduanya
+
+varian terkendali.
+• Grid 8 px: semua jarak kelipatan 8 piksel pada kanvas 1080 × 1350; margin tak pernah berubah antar
+
+slide.
+• Angka adalah bintang: ukuran display terbesar selalu untuk angka atau pasal; label menyusul kecil dan
+
+muted.
+• Sumber selalu tercetak di kaki slide data — gaya sekaligus kepatuhan.
+• Tanpa emoji, tanpa stiker, tanpa gradient ungu generik, tanpa bayangan berlebihan di aset brand.
+• Chart flat: tanpa 3D, tanpa efek kilau, tanpa pelangi; gridline putus-putus halus, satu seri satu warna.
+• Teks yang meluap diturunkan ukurannya atau ditandai needs_review — tidak pernah dipotong
+
+diam-diam.
+Identitas yang dituju diberi nama data-editorial: kesan halaman pasar koran modern — latar terang
+seperti kertas, tipografi tegas, angka besar yang berdiri sendiri, garis aksen tipis, dan sumber tercetak rapi
+di kaki. Di feed yang penuh gradient dan foto stok, konsistensi tenang seperti ini justru menonjol:
+audiens pasar dan kebijakan mengenali akun dari strukturnya sebelum membaca handle. Seluruh nilai di
+tokens.yaml adalah titik awal milikmu, dan Bab 13 menjadwalkan kalibrasi gaya setelah dua minggu
+pertama tayang.
+
+Homeless Media · PRD v2.0
+
+15
+
+PRD - Homeless Media Engine
+
+8. Arsitektur Opsi B: Hybrid n8n + Render
+Service
+Keputusan arsitektur versi 2.0 berangkat dari pertanyaan yang lebih tepat: bukan “build semua sendiri
+atau tidak”, melainkan “custom di mana tepatnya n8n lemah?” n8n Community sangat kuat untuk
+persis pekerjaan yang paling menyita waktu di rancangan awal: schedule trigger, polling HTTP, node AI
+bawaan, node Telegram, retry, dan error workflow — semuanya konfigurasi, bukan kode. Sebaliknya,
+satu-satunya bagian yang tidak bisa dibereskan n8n adalah render carousel ber-template brand. Maka
+arsitekturnya: n8n sebagai orkestrator, plus satu micro-service render kustom kecil. Totalnya empat
+kontainer Docker — turun dari lima kontainer rancangan v1.
+
+Gambar 3. Arsitektur hybrid di home server: empat kontainer Docker dan layanan eksternal.
+
+Perhatikan tiga keputusan penting pada gambar. Pertama, seluruh trafik masuk melalui Cloudflare
+Tunnel yang membuka koneksi keluar — router rumah tidak membuka satu pun port, dan editor n8n
+dilindungi Cloudflare Access plus basic auth. Kedua, render service berdiri sendiri sebagai kontainer: ia
+menerima request kecil dari workflow (slide JSON plus versi token) dan mengembalikan PNG, sehingga
+logika desain tidak pernah tersecer di dalam workflow dan bisa dites terpisah. Ketiga, PostgreSQL tetap
+satu-satu sumber kebenaran: domain konten hidup di database hme, sementara log eksekusi n8n hidup di
+database internalnya sendiri pada instance PostgreSQL yang sama — dua database, satu proses database
+untuk di-backup.
+
+Homeless Media · PRD v2.0
+
+16
+
+PRD - Homeless Media Engine
+
+Komponen
+
+Pilihan
+
+Alasan memilih
+
+Orkestrasi
+
+n8n Community (self-hosted)
+
+Schedule, HTTP, AI node, Telegram node, retry, error
+workflow bawaan; lisensi gratis untuk pemakaian internal
+
+Render carousel
+
+Micro-service Node.js: satori +
+sharp
+
+JSX menjadi SVG menjadi PNG 1080×1350 tanpa
+Chromium; ±30 MB RAM; deterministik; gratis
+
+Database
+
+PostgreSQL 16 (database hme +
+n8n)
+
+Satu instance untuk semua; domain konten bersih dari log
+mesin
+
+Approval &
+notifikasi
+
+Telegram Bot API
+
+Tombol inline Setujui/Edit/Tolak; gratis; bekerja dari HP
+
+Akses publik
+
+Cloudflare Tunnel + Access
+
+Tanpa IP publik dan tanpa port terbuka; SSO email gratis
+
+Runtime
+
+Docker Compose (4 kontainer)
+
+Satu perintah naik-turun; mudah dipindah antar mesin
+
+Dashboard (Fase
+4)
+
+Next.js 14 + TypeScript
+(opsional)
+
+Review massal 15–20 menit; dibangun hanya bila Telegram
+terasa kurang
+
+Tabel 8. Tech stack versi 2.0 beserta alasan pemilihannya.
+
+8.1 Keputusan Arsitektur: Mengapa Hybrid
+Tiga kandidat dievaluasi serius sebelum keputusan ini dikunci. Opsi A — pure n8n tanpa komponen
+kustom — tercepat, tetapi tidak bisa merender carousel brand dan menjadikan Telegram satu-satunya
+tempat review, dua hal yang justru inti produk. Opsi C — full custom seperti rancangan awal v1 (Next.js
+plus BullMQ plus Playwright) — memberi kendali penuh dengan biaya 8–13 minggu dan RAM 2–3 GB.
+Opsi B — hybrid — mengambil jalan tengah: n8n untuk pipa, custom hanya untuk desain. Tabel berikut
+merangkum perbandingannya:
+
+Dimensi
+
+A · Pure n8n
+
+B · Hybrid (dipilih)
+
+C · Full custom
+
+Waktu ke MVP
+
+3–7 hari
+
+3–4 minggu
+
+8–13 minggu
+
+RAM server
+
+0,6–1 GB
+
+1–1,5 GB
+
+2–3 GB
+
+Render brand template
+
+Tidak memenuhi (API
+luar)
+
+Penuh — render service
+
+Penuh — Playwright
+
+Edit sebelum approve
+
+Sangat terbatas
+
+Balasan Telegram; dashboard
+Fase 4
+
+Editor inline penuh
+
+Database domain + audit
+
+Lemah (log eksekusi)
+
+Penuh (PostgreSQL milik
+sendiri)
+
+Penuh
+
+Pemeliharaan jangka
+panjang
+
+Rendah
+
+Sedang
+
+Tinggi
+
+Tabel 9. Perbandingan tiga opsi arsitektur terhadap kebutuhan HME.
+
+Homeless Media · PRD v2.0
+
+17
+
+PRD - Homeless Media Engine
+
+Opsi B dipilih karena menyentuh target waktu dan sumber daya tanpa mengorbankan render brand yang
+autentik dan human-in-the-loop yang nyaman. Tiga tradeoff diterima sadar: logika pipeline hidup di
+workflow JSON — dimitigasi sub-workflow per agen, penamaan ketat, dan ekspor otomatis ke Git
+(US-08); edit teks via balasan Telegram kurang nyaman dibanding editor web — dijawab dashboard Fase
+4; dan ketergantungan pada komunitas n8n — versi kontainer di-pin dan diuji di compose staging
+sebelum upgrade (Bab 14).
+
+9. Desain Database PostgreSQL
+Skema database mengikuti tiga keputusan desain. Pertama, PostgreSQL menjadi satu-satu sumber
+kebenaran domain — semua status, skor, dan keputusan tersimpan di database hme, sementara log
+eksekusi n8n tidak pernah dicampur ke schema domain. Kedua, konten yang dinamis — susunan slide,
+konfigurasi token, hasil skor — disimpan sebagai JSONB agar prompt, token, dan format bisa berevolusi
+tanpa migration terus-menerus. Ketiga, semua keputusan tercatat append-only di audit_log, dan dedup
+dilindungi dua lapis: constraint unik hash URL plus kemiripan judul pg_trgm.
+
+Tabel
+
+Kolom kunci
+
+Fungsi
+
+sources
+
+id, type, name, url_or_query, is_active
+
+Daftar sumber niche yang dipantau Scout; bisa
+dimatikan per sumber
+
+raw_items
+
+id, source_id, url, url_hash (unik), title,
+fetched_at
+
+Bahan mentah hasil polling; dihapus otomatis
+setelah 90 hari
+
+topics
+
+id, raw_item_id, title, summary, url, status,
+created_at
+
+Topik ternormalisasi yang mengikuti mesin status
+penyaringan
+
+topic_scores
+
+id, topic_id, lima skor komponen, total,
+verdict, reasoning, model
+
+Hasil penilaian Analis; snapshot per versi prompt
+
+drafts
+
+id, topic_id, slides (JSONB), caption,
+hashtags[], status, needs_review
+
+Karya Copywriter + render service; pusat
+keputusan admin
+
+draft_slides
+
+id, draft_id, slide_no, render_path,
+text_snapshot
+
+Riwayat render per slide untuk edit dan audit visual
+
+templates
+
+id, name, tokens_version, layout (JSONB),
+preview_path, is_active
+
+Set template visual brand; setiap versi token
+terekam
+
+brand_settings
+
+id, voice_examples[], signature_words[],
+banned_words[], niche_keywords[]
+
+Brand voice profile yang dikonsumsi Copywriter
+dan Analis
+
+scheduled_posts
+
+id, draft_id, mode, scheduled_at,
+ig_media_id, status
+
+Antrean publikasi auto dan catatan publish manual
+
+agent_runs
+
+id, agent, started_at, status, tokens_in/out,
+est_cost_idr
+
+Telemetri tiap eksekusi agen; dasar laporan biaya
+
+Homeless Media · PRD v2.0
+
+18
+
+PRD - Homeless Media Engine
+
+Tabel
+
+Kolom kunci
+
+Fungsi
+
+audit_log
+
+id, entity, entity_id, action, actor, payload
+(JSONB), created_at
+
+Jejak append-only semua keputusan
+approve/reject/publish
+
+app_settings
+
+key (PK), value (JSONB)
+
+Ambang skor, jam tayang, kuota harian, kredensial
+non-rahasia
+
+Tabel 10. Dua belas tabel inti PostgreSQL beserta fungsinya.
+
+Tabel paling sibuk dirinci berikut. topics mengikuti alur penyaringan: status new saat lahir dari Scout,
+scored setelah Analis menilai, rejected bila gugur di gate, produced ketika draf sudah jadi, dan archived
+untuk rawan lama. drafts memakai mesin status yang sama ketatnya dengan Bab 6.6, sedangkan
+scheduled_posts mencatat setiap percobaan publish beserta errornya agar kegagalan Meta API bisa
+didiagnosis tanpa membuka log kontainer — kolom lengkap keduanya mengikuti ringkasan dua belas
+tabel di atas.
+
+Kolom
+
+Tipe
+
+Keterangan
+
+id
+
+BIGSERIAL PK
+
+Identitas draf
+
+topic_id
+
+BIGINT FK → topics
+
+Topik sumber; satu topik satu draf aktif
+
+slides
+
+JSONB
+
+Array slide: no, layout, teks, blok data, catatan
+render
+
+caption / hashtags
+
+TEXT / TEXT[]
+
+Blok caption dan daftar hashtag terkelompok
+
+status
+
+ENUM(draft, approved, scheduled,
+published, rejected, failed)
+
+Mesin status Bab 6.6
+
+needs_review
+
+BOOLEAN
+
+Tanda needs_review dari Copywriter atau auto-fit
+
+tokens_version
+
+TEXT
+
+Versi tokens.yaml saat dirender; audit gaya
+
+copy_model
+
+TEXT
+
+Model yang menulis; bahan evaluasi kualitas
+Tabel 11. Struktur tabel drafts.
+
+Dua kebijakan pemeliharaan menutup desain ini: job pembersih mingguan menghapus raw_items
+berumur lebih dari 90 hari agar tabel bahan mentah tidak membengkak, sementara audit_log dan
+agent_runs dipertahankan permanen karena ukurannya kecil dan nilainya besar untuk kalibrasi. Seluruh
+foreign key memakai ON DELETE RESTRICT kecuali dari raw_items ke topics agar penghapusan
+bahan lama tidak pernah mengorbankan topik yang masih dipakai draf.
+
+Homeless Media · PRD v2.0
+
+19
+
+PRD - Homeless Media Engine
+
+10. Integrasi & Kontrak API
+Opsi B mengecilkan permukaan API secara drastis: satu-satunya layanan yang expose HTTP adalah
+render service — sisanya adalah konfigurasi node di dalam workflow n8n. Semua endpoint render service
+hanya mendengar di jaringan internal Docker (tidak ada port yang dipublikasikan) dan memvalidasi
+shared secret pada header; satu-satunya pemanggil yang sah adalah n8n. Kontrak kecil yang ketat seperti
+ini mudah dites dan tidak pernah menjadi titik buta saat debugging.
+
+Method
+
+Path
+
+Fungsi
+
+POST
+
+/render
+
+Render draf: slide JSON + tokens_version menjadi PNG per slide; simpan ke
+volume dan update draft_slides
+
+POST
+
+/render/preview
+
+Render preview tanpa menyimpan — untuk usulan token atau template baru
+
+POST
+
+/tokens/reload
+
+Muat ulang tokens.yaml dan pustaka layout setelah perubahan
+
+GET
+
+/health
+
+Cek kesehatan untuk error workflow n8n
+Tabel 12. Endpoint render service (satu-satunya API kustom).
+
+Di sisi n8n, tiga kontrak eksternal menutup sistem. Pertama, callback tombol Telegram memvalidasi
+chat_id admin dan callback_id sebelum mengubah status draf — transisi ilegal ditolak dengan error 409
+dan pesan yang menjelaskan transisi yang sah. Kedua, publish auto memanggil Meta Graph API dua
+langkah (membuat media container, lalu media_publish) lewat HTTP Request node dengan retry tiga kali
+ber-jeda bertingkat. Ketiga, error workflow global menangkap kegagalan node mana pun dan mengirim
+notifikasi Telegram dalam 5 menit, lengkap dengan tautan eksekusi untuk diagnosis sekali klik.
+Konvensi pengaman yang sama dipertahankan: bagian mana pun yang mengubah status draf hanya
+menerima transisi sah menurut mesin status Bab 6.6, aturan “tidak ada publish tanpa approve” diuji
+otomatis dengan mencoba publish draf berstatus draft dan memastikan gagal, dan dobel-klik tombol
+Telegram tidak pernah menghasilkan dua jadwal karena idempotency key.
+
+11. Keamanan, Privasi & Kepemilikan Data
+HME berdiri di atas satu janji: akun, data, dan seluruh konten adalah milikmu sepenuhnya. Konsekuensi
+teknisnya konkret — database berjalan di rumah, file gambar tersimpan di volume lokal, tidak ada
+telemetri yang mengirim statistik pemakaian ke mana pun, dan seluruh aset bisa diekspor: workflow ke
+Git, database ke dump SQL, aset ke arsip PNG. Bila suatu hari sistem ingin dimatikan, tidak ada data
+yang tertahan di tangan pihak ketiga. Untuk proses AI, dipilih provider dengan kebijakan no-training
+pada data API, dan yang dikirim hanya teks topik yang akan diskor atau ditulis — bukan database utuh,
+bukan data pribadi.
+
+Homeless Media · PRD v2.0
+
+20
+
+PRD - Homeless Media Engine
+
+Lapisan akses dirancang berlapis namun tetap sederhana. Cloudflare Access memverifikasi identitas
+email sebelum permintaan menyentuh server; basic auth menyaring siapa yang boleh membuka editor
+n8n; dan tunnel hanya membuka koneksi keluar sehingga tidak ada port yang bisa dipindai dari internet.
+Bot Telegram hanya mengenali chat_id admin, dan render service tidak pernah terekspos ke internet
+karena hanya melayani trafik internal Docker dengan shared secret — tanpa Chromium di pipeline, tidak
+ada browser headless yang perlu dipatch. Kredensial sensitif hidup di credentials store n8n yang
+terenkripsi atau environment file yang tidak pernah masuk database, log, maupun backup, dan dirotasi
+tiap 90 hari.
+Pemulihan bencana mencakup tiga aset sekaligus: pg_dump otomatis pukul 03.00 ke NAS untuk
+database, ekspor workflow n8n ke repo Git setiap perubahan — sekaligus menjadi version control
+pipeline — dan arsip PNG tersinkron ke folder NAS yang sama. Restorasi diuji bulanan di mesin bersih;
+target pemulihan jujur untuk skala rumahan: kehilangan data maksimal 24 jam (RPO) dan sistem
+kembali jalan di bawah satu jam (RTO) dengan satu perintah docker compose up plus restore dump
+terakhir.
+Terakhir, setiap keputusan penting meninggalkan jejak. audit_log mencatat siapa menyetujui, menolak,
+menerbitkan, dan mengubah apa beserta payload lamanya, sementara agent_runs mencatat pemakaian
+token dan estimasi biaya per eksekusi agen. Jejak ini bukan sekadar kepatuhan: ia adalah bahan kalibrasi
+mingguan — kenapa topik ini dulu ditolak, kenapa draf ini tidak tayang — yang membuat sistem makin
+sejalan dengan selera akun.
+
+12. Estimasi Biaya Operasional
+Struktur biaya HME sengaja dibuat seperti biaya listrik rumah, bukan seperti tagihan SaaS: mayoritas
+komponen gratis, biaya tetap kecil, dan satu-satunya komponen yang bergantung pemakaian adalah API
+AI. Hardware memanfaatkan yang sudah ada — mesin Debian CLI pilihanmu — sehingga biaya
+sekali-jalan dianggap nol dalam skenario ini.
+
+Pos biaya
+
+Estimasi / bulan
+
+Catatan
+
+Listrik mini PC (±10 W nonstop)
+
+Rp12–18 ribu
+
+7–8 kWh; jauh lebih hemat daripada PC desktop
+
+Domain
+
+Rp15 ribu
+
+Dibayar tahunan untuk akses via Cloudflare
+
+Cloudflare Tunnel + Access
+
+Rp0
+
+Paket gratis mencakup kebutuhan ini
+
+n8n Community + render service
+
+Rp0
+
+Lisensi gratis pemakaian internal; satori & sharp open
+source
+
+Telegram Bot
+
+Rp0
+
+Long polling, tanpa biaya
+
+API AI (skoring + copywriting)
+
+Rp50–160 ribu
+
+48 siklus skoring/hari model murah + 3–5 copywriting/hari
+model flagship
+
+Homeless Media · PRD v2.0
+
+21
+
+PRD - Homeless Media Engine
+
+Pos biaya
+
+Estimasi / bulan
+
+Cadangan fluktuasi kurs/volume
+
+Rp15–35 ribu
+
+Catatan
+Pengaman 20%
+
+Tabel 13. Estimasi biaya operasional bulanan versi 2.0.
+
+Ringkasan biaya
+Total: sekitar Rp90–230 ribu per bulan — sama dengan rancangan awal, karena efisiensi opsi hybrid
+ada di waktu pengembangan (8–13 minggu menjadi 3–4 minggu) dan RAM (2–3 GB menjadi 1–1,5
+GB), bukan di biaya bulanan.
+
+Dua catatan membuat angka ini terkendali. Pertama, biaya skoring didominasi jumlah topik yang
+masuk — bukan jumlah yang lolos — sehingga menaikkan ambang tidak menurunkan biaya skoring,
+hanya menurunkan biaya copywriting; menambah sumber berarti menambah biaya, dan itu jadi
+keputusan yang sadar. Kedua, sistem menyediakan batas pengeluaran harian di app_settings: begitu kuota
+terlampaui, workflow berhenti menambah pekerjaan baru dan bot Telegram mengirim peringatan pada
+80 persen kuota.
+Untuk arsitektur hybrid ini, 2 GB RAM sudah cukup bekerja nyaman dan 4 GB memberi ruang longgar
+untuk Fase 4. Bila hardware memang belum ada, mini PC kelas entry atau bekas sekitar Rp1,5–2,5 juta
+masih setara dua sampai tujuh bulan langganan SaaS, setelah itu biaya mengalir jauh lebih rendah dan
+asetnya tetap milikmu.
+
+13. Roadmap Pengembangan
+Pengembangan dibagi lima fase vertikal dengan estimasi total 3–4 minggu — pemangkasan besar dari
+rancangan v1 berkat n8n yang menelan sebagian besar pekerjaan orkestrasi. Setiap fase menghasilkan
+sesuatu yang nyata dengan exit criteria terukur, sehingga eksekusi berbantuan AI tetap bertahap dan bisa
+diuji satu orang reviewer di akhir setiap fase.
+
+Fase
+
+Durasi
+
+Deliverables
+
+Exit criteria
+
+0 — Fondasi
+
+3–4 hari
+
+Debian + Docker Compose 4 kontainer,
+Cloudflare Tunnel, bot Telegram, skema DB
+v2, repo berisi tokens.yaml + 1 layout +
+kerangka render service
+
+Editor n8n terbuka aman dari luar
+rumah; docker compose up satu
+perintah di mesin Debian
+
+1 — Scout + Analis
+
+1
+minggu
+
+Workflow polling 10+ sumber niche, dedup
+SQL, AI node skoring + gate, tabel Topik
+(termasuk gugur), telemetri agent_runs
+
+3 hari berturut-turut
+menghasilkan 5+ topik lolos/hari
+tanpa duplikat
+
+Homeless Media · PRD v2.0
+
+22
+
+PRD - Homeless Media Engine
+
+Fase
+
+Durasi
+
+Deliverables
+
+Exit criteria
+
+2 — Copywriter +
+Render
+
+1
+minggu
+
+AI node copywriting JSON v2, 9 layout di
+render service, chart card, simpan draf, kirim
+preview + tombol ke Telegram
+
+20 draf end-to-end tampil di
+Telegram dengan render benar;
+needs_review bekerja
+
+3 — Approval +
+Publish
+
+1
+minggu
+
+Callback tombol Setujui/Edit/Tolak, transisi
+status, Meta Graph API + jalur manual, error
+workflow, backup + ekspor workflow ke Git,
+kalibrasi ambang
+
+1 minggu operasi nyata: 10+
+konten tayang dan semuanya
+lewat approve
+
+4 — Dashboard +
+Perawatan (opsional)
+
+1
+minggu
+
+Next.js dashboard review massal + edit inline,
+halaman metrik, uji restore, runbook
+operasional
+
+Review 20 draf selesai di bawah
+20 menit di dashboard; restore
+lulus di mesin bersih
+
+Tabel 14. Lima fase pengembangan 3–4 minggu dengan exit criteria yang terukur.
+
+Aturan main menjaga kualitas sepanjang jalur: workflow n8n diekspor ke Git setiap perubahan sehingga
+setiap evolusi pipeline terversi; prompt, tokens.yaml, dan pustaka layout juga berkas di repo; dan setiap
+fase ditutup dengan uji end-to-end di mesin Debian asli — bukan hanya laptop pengembangan — karena
+target akhirnya memang jalan di rumah. Nomor versi menempel pada template dan prompt: perubahan
+keduanya tercatat, sehingga perubahan kualitas output selalu bisa ditelusuri ke penyebabnya.
+Setelah Fase 4, backlog versi berikutnya terbuka sesuai kebutuhan nyata: perluasan ke TikTok dan X,
+mode tim dengan peran editor, eksperimen A/B pada hook, rekomendasi jam tayang dari data performa
+aktual, dan pustaka layout tambahan seperti peta peristiwa geopolitik. Semua menunggu pipeline v2 stabil
+dan metrik di Bab 4 tercapai.
+
+14. Risiko & Mitigasi
+Tidak ada sistem otomasi yang bebas risiko — yang membedakan adalah risiko yang sudah diberi jalur
+mengalir sejak desain. Tabel berikut merangkum delapan risiko utama HME versi 2.0 beserta mitigasi
+konkretnya yang sudah tertanam di desain Bab 6–8; satu polanya jelas: hampir semua risiko eksternal
+dipagari jalur manual yang selalu siap mengambil alih.
+
+Risiko
+
+Dampak
+
+Kemungki
+nan
+
+Mitigasi
+
+Upgrade n8n merusak
+workflow atau lisensi berubah
+
+Pipeline berhenti
+
+Rendah–Se
+dang
+
+Versi kontainer di-pin; ekspor workflow ke Git
+tiap perubahan; uji di compose staging sebelum
+upgrade
+
+Konten finansial disalahpahami
+/ risiko kepatuhan
+
+Reputasi dan
+regulasi
+
+Sedang
+
+Tanpa rekomendasi beli-jual; disclaimer wajib;
+fast-fail pump-dump; sumber primer di setiap
+angka
+
+Homeless Media · PRD v2.0
+
+23
+
+PRD - Homeless Media Engine
+
+Kemungki
+nan
+
+Risiko
+
+Dampak
+
+Mitigasi
+
+Meta Graph API menolak
+carousel atau mengubah aturan
+
+Publish otomatis
+gagal
+
+Sedang
+
+Jalur manual selalu siap (desain hybrid); retry +
+notif; pantau changelog Meta
+
+Kualitas skor meleset (terlalu
+ketat/longgar)
+
+Topik bagus gugur
+atau sampah lolos
+
+Sedang
+
+Kalibrasi mingguan skor vs performa nyata;
+ambang configurable; tab Topik Gugur
+
+Biaya API AI membengkak
+
+Budget bulanan
+bocor
+
+Rendah–Se
+dang
+
+Kuota harian di app_settings; alert 80%; model
+murah untuk skoring
+
+Token Meta kedaluwarsa
+diam-diam
+
+Publish berhenti
+tanpa kabar
+
+Sedang
+
+Monitoring kedaluwarsa + reminder Telegram
+7 hari sebelumnya
+
+Server rumah mati
+listrik/internet
+
+Pipeline berhenti
+sementara
+
+Sedang
+
+UPS kecil; restart policy Docker; uptime
+monitor eksternal; antrean menahan kerja
+
+Telegram jadi satu-satunya
+pintu review
+
+Review terhambat
+bila bot
+bermasalah
+
+Rendah
+
+Dashboard Fase 4 sebagai jalur kedua; error
+workflow mengirim alert; pipeline tetap aman
+tanpa approve
+
+Tabel 15. Delapan risiko utama beserta mitigasinya.
+
+Kesimpulan sekaligus penutup dokumen: risiko terbesar HME bukan teknis, melainkan disiplin —
+disiplin kalibrasi skor dan disiplin kepatuhan konten finansial. Karena itu kalibrasi mingguan, aturan
+sumber, dan disclaimer menjadi fitur kelas satu, dan kesalahan AI paling mahal harganya tetap cuma satu
+draf yang ditolak.
+
+Homeless Media · PRD v2.0
+
+24
+
+

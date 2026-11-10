@@ -405,6 +405,87 @@ async function loadAuditLog() {
   }
 }
 
+// 7. Workflow Engine Integration
+let currentWorkflowActive = false;
+
+async function loadWorkflow() {
+  try {
+    const res = await fetch('/api/workflow');
+    const data = await res.json();
+
+    const viewer = document.getElementById('workflow-json-viewer');
+    if (viewer) {
+      viewer.value = JSON.stringify(data.json || {}, null, 2);
+    }
+
+    currentWorkflowActive = !!data.active;
+    const badge = document.getElementById('wf-status-badge');
+    const toggleBtn = document.getElementById('btn-toggle-wf');
+
+    if (badge) {
+      if (currentWorkflowActive) {
+        badge.className = 'badge badge-high';
+        badge.textContent = '🟢 Aktif (Jadwal Berjalan)';
+      } else {
+        badge.className = 'badge badge-low';
+        badge.textContent = '⏸️ Nonaktif (Manual)';
+      }
+    }
+
+    if (toggleBtn) {
+      toggleBtn.innerHTML = currentWorkflowActive
+        ? '⏸️ Jeda Otomasi n8n'
+        : '⚡ Aktifkan Otomasi n8n';
+      toggleBtn.className = currentWorkflowActive ? 'btn btn-secondary' : 'btn btn-primary';
+    }
+  } catch (err) {
+    console.error('Error loading workflow:', err);
+  }
+}
+
+async function toggleWorkflow() {
+  const toggleBtn = document.getElementById('btn-toggle-wf');
+  if (toggleBtn) {
+    toggleBtn.disabled = true;
+    toggleBtn.textContent = 'Memproses...';
+  }
+
+  try {
+    const res = await fetch('/api/workflow/toggle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active: !currentWorkflowActive }),
+    });
+    const result = await res.json();
+    if (result.status === 'success') {
+      showToast(`Otomasi n8n berhasil ${result.active ? 'diaktifkan' : 'dijeda'}!`);
+      await loadWorkflow();
+    } else {
+      showToast(`Gagal: ${result.error || 'Terjadi kesalahan'}`);
+    }
+  } catch (err) {
+    showToast(`Error: ${err.message}`);
+  } finally {
+    if (toggleBtn) toggleBtn.disabled = false;
+  }
+}
+
+const toggleWfBtn = document.getElementById('btn-toggle-wf');
+if (toggleWfBtn) {
+  toggleWfBtn.onclick = toggleWorkflow;
+}
+
+const copyWfJsonBtn = document.getElementById('btn-copy-workflow-json');
+if (copyWfJsonBtn) {
+  copyWfJsonBtn.onclick = () => {
+    const viewer = document.getElementById('workflow-json-viewer');
+    if (viewer && viewer.value) {
+      navigator.clipboard.writeText(viewer.value);
+      showToast('Definisi JSON Workflow berhasil disalin!');
+    }
+  };
+}
+
 // 7. Run Pipeline Trigger
 document.getElementById('btn-run-pipeline').onclick = async () => {
   const btn = document.getElementById('btn-run-pipeline');
@@ -461,6 +542,7 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
     document.getElementById(btn.dataset.tab).classList.add('active');
 
     if (btn.dataset.tab === 'tab-topics') loadTopics();
+    if (btn.dataset.tab === 'tab-n8n') loadWorkflow();
     if (btn.dataset.tab === 'tab-tokens') loadTokens();
     if (btn.dataset.tab === 'tab-audit') loadAuditLog();
   };

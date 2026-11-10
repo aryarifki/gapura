@@ -1,0 +1,95 @@
+{
+  "name": "Homeless Media Engine - Content Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "1",
+      "name": "Schedule Trigger (Setiap 30 Menit)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "command": "/root/gapura/scripts/run_pipeline.sh"
+      },
+      "id": "2",
+      "name": "Eksekusi Pipeline HME (Scout, Analis, Copy, Render)",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT count(*) as new_drafts FROM drafts WHERE status = 'draft';"
+      },
+      "id": "3",
+      "name": "Cek Draf Menunggu di DB",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_ADMIN_CHAT_ID }}",
+        "text": "=🔔 <b>[HME v2.0] Siklus Otomasi Selesai</b>\nPipeline berhasil dijalankan.\nDraf baru menunggu review di Gapura: {{ $json.new_drafts }} draf.\n\n👉 Buka Dashboard: https://gapura.avenia.my.id",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "4",
+      "name": "Kirim Notifikasi Telegram ke Admin",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [920, 300]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger (Setiap 30 Menit)": {
+      "main": [
+        [
+          {
+            "node": "Eksekusi Pipeline HME (Scout, Analis, Copy, Render)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eksekusi Pipeline HME (Scout, Analis, Copy, Render)": {
+      "main": [
+        [
+          {
+            "node": "Cek Draf Menunggu di DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cek Draf Menunggu di DB": {
+      "main": [
+        [
+          {
+            "node": "Kirim Notifikasi Telegram ke Admin",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
