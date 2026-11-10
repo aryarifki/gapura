@@ -8,7 +8,7 @@
   <link rel="apple-touch-icon" href="/assets/logo.png">
   <meta name="theme-color" content="#0B0E14">
   <meta name="description" content="Studio Redaksi Otomasi Konten Niche Data, Hukum & Ekonomi Bursa (@homelessmedia)">
-  <link rel="stylesheet" href="/style.css?v=2.5">
+  <link rel="stylesheet" href="/style.css?v=2.6">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -239,18 +239,44 @@
               <div class="editor-form-column">
                 <div class="editor-form-card">
                   <div class="editor-form-card-title">
-                    <span id="editor-slide-heading">Slide 1 · Cover</span>
-                    <span style="font-size: 11px; color: var(--muted);" id="editor-layout-name">cover-stat</span>
+                    <div>
+                      <span id="editor-slide-heading" style="font-weight: 800; color: #fff;">Slide 1 · Cover</span>
+                      <span style="font-size: 11px; color: var(--muted); margin-left: 8px;" id="editor-layout-name">cover-stat</span>
+                    </div>
+                    <div style="display: flex; gap: 6px;">
+                      <button class="btn btn-dark" id="btn-add-slide-editor" title="Tambah slide baru" style="padding: 4px 10px; font-size: 11px;">➕ Tambah Slide</button>
+                      <button class="btn btn-dark" id="btn-del-slide-editor" title="Hapus slide ini" style="padding: 4px 10px; font-size: 11px; color: var(--down);">🗑️ Hapus</button>
+                    </div>
                   </div>
 
+                  <!-- Layout Selector Dropdown -->
                   <div class="form-group-editor">
-                    <label class="form-label-editor">Headline Teks di Slide</label>
-                    <textarea class="form-input-dark" id="editor-input-slide-text" rows="3" placeholder="Teks headline..."></textarea>
+                    <label class="form-label-editor">Pilih Layout Tampilan Slide</label>
+                    <select class="form-input-dark form-select-dark" id="editor-select-layout">
+                      <option value="cover-stat">cover-stat (Cover - Stat Angka & Kategori)</option>
+                      <option value="big-statement">big-statement (Kutipan Besar / Fakta Kunci)</option>
+                      <option value="stat-grid">stat-grid (Grid 2-4 Kotak Indikator & Angka)</option>
+                      <option value="regulasi">regulasi (Klausul Pasal POJK / UU / Regulasi)</option>
+                      <option value="comparison">comparison (Perbandingan Sebelum vs Sesudah)</option>
+                      <option value="timeline">timeline (Kronologi Tahapan Peristiwa)</option>
+                      <option value="cta-close">cta-close (Slide Penutup, Pertanyaan & CTA)</option>
+                    </select>
+                  </div>
+
+                  <!-- Main Narrative Text -->
+                  <div class="form-group-editor">
+                    <label class="form-label-editor">Isi Narasi / Headline Teks di Slide</label>
+                    <textarea class="form-input-dark" id="editor-input-slide-text" rows="3" placeholder="Teks narasi di slide..."></textarea>
+                  </div>
+
+                  <!-- Dynamic Layout Specific Fields Container -->
+                  <div id="editor-layout-fields-container" style="background: var(--card-subtle); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px; margin-bottom: 16px;">
+                    <!-- Populated dynamically by JS -->
                   </div>
 
                   <div class="form-group-editor">
                     <label class="form-label-editor">Caption Editorial Instagram</label>
-                    <textarea class="form-input-dark" id="editor-input-caption" rows="6" placeholder="Caption..."></textarea>
+                    <textarea class="form-input-dark" id="editor-input-caption" rows="5" placeholder="Caption..."></textarea>
                   </div>
 
                   <div class="form-group-editor">
@@ -258,8 +284,8 @@
                     <input type="text" class="form-input-dark" id="editor-input-hashtags" placeholder="#HomelessMedia #IHSG...">
                   </div>
 
-                  <div style="display: flex; gap: 10px; margin-top: 20px;">
-                    <button class="btn btn-lime" id="btn-save-and-rerender">🔄 Simpan & Render Ulang</button>
+                  <div style="display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap;">
+                    <button class="btn btn-lime" id="btn-save-and-rerender" style="flex: 1;">🔄 Simpan & Render Ulang Slide</button>
                     <button class="btn btn-dark" id="btn-save-text-only">Simpan Teks Saja</button>
                   </div>
                 </div>
@@ -767,6 +793,6 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
   <!-- Toast -->
   <div id="toast" class="toast"></div>
 
-  <script src="/app.js?v=2.5"></script>
+  <script src="/app.js?v=2.6"></script>
 </body>
 </html>

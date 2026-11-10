@@ -162,6 +162,21 @@ function setupNavigation() {
   document.getElementById('btn-download-all-slides').onclick = downloadAllSlides;
   document.getElementById('btn-open-single-slide').onclick = openCurrentSlideFull;
 
+  // Slide Layout Selector & Slide Manager
+  const layoutSelect = document.getElementById('editor-select-layout');
+  if (layoutSelect) {
+    layoutSelect.onchange = () => {
+      const l = layoutSelect.value;
+      document.getElementById('editor-layout-name').textContent = l;
+      const currentSlide = (activeDraft?.rendered_slides || [])[activeSlideIndex] || {};
+      renderLayoutFields(l, currentSlide.data || {});
+    };
+  }
+  const addSlideBtn = document.getElementById('btn-add-slide-editor');
+  if (addSlideBtn) addSlideBtn.onclick = addSlideToDraft;
+  const delSlideBtn = document.getElementById('btn-del-slide-editor');
+  if (delSlideBtn) delSlideBtn.onclick = deleteSlideFromDraft;
+
   // Decision Buttons in Editor
   document.getElementById('btn-action-post-now').onclick = () => approveCurrentDraft('auto');
   document.getElementById('btn-action-approve-auto').onclick = () => approveCurrentDraft('auto');
@@ -367,14 +382,253 @@ function renderActiveSlide() {
     mainImg.src = `${currentSlide.image_url}?t=${Date.now()}`;
   }
 
-  document.getElementById('editor-slide-heading').textContent = `Slide ${activeSlideIndex + 1} · ${getSlideRole(activeSlideIndex)}`;
-  document.getElementById('editor-layout-name').textContent = currentSlide.layout || 'standard';
+  document.getElementById('editor-slide-heading').textContent = `Slide ${activeSlideIndex + 1} dari ${slides.length}`;
+  const layout = currentSlide.layout || 'cover-stat';
+  document.getElementById('editor-layout-name').textContent = layout;
+
+  const layoutSelect = document.getElementById('editor-select-layout');
+  if (layoutSelect) {
+    layoutSelect.value = layout;
+  }
+
   document.getElementById('editor-input-slide-text').value = currentSlide.text || '';
+
+  // Render dynamic custom layout parameter fields
+  renderLayoutFields(layout, currentSlide.data || {});
 
   // Update active thumbnail
   document.querySelectorAll('.editor-thumb-box').forEach((box, idx) => {
     box.classList.toggle('active', idx === activeSlideIndex);
   });
+}
+
+function renderLayoutFields(layout, data) {
+  const container = document.getElementById('editor-layout-fields-container');
+  if (!container) return;
+  container.innerHTML = '';
+
+  let html = '';
+
+  if (layout === 'cover-stat') {
+    html = `
+      <div style="font-size: 11px; font-weight: 700; color: var(--lime); margin-bottom: 10px; text-transform: uppercase;">
+        ⚙️ Parameter Layout: Cover Stat
+      </div>
+      <div class="form-grid-2col">
+        <div class="form-group-editor" style="margin-bottom: 8px;">
+          <label class="form-label-editor">Hook Angka / Stat Besar</label>
+          <input type="text" id="lf-stat-value" class="form-input-dark" value="${escapeHtml(data.value || '')}" placeholder="Contoh: Rp 18.085 atau +0,02% atau POJK 12/2026">
+        </div>
+        <div class="form-group-editor" style="margin-bottom: 8px;">
+          <label class="form-label-editor">Subtext / Keterangan Unit</label>
+          <input type="text" id="lf-stat-unit" class="form-input-dark" value="${escapeHtml(data.unit || data.subtext || '')}" placeholder="Contoh: KURS PERDAGANGAN RESMI">
+        </div>
+      </div>
+      <div class="form-group-editor" style="margin-bottom: 0;">
+        <label class="form-label-editor">Kategori Badge</label>
+        <input type="text" id="lf-stat-category" class="form-input-dark" value="${escapeHtml(data.category || '')}" placeholder="Contoh: VALUTA & MAKRO / PASAR MODAL">
+      </div>
+    `;
+  } else if (layout === 'big-statement') {
+    html = `
+      <div style="font-size: 11px; font-weight: 700; color: var(--lime); margin-bottom: 10px; text-transform: uppercase;">
+        ⚙️ Parameter Layout: Big Statement
+      </div>
+      <div class="form-grid-2col">
+        <div class="form-group-editor" style="margin-bottom: 8px;">
+          <label class="form-label-editor">Tokoh / Sumber Pernyataan</label>
+          <input type="text" id="lf-statement-author" class="form-input-dark" value="${escapeHtml(data.author || '')}" placeholder="Contoh: Bank Indonesia / BPS / OJK">
+        </div>
+        <div class="form-group-editor" style="margin-bottom: 8px;">
+          <label class="form-label-editor">Kategori</label>
+          <input type="text" id="lf-statement-category" class="form-input-dark" value="${escapeHtml(data.category || 'FAKTA KUNCI')}" placeholder="Kategori">
+        </div>
+      </div>
+    `;
+  } else if (layout === 'stat-grid') {
+    const items = data.items || [
+      { label: 'Data 1', value: '10%' },
+      { label: 'Data 2', value: '25%' },
+    ];
+    html = `
+      <div style="font-size: 11px; font-weight: 700; color: var(--lime); margin-bottom: 10px; text-transform: uppercase;">
+        ⚙️ Parameter Layout: Stat Grid (Kotak Metrik)
+      </div>
+      <div class="form-grid-2col">
+        <div class="form-group-editor" style="margin-bottom: 8px;">
+          <label class="form-label-editor">Kotak 1: Nilai & Label</label>
+          <div style="display: flex; gap: 6px;">
+            <input type="text" id="lf-grid-v0" class="form-input-dark" style="width: 45%;" value="${escapeHtml(items[0]?.value || '')}" placeholder="Nilai">
+            <input type="text" id="lf-grid-l0" class="form-input-dark" style="width: 55%;" value="${escapeHtml(items[0]?.label || '')}" placeholder="Label">
+          </div>
+        </div>
+        <div class="form-group-editor" style="margin-bottom: 8px;">
+          <label class="form-label-editor">Kotak 2: Nilai & Label</label>
+          <div style="display: flex; gap: 6px;">
+            <input type="text" id="lf-grid-v1" class="form-input-dark" style="width: 45%;" value="${escapeHtml(items[1]?.value || '')}" placeholder="Nilai">
+            <input type="text" id="lf-grid-l1" class="form-input-dark" style="width: 55%;" value="${escapeHtml(items[1]?.label || '')}" placeholder="Label">
+          </div>
+        </div>
+      </div>
+      <div class="form-grid-2col" style="margin-top: 6px;">
+        <div class="form-group-editor" style="margin-bottom: 0;">
+          <label class="form-label-editor">Kotak 3 (Opsional)</label>
+          <div style="display: flex; gap: 6px;">
+            <input type="text" id="lf-grid-v2" class="form-input-dark" style="width: 45%;" value="${escapeHtml(items[2]?.value || '')}" placeholder="Nilai">
+            <input type="text" id="lf-grid-l2" class="form-input-dark" style="width: 55%;" value="${escapeHtml(items[2]?.label || '')}" placeholder="Label">
+          </div>
+        </div>
+        <div class="form-group-editor" style="margin-bottom: 0;">
+          <label class="form-label-editor">Kotak 4 (Opsional)</label>
+          <div style="display: flex; gap: 6px;">
+            <input type="text" id="lf-grid-v3" class="form-input-dark" style="width: 45%;" value="${escapeHtml(items[3]?.value || '')}" placeholder="Nilai">
+            <input type="text" id="lf-grid-l3" class="form-input-dark" style="width: 55%;" value="${escapeHtml(items[3]?.label || '')}" placeholder="Label">
+          </div>
+        </div>
+      </div>
+    `;
+  } else if (layout === 'regulasi') {
+    html = `
+      <div style="font-size: 11px; font-weight: 700; color: var(--lime); margin-bottom: 10px; text-transform: uppercase;">
+        ⚙️ Parameter Layout: Regulasi / Pasal Hukum
+      </div>
+      <div class="form-group-editor" style="margin-bottom: 0;">
+        <label class="form-label-editor">Nama Dokumen / Nomor Regulasi / Pasal</label>
+        <input type="text" id="lf-regulasi-title" class="form-input-dark" value="${escapeHtml(data.title || '')}" placeholder="Contoh: POJK NOMOR 12 TAHUN 2026 / PASAL 14">
+      </div>
+    `;
+  } else if (layout === 'comparison') {
+    const left = data.left || { title: 'Sebelum / Katalis', text: '' };
+    const right = data.right || { title: 'Sesudah / Implikasi', text: '' };
+    html = `
+      <div style="font-size: 11px; font-weight: 700; color: var(--lime); margin-bottom: 10px; text-transform: uppercase;">
+        ⚙️ Parameter Layout: Comparison (Perbandingan)
+      </div>
+      <div class="form-grid-2col">
+        <div class="form-group-editor" style="margin-bottom: 8px;">
+          <label class="form-label-editor">Kolom Kiri: Judul</label>
+          <input type="text" id="lf-comp-lt" class="form-input-dark" value="${escapeHtml(left.title || '')}">
+          <label class="form-label-editor" style="margin-top: 6px;">Kolom Kiri: Teks Narasi</label>
+          <textarea id="lf-comp-lx" class="form-input-dark" rows="3">${escapeHtml(left.text || '')}</textarea>
+        </div>
+        <div class="form-group-editor" style="margin-bottom: 8px;">
+          <label class="form-label-editor">Kolom Kanan: Judul</label>
+          <input type="text" id="lf-comp-rt" class="form-input-dark" value="${escapeHtml(right.title || '')}">
+          <label class="form-label-editor" style="margin-top: 6px;">Kolom Kanan: Teks Narasi</label>
+          <textarea id="lf-comp-rx" class="form-input-dark" rows="3">${escapeHtml(right.text || '')}</textarea>
+        </div>
+      </div>
+    `;
+  } else if (layout === 'timeline') {
+    const events = data.events || [
+      { date: 'Tahap 1', text: '' },
+      { date: 'Tahap 2', text: '' },
+    ];
+    html = `
+      <div style="font-size: 11px; font-weight: 700; color: var(--lime); margin-bottom: 10px; text-transform: uppercase;">
+        ⚙️ Parameter Layout: Timeline (Tahapan Kronologis)
+      </div>
+      <div class="form-group-editor" style="margin-bottom: 8px;">
+        <label class="form-label-editor">Tahap 1 (Waktu & Keterangan)</label>
+        <div style="display: flex; gap: 6px;">
+          <input type="text" id="lf-time-d0" class="form-input-dark" style="width: 30%;" value="${escapeHtml(events[0]?.date || 'Tahap 1')}">
+          <input type="text" id="lf-time-t0" class="form-input-dark" style="width: 70%;" value="${escapeHtml(events[0]?.text || '')}">
+        </div>
+      </div>
+      <div class="form-group-editor" style="margin-bottom: 8px;">
+        <label class="form-label-editor">Tahap 2 (Waktu & Keterangan)</label>
+        <div style="display: flex; gap: 6px;">
+          <input type="text" id="lf-time-d1" class="form-input-dark" style="width: 30%;" value="${escapeHtml(events[1]?.date || 'Tahap 2')}">
+          <input type="text" id="lf-time-t1" class="form-input-dark" style="width: 70%;" value="${escapeHtml(events[1]?.text || '')}">
+        </div>
+      </div>
+    `;
+  } else if (layout === 'cta-close') {
+    html = `
+      <div style="font-size: 11px; font-weight: 700; color: var(--lime); margin-bottom: 10px; text-transform: uppercase;">
+        ⚙️ Parameter Layout: CTA Close (Penutup)
+      </div>
+      <div class="form-group-editor" style="margin-bottom: 8px;">
+        <label class="form-label-editor">Teks Call to Action (CTA)</label>
+        <input type="text" id="lf-cta-text" class="form-input-dark" value="${escapeHtml(data.cta || 'Simpan postingan ini & ikuti @homelessmedia untuk data harian.')}">
+      </div>
+      <div class="form-group-editor" style="margin-bottom: 0;">
+        <label class="form-label-editor">Teks Disclaimer Edukasi</label>
+        <textarea id="lf-cta-disclaimer" class="form-input-dark" rows="2">${escapeHtml(data.disclaimer || '')}</textarea>
+      </div>
+    `;
+  } else if (layout === 'chart-bar') {
+    const labels = data.labels || [];
+    const values = data.values || [];
+    html = `
+      <div style="font-size: 11px; font-weight: 700; color: var(--lime); margin-bottom: 10px; text-transform: uppercase;">
+        ⚙️ Parameter Layout: Chart Bar
+      </div>
+      <div class="form-group-editor" style="margin-bottom: 8px;">
+        <label class="form-label-editor">Labels (Pisahkan dengan koma)</label>
+        <input type="text" id="lf-chart-labels" class="form-input-dark" value="${escapeHtml(labels.join(', '))}">
+      </div>
+      <div class="form-group-editor" style="margin-bottom: 0;">
+        <label class="form-label-editor">Values Angka (Pisahkan dengan koma)</label>
+        <input type="text" id="lf-chart-values" class="form-input-dark" value="${escapeHtml(values.join(', '))}">
+      </div>
+    `;
+  }
+
+  container.innerHTML = html;
+}
+
+function getCompiledLayoutData(layout, existingData = {}) {
+  const data = { ...existingData };
+
+  if (layout === 'cover-stat') {
+    data.value = document.getElementById('lf-stat-value')?.value || data.value || '';
+    data.unit = document.getElementById('lf-stat-unit')?.value || data.unit || '';
+    data.category = document.getElementById('lf-stat-category')?.value || data.category || '';
+    data.title = document.getElementById('editor-input-slide-text')?.value || '';
+  } else if (layout === 'big-statement') {
+    data.author = document.getElementById('lf-statement-author')?.value || data.author || '';
+    data.category = document.getElementById('lf-statement-category')?.value || data.category || 'FAKTA KUNCI';
+  } else if (layout === 'stat-grid') {
+    const items = [];
+    for (let i = 0; i < 4; i++) {
+      const v = document.getElementById(`lf-grid-v${i}`)?.value;
+      const l = document.getElementById(`lf-grid-l${i}`)?.value;
+      if (v && l) items.push({ value: v.trim(), label: l.trim() });
+    }
+    if (items.length > 0) data.items = items;
+  } else if (layout === 'regulasi') {
+    data.title = document.getElementById('lf-regulasi-title')?.value || data.title || 'REGULASI RESMI';
+    data.category = 'HUKUM & REGULASI';
+  } else if (layout === 'comparison') {
+    data.left = {
+      title: document.getElementById('lf-comp-lt')?.value || 'Sebelum',
+      text: document.getElementById('lf-comp-lx')?.value || '',
+    };
+    data.right = {
+      title: document.getElementById('lf-comp-rt')?.value || 'Sesudah',
+      text: document.getElementById('lf-comp-rx')?.value || '',
+    };
+    data.category = 'ANALISIS DAMPAK';
+  } else if (layout === 'timeline') {
+    const events = [];
+    for (let i = 0; i < 3; i++) {
+      const d = document.getElementById(`lf-time-d${i}`)?.value;
+      const t = document.getElementById(`lf-time-t${i}`)?.value;
+      if (d && t) events.push({ date: d.trim(), text: t.trim() });
+    }
+    if (events.length > 0) data.events = events;
+  } else if (layout === 'cta-close') {
+    data.cta = document.getElementById('lf-cta-text')?.value || data.cta || '';
+    data.disclaimer = document.getElementById('lf-cta-disclaimer')?.value || data.disclaimer || '';
+  } else if (layout === 'chart-bar') {
+    const lRaw = document.getElementById('lf-chart-labels')?.value || '';
+    const vRaw = document.getElementById('lf-chart-values')?.value || '';
+    data.labels = lRaw.split(',').map((x) => x.trim()).filter(Boolean);
+    data.values = vRaw.split(',').map((x) => parseFloat(x.trim())).filter((x) => !isNaN(x));
+  }
+
+  return data;
 }
 
 function renderThumbnailsStrip() {
@@ -409,15 +663,13 @@ function navigateSlide(dir) {
   }
 }
 
-function getSlideRole(idx) {
-  const roles = ['Cover (Hook)', 'Konteks Peristiwa', 'Bukti / Data / Regulasi', 'Implikasi Kebijakan', 'CTA Penutup'];
-  return roles[idx] || `Slide ${idx + 1}`;
-}
-
 async function saveAndRerenderSlide() {
   if (!activeDraft) return;
   const slideNo = activeSlideIndex + 1;
   const newText = document.getElementById('editor-input-slide-text').value;
+  const chosenLayout = document.getElementById('editor-select-layout').value;
+  const currentSlide = (activeDraft.rendered_slides || [])[activeSlideIndex] || {};
+  const compiledData = getCompiledLayoutData(chosenLayout, currentSlide.data || {});
 
   const btn = document.getElementById('btn-save-and-rerender');
   btn.disabled = true;
@@ -427,14 +679,22 @@ async function saveAndRerenderSlide() {
     const res = await fetch(`/api/drafts/${activeDraft.id}/edit-slide`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ slide_no: slideNo, new_text: newText }),
+      body: JSON.stringify({
+        slide_no: slideNo,
+        new_text: newText,
+        layout: chosenLayout,
+        data: compiledData,
+      }),
     });
 
     if (res.ok) {
-      showToast(`Slide #${slideNo} berhasil dirender ulang!`);
+      const result = await res.json();
+      showToast(`✨ Slide #${slideNo} (${chosenLayout}) berhasil dirender ulang!`);
       // Update local memory
       if (activeDraft.rendered_slides && activeDraft.rendered_slides[activeSlideIndex]) {
         activeDraft.rendered_slides[activeSlideIndex].text = newText;
+        activeDraft.rendered_slides[activeSlideIndex].layout = chosenLayout;
+        activeDraft.rendered_slides[activeSlideIndex].data = compiledData;
       }
       renderActiveSlide();
       renderThumbnailsStrip();
@@ -446,7 +706,66 @@ async function saveAndRerenderSlide() {
     showToast(`Error: ${err.message}`);
   } finally {
     btn.disabled = false;
-    btn.textContent = '🔄 Simpan & Render Ulang';
+    btn.textContent = '🔄 Simpan & Render Ulang Slide';
+  }
+}
+
+async function addSlideToDraft() {
+  if (!activeDraft) return;
+  const confirmAdd = confirm('Tambah slide baru di akhir carousel ini?');
+  if (!confirmAdd) return;
+
+  try {
+    const res = await fetch(`/api/drafts/${activeDraft.id}/add-slide`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        layout: 'big-statement',
+        teks: 'Poin penting tambahan...',
+        data: { category: 'ANALISIS TAMBAHAN' },
+      }),
+    });
+    if (res.ok) {
+      const result = await res.json();
+      showToast(`Slide #${result.new_slide_no} berhasil ditambahkan!`);
+      await loadDrafts();
+      activeDraft = currentDrafts.find((d) => d.id === activeDraft.id);
+      activeSlideIndex = (activeDraft.rendered_slides || []).length - 1;
+      renderActiveSlide();
+      renderThumbnailsStrip();
+    }
+  } catch (err) {
+    showToast(`Error: ${err.message}`);
+  }
+}
+
+async function deleteSlideFromDraft() {
+  if (!activeDraft) return;
+  const slides = activeDraft.rendered_slides || [];
+  if (slides.length <= 1) {
+    alert('Draf minimal harus memiliki 1 slide.');
+    return;
+  }
+  const slideNo = activeSlideIndex + 1;
+  const confirmDel = confirm(`Yakin ingin menghapus Slide #${slideNo}?`);
+  if (!confirmDel) return;
+
+  try {
+    const res = await fetch(`/api/drafts/${activeDraft.id}/delete-slide`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slide_no: slideNo }),
+    });
+    if (res.ok) {
+      showToast(`Slide #${slideNo} berhasil dihapus.`);
+      await loadDrafts();
+      activeDraft = currentDrafts.find((d) => d.id === activeDraft.id);
+      activeSlideIndex = Math.max(0, activeSlideIndex - 1);
+      renderActiveSlide();
+      renderThumbnailsStrip();
+    }
+  } catch (err) {
+    showToast(`Error: ${err.message}`);
   }
 }
 

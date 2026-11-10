@@ -186,10 +186,10 @@ app.post('/api/drafts/:id/reject', async (req, res) => {
   }
 });
 
-// 5. Edit Slide Text & Re-render
+// 5. Edit Slide (Text, Layout & Data) & Re-render
 app.post('/api/drafts/:id/edit-slide', async (req, res) => {
   const draftId = parseInt(req.params.id);
-  const { slide_no, new_text } = req.body;
+  const { slide_no, new_text, layout, data, category, source } = req.body;
 
   try {
     const { rows: drafts } = await pool.query('SELECT slides FROM drafts WHERE id = $1', [draftId]);
@@ -199,7 +199,14 @@ app.post('/api/drafts/:id/edit-slide', async (req, res) => {
     const targetIdx = slides.findIndex((s) => (s.no || 0) === slide_no || slides.indexOf(s) === slide_no - 1);
     if (targetIdx === -1) return res.status(400).json({ error: 'Slide number not found' });
 
-    slides[targetIdx].teks = new_text;
+    if (new_text !== undefined) slides[targetIdx].teks = new_text;
+    if (layout) slides[targetIdx].layout = layout;
+    if (data !== undefined) slides[targetIdx].data = data;
+    if (category) {
+      if (!slides[targetIdx].data) slides[targetIdx].data = {};
+      slides[targetIdx].data.category = category;
+    }
+    if (source) slides[targetIdx].source = source;
 
     // Call Render Service
     const renderResp = await fetch(`${RENDER_SERVICE_URL}/render`, {
@@ -211,18 +218,112 @@ app.post('/api/drafts/:id/edit-slide', async (req, res) => {
     if (!renderResp.ok) throw new Error('Render service failed');
 
     // Update DB
+    const slideFilePath = path.join(STORAGE_PATH, 'drafts', String(draftId), `slide_${slide_no}.png`);
     await pool.query('UPDATE drafts SET slides = $1, updated_at = NOW() WHERE id = $2', [JSON.stringify(slides), draftId]);
     await pool.query(
-      'UPDATE draft_slides SET text_snapshot = $1, rendered_at = NOW() WHERE draft_id = $2 AND slide_no = $3',
-      [new_text, draftId, slide_no]
+      `INSERT INTO draft_slides (draft_id, slide_no, layout, render_path, text_snapshot, data_snapshot, rendered_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW())
+       ON CONFLICT (draft_id, slide_no) DO UPDATE
+       SET layout = EXCLUDED.layout, render_path = EXCLUDED.render_path, text_snapshot = EXCLUDED.text_snapshot, data_snapshot = EXCLUDED.data_snapshot, rendered_at = NOW()`,
+      [draftId, slide_no, slides[targetIdx].layout, slideFilePath, slides[targetIdx].teks, JSON.stringify(slides[targetIdx].data || {})]
     );
 
     await pool.query(
       "INSERT INTO audit_log (entity, entity_id, action, actor, payload) VALUES ('draft', $1, 'edit_slide', 'web_admin', $2)",
-      [draftId, JSON.stringify({ slide_no, new_text })]
+      [draftId, JSON.stringify({ slide_no, layout: slides[targetIdx].layout, teks: slides[targetIdx].teks })]
     );
 
-    res.json({ status: 'success', draftId, slide_no, image_url: `/storage/drafts/${draftId}/slide_${slide_no}.png?t=${Date.now()}` });
+    res.json({
+      status: 'success',
+      draftId,
+      slide_no,
+      layout: slides[targetIdx].layout,
+      data: slides[targetIdx].data,
+      image_url: `/storage/drafts/${draftId}/slide_${slide_no}.png?t=${Date.now()}`,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 5a. Add Slide to Draft
+app.post('/api/drafts/:id/add-slide', async (req, res) => {
+  const draftId = parseInt(req.params.id);
+  const { layout = 'big-statement', teks = 'Poin penting tambahan...', data = {} } = req.body;
+
+  try {
+    const { rows: drafts } = await pool.query('SELECT slides FROM drafts WHERE id = $1', [draftId]);
+    if (drafts.length === 0) return res.status(404).json({ error: 'Draft not found' });
+
+    const slides = drafts[0].slides;
+    const newSlideNo = slides.length + 1;
+    slides.push({
+      no: newSlideNo,
+      layout,
+      teks,
+      data,
+      source: '@homelessmedia',
+    });
+
+    // Re-render
+    const renderResp = await fetch(`${RENDER_SERVICE_URL}/render`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Render-Secret': RENDER_SECRET },
+      body: JSON.stringify({ draft_id: draftId, slides }),
+    });
+
+    if (!renderResp.ok) throw new Error('Render service failed');
+
+    const newSlidePath = path.join(STORAGE_PATH, 'drafts', String(draftId), `slide_${newSlideNo}.png`);
+    await pool.query('UPDATE drafts SET slides = $1, updated_at = NOW() WHERE id = $2', [JSON.stringify(slides), draftId]);
+    await pool.query(
+      `INSERT INTO draft_slides (draft_id, slide_no, layout, render_path, text_snapshot, data_snapshot, rendered_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+      [draftId, newSlideNo, layout, newSlidePath, teks, JSON.stringify(data)]
+    );
+
+    res.json({ status: 'success', draftId, new_slide_no: newSlideNo, total_slides: slides.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 5b. Delete Slide from Draft
+app.post('/api/drafts/:id/delete-slide', async (req, res) => {
+  const draftId = parseInt(req.params.id);
+  const { slide_no } = req.body;
+
+  try {
+    const { rows: drafts } = await pool.query('SELECT slides FROM drafts WHERE id = $1', [draftId]);
+    if (drafts.length === 0) return res.status(404).json({ error: 'Draft not found' });
+
+    let slides = drafts[0].slides;
+    if (slides.length <= 1) return res.status(400).json({ error: 'Draf minimal harus memiliki 1 slide.' });
+
+    slides = slides.filter((s, idx) => (s.no || idx + 1) !== slide_no);
+    slides.forEach((s, idx) => { s.no = idx + 1; });
+
+    // Clean old slide files and re-render
+    const renderResp = await fetch(`${RENDER_SERVICE_URL}/render`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Render-Secret': RENDER_SECRET },
+      body: JSON.stringify({ draft_id: draftId, slides }),
+    });
+
+    if (!renderResp.ok) throw new Error('Render service failed');
+
+    await pool.query('DELETE FROM draft_slides WHERE draft_id = $1', [draftId]);
+    for (const s of slides) {
+      const sPath = path.join(STORAGE_PATH, 'drafts', String(draftId), `slide_${s.no}.png`);
+      await pool.query(
+        `INSERT INTO draft_slides (draft_id, slide_no, layout, render_path, text_snapshot, data_snapshot, rendered_at)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+        [draftId, s.no, s.layout, sPath, s.teks, JSON.stringify(s.data || {})]
+      );
+    }
+    await pool.query('UPDATE drafts SET slides = $1, updated_at = NOW() WHERE id = $2', [JSON.stringify(slides), draftId]);
+
+    res.json({ status: 'success', draftId, total_slides: slides.length });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
