@@ -52,9 +52,32 @@ const n8nPool = new Pool({
   max: 3,
 });
 
-// Serve static assets
-app.use('/storage', express.static(STORAGE_PATH));
-app.use(express.static(path.join(__dirname, 'public')));
+// Cache-Control & Anti-CDN Stale Middleware (Global)
+app.use((req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  res.set('Surrogate-Control', 'no-store');
+  next();
+});
+
+// Serve static assets with explicit no-cache
+app.use('/storage', (req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  next();
+}, express.static(STORAGE_PATH));
+
+app.use(express.static(path.join(__dirname, 'public'), {
+  etag: false,
+  maxAge: 0,
+  setHeaders: (res) => {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+  },
+}));
 
 // Health check
 app.get('/health', (req, res) => {

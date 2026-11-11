@@ -79,10 +79,10 @@ export class RenderEngine {
           justifyContent: 'space-between',
           width: '1080px',
           height: '1350px',
-          backgroundColor: palette.bg,
-          padding: `${grid.margin}px`,
+          backgroundColor: palette.bg || '#F8F6F0',
+          padding: `${grid.margin || 72}px`,
           fontFamily: 'Inter',
-          color: palette.ink,
+          color: palette.ink || '#102B45',
         },
         children: [
           // Header Bar
@@ -94,8 +94,8 @@ export class RenderEngine {
                 justifyContent: 'space-between',
                 alignItems: 'center',
                 width: '100%',
-                borderBottom: `2px solid ${palette.border}`,
-                paddingBottom: '20px',
+                borderBottom: `1.5px solid ${palette.border || '#DED9CC'}`,
+                paddingBottom: '22px',
               },
               children: [
                 {
@@ -104,7 +104,7 @@ export class RenderEngine {
                     style: {
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '12px',
+                      gap: '8px',
                     },
                     children: [
                       {
@@ -113,10 +113,35 @@ export class RenderEngine {
                           style: {
                             fontFamily: 'Archivo Black',
                             fontSize: '22px',
-                            color: palette.ink,
+                            color: palette.ink || '#102B45',
                             letterSpacing: '1px',
                           },
-                          children: brand.name.toUpperCase(),
+                          children: 'GAPURA',
+                        },
+                      },
+                      {
+                        type: 'div',
+                        props: {
+                          style: {
+                            fontFamily: 'Inter',
+                            fontWeight: 700,
+                            fontSize: '20px',
+                            color: palette.accent || '#1F7E81',
+                            letterSpacing: '2px',
+                          },
+                          children: 'MEDIA',
+                        },
+                      },
+                      {
+                        type: 'div',
+                        props: {
+                          style: {
+                            width: '6px',
+                            height: '6px',
+                            borderRadius: '50%',
+                            backgroundColor: palette.highlight || '#D79344',
+                            marginLeft: '2px',
+                          },
                         },
                       },
                       category
@@ -124,14 +149,15 @@ export class RenderEngine {
                             type: 'div',
                             props: {
                               style: {
-                                backgroundColor: palette.accent,
+                                backgroundColor: palette.accent || '#1F7E81',
                                 color: '#ffffff',
                                 fontSize: '13px',
                                 fontFamily: 'Inter',
                                 fontWeight: 700,
-                                padding: '4px 10px',
-                                borderRadius: '4px',
-                                letterSpacing: '0.5px',
+                                padding: '5px 14px',
+                                borderRadius: '16px',
+                                letterSpacing: '0.8px',
+                                marginLeft: '12px',
                               },
                               children: category.toUpperCase(),
                             },
@@ -144,12 +170,21 @@ export class RenderEngine {
                   type: 'div',
                   props: {
                     style: {
-                      fontSize: '18px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      backgroundColor: '#ede7db',
+                      border: `1px solid ${palette.border || '#DED9CC'}`,
+                      borderRadius: '20px',
+                      padding: '5px 16px',
+                      fontSize: '14px',
                       fontFamily: 'Inter',
                       fontWeight: 700,
-                      color: palette.muted,
+                      color: palette.ink || '#102B45',
+                      letterSpacing: '0.5px',
                     },
-                    children: totalSlides ? `${slideNo} / ${totalSlides}` : brand.handle,
+                    children: totalSlides
+                      ? `${String(slideNo).padStart(2, '0')} / ${String(totalSlides).padStart(2, '0')}`
+                      : brand.handle || '@gapuramedia',
                   },
                 },
               ],
@@ -165,8 +200,8 @@ export class RenderEngine {
                 flexDirection: 'column',
                 flex: 1,
                 justifyContent: 'center',
-                paddingTop: '32px',
-                paddingBottom: '32px',
+                paddingTop: '36px',
+                paddingBottom: '36px',
               },
               children: [contentNode],
             },
@@ -181,10 +216,10 @@ export class RenderEngine {
                 justifyContent: 'space-between',
                 alignItems: 'center',
                 width: '100%',
-                borderTop: `1px solid ${palette.border}`,
+                borderTop: `1.5px solid ${palette.border || '#DED9CC'}`,
                 paddingTop: '20px',
                 fontSize: '14px',
-                color: palette.muted,
+                color: palette.muted || '#5A6B7C',
               },
               children: [
                 {
@@ -192,17 +227,55 @@ export class RenderEngine {
                   props: {
                     style: { display: 'flex', alignItems: 'center', gap: '8px' },
                     children: [
-                      showSource && source
-                        ? `Sumber Data: ${source}`
-                        : brand.tagline,
+                      {
+                        type: 'span',
+                        props: {
+                          style: {
+                            fontWeight: 700,
+                            color: palette.ink || '#102B45',
+                            fontSize: '12px',
+                            letterSpacing: '0.5px',
+                          },
+                          children: 'SUMBER DATA:',
+                        },
+                      },
+                      {
+                        type: 'span',
+                        props: {
+                          style: { color: palette.muted || '#5A6B7C', fontSize: '13px' },
+                          children: showSource && source ? source : brand.tagline || 'Data, Hukum & Ekonomi Bursa',
+                        },
+                      },
                     ],
                   },
                 },
                 {
                   type: 'div',
                   props: {
-                    style: { fontWeight: 700, color: palette.accent },
-                    children: brand.handle,
+                    style: {
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      fontWeight: 700,
+                      color: palette.accent || '#1F7E81',
+                      fontSize: '14px',
+                      letterSpacing: '0.5px',
+                    },
+                    children: [
+                      {
+                        type: 'span',
+                        props: {
+                          style: { color: palette.highlight || '#D79344' },
+                          children: '●',
+                        },
+                      },
+                      {
+                        type: 'span',
+                        props: {
+                          children: brand.handle || '@gapuramedia',
+                        },
+                      },
+                    ],
                   },
                 },
               ],
@@ -220,72 +293,201 @@ export class RenderEngine {
 
     switch (layout) {
       case 'cover-stat': {
-        const value = slide.data?.value || slide.teks;
+        const hasStat = Boolean(slide.data?.value || slide.data?.stat);
+        const statVal = hasStat ? String(slide.data?.value || slide.data?.stat) : '';
         const subtext = slide.data?.subtext || slide.data?.unit || '';
-        const title = slide.data?.title || (slide.data?.value ? slide.teks : '');
+        const headline = slide.data?.title || slide.teks;
+        const category = slide.data?.category || 'LAPORAN UTAMA';
+
+        const headlineFontSize = headline.length > 80 ? '38px' : headline.length > 50 ? '46px' : '52px';
 
         return this.wrapSlide(
           {
             type: 'div',
             props: {
-              style: { display: 'flex', flexDirection: 'column', gap: '28px' },
+              style: { display: 'flex', flexDirection: 'column', gap: '32px', width: '100%' },
               children: [
+                // 1. Eyebrow Tag
                 {
                   type: 'div',
                   props: {
-                    style: {
-                      width: '64px',
-                      height: '6px',
-                      backgroundColor: palette.accent,
-                    },
+                    style: { display: 'flex', alignItems: 'center', gap: '10px' },
+                    children: [
+                      {
+                        type: 'div',
+                        props: {
+                          style: {
+                            width: '8px',
+                            height: '8px',
+                            borderRadius: '50%',
+                            backgroundColor: palette.highlight || '#D79344',
+                          },
+                        },
+                      },
+                      {
+                        type: 'div',
+                        props: {
+                          style: {
+                            fontFamily: 'Inter',
+                            fontSize: '16px',
+                            fontWeight: 700,
+                            color: palette.accent || '#1F7E81',
+                            letterSpacing: '1.5px',
+                            textTransform: 'uppercase',
+                          },
+                          children: 'LAPORAN KHUSUS · @GAPURAMEDIA',
+                        },
+                      },
+                    ],
                   },
                 },
+                // 2. Main Headline
                 {
                   type: 'div',
                   props: {
                     style: {
                       fontFamily: 'Archivo Black',
-                      fontSize: '76px',
-                      lineHeight: '1.1',
-                      color: palette.ink,
-                      letterSpacing: '-1px',
+                      fontSize: headlineFontSize,
+                      lineHeight: '1.28',
+                      color: palette.ink || '#102B45',
+                      letterSpacing: '-0.5px',
                     },
-                    children: value,
+                    children: headline,
                   },
                 },
-                subtext
+                // 3. Focal Element (Stat Card or Summary Box)
+                hasStat
                   ? {
                       type: 'div',
                       props: {
                         style: {
-                          fontSize: '24px',
-                          fontWeight: 700,
-                          color: palette.accent,
-                          textTransform: 'uppercase',
-                          letterSpacing: '1px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          backgroundColor: '#ffffff',
+                          border: `1.5px solid ${palette.border || '#DED9CC'}`,
+                          borderRadius: '16px',
+                          padding: '24px 32px',
+                          gap: '24px',
                         },
-                        children: subtext,
+                        children: [
+                          {
+                            type: 'div',
+                            props: {
+                              style: {
+                                width: '8px',
+                                height: '76px',
+                                backgroundColor: palette.highlight || '#D79344',
+                                borderRadius: '4px',
+                              },
+                            },
+                          },
+                          {
+                            type: 'div',
+                            props: {
+                              style: { display: 'flex', flexDirection: 'column', gap: '6px' },
+                              children: [
+                                {
+                                  type: 'div',
+                                  props: {
+                                    style: {
+                                      fontFamily: 'Archivo Black',
+                                      fontSize: statVal.length > 10 ? '48px' : '62px',
+                                      color: palette.ink || '#102B45',
+                                      lineHeight: '1.1',
+                                    },
+                                    children: statVal,
+                                  },
+                                },
+                                subtext
+                                  ? {
+                                      type: 'div',
+                                      props: {
+                                        style: {
+                                          fontSize: '18px',
+                                          fontFamily: 'Inter',
+                                          fontWeight: 700,
+                                          color: palette.accent || '#1F7E81',
+                                          textTransform: 'uppercase',
+                                          letterSpacing: '0.8px',
+                                        },
+                                        children: subtext,
+                                      },
+                                    }
+                                  : null,
+                              ].filter(Boolean),
+                            },
+                          },
+                        ],
                       },
                     }
-                  : null,
-                title
-                  ? {
+                  : {
                       type: 'div',
                       props: {
                         style: {
-                          fontSize: '28px',
-                          lineHeight: '1.4',
-                          color: palette.ink_secondary,
-                          fontWeight: 500,
+                          display: 'flex',
+                          alignItems: 'center',
+                          backgroundColor: '#ffffff',
+                          border: `1.5px solid ${palette.border || '#DED9CC'}`,
+                          borderRadius: '16px',
+                          padding: '24px 32px',
+                          gap: '24px',
                         },
-                        children: title,
+                        children: [
+                          {
+                            type: 'div',
+                            props: {
+                              style: {
+                                width: '8px',
+                                height: '76px',
+                                backgroundColor: palette.accent || '#1F7E81',
+                                borderRadius: '4px',
+                              },
+                            },
+                          },
+                          {
+                            type: 'div',
+                            props: {
+                              style: {
+                                fontSize: '22px',
+                                fontFamily: 'Inter',
+                                fontWeight: 500,
+                                lineHeight: '1.5',
+                                color: palette.ink || '#102B45',
+                              },
+                              children:
+                                subtext ||
+                                'Laporan editorial mendalam berdasarkan analisis data bursa, regulasi hukum, dan pergerakan makro ekonomi terverifikasi.',
+                            },
+                          },
+                        ],
                       },
-                    }
-                  : null,
-              ].filter(Boolean),
+                    },
+                // 4. Swipe prompt at bottom
+                {
+                  type: 'div',
+                  props: {
+                    style: {
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      backgroundColor: palette.accent || '#1F7E81',
+                      color: '#ffffff',
+                      fontSize: '15px',
+                      fontFamily: 'Inter',
+                      fontWeight: 700,
+                      padding: '12px 28px',
+                      borderRadius: '30px',
+                      letterSpacing: '0.5px',
+                      alignSelf: 'flex-start',
+                      marginTop: '8px',
+                    },
+                    children: 'GESER KE KIRI UNTUK ANALISIS ➔',
+                  },
+                },
+              ],
             },
           },
-          { slideNo: slideIndex, totalSlides, source: slide.source, category: slide.data?.category }
+          { slideNo: slideIndex, totalSlides, source: slide.source, category: category }
         );
       }
 
@@ -297,20 +499,63 @@ export class RenderEngine {
               style: {
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '32px',
-                paddingLeft: '32px',
-                borderLeft: `8px solid ${palette.accent}`,
+                gap: '24px',
+                backgroundColor: '#ffffff',
+                border: `1.5px solid ${palette.border || '#DED9CC'}`,
+                borderRadius: '16px',
+                padding: '36px 40px',
               },
               children: [
                 {
                   type: 'div',
                   props: {
                     style: {
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                    },
+                    children: [
+                      {
+                        type: 'div',
+                        props: {
+                          style: {
+                            fontFamily: 'Archivo Black',
+                            fontSize: '48px',
+                            color: palette.highlight || '#D79344',
+                            lineHeight: '1',
+                          },
+                          children: '“',
+                        },
+                      },
+                      {
+                        type: 'div',
+                        props: {
+                          style: {
+                            backgroundColor: palette.accent || '#1F7E81',
+                            color: '#ffffff',
+                            fontSize: '13px',
+                            fontFamily: 'Inter',
+                            fontWeight: 700,
+                            padding: '4px 12px',
+                            borderRadius: '12px',
+                            letterSpacing: '0.8px',
+                            textTransform: 'uppercase',
+                          },
+                          children: 'PERNYATAAN RESMI',
+                        },
+                      },
+                    ],
+                  },
+                },
+                {
+                  type: 'div',
+                  props: {
+                    style: {
                       fontFamily: 'Inter',
-                      fontSize: '36px',
-                      lineHeight: '1.5',
+                      fontSize: '32px',
+                      lineHeight: '1.45',
                       fontWeight: 700,
-                      color: palette.ink,
+                      color: palette.ink || '#102B45',
                     },
                     children: `“${slide.teks}”`,
                   },
@@ -321,8 +566,9 @@ export class RenderEngine {
                       props: {
                         style: {
                           fontSize: '20px',
-                          color: palette.muted,
-                          fontWeight: 500,
+                          color: palette.accent || '#1F7E81',
+                          fontWeight: 700,
+                          letterSpacing: '0.5px',
                         },
                         children: `— ${slide.data.author}`,
                       },
@@ -344,7 +590,7 @@ export class RenderEngine {
           {
             type: 'div',
             props: {
-              style: { display: 'flex', flexDirection: 'column', gap: '32px' },
+              style: { display: 'flex', flexDirection: 'column', gap: '28px', width: '100%' },
               children: [
                 {
                   type: 'div',
@@ -352,7 +598,8 @@ export class RenderEngine {
                     style: {
                       fontFamily: 'Archivo Black',
                       fontSize: '36px',
-                      color: palette.ink,
+                      lineHeight: '1.3',
+                      color: palette.ink || '#102B45',
                     },
                     children: slide.teks,
                   },
@@ -363,30 +610,30 @@ export class RenderEngine {
                     style: {
                       display: 'flex',
                       flexWrap: 'wrap',
-                      gap: '24px',
+                      gap: '20px',
                       width: '100%',
                     },
-                    children: items.map((item) => ({
+                    children: items.slice(0, 4).map((item) => ({
                       type: 'div',
                       props: {
                         style: {
                           display: 'flex',
                           flexDirection: 'column',
-                          backgroundColor: palette.card_bg,
-                          border: `1px solid ${palette.border}`,
-                          borderRadius: '8px',
-                          padding: '24px',
-                          width: '440px',
+                          backgroundColor: '#ffffff',
+                          border: `1.5px solid ${palette.border || '#DED9CC'}`,
+                          borderRadius: '14px',
+                          padding: '24px 28px',
+                          width: items.length === 1 ? '100%' : '440px',
                           gap: '8px',
                         },
                         children: [
                           {
                             type: 'div',
                             props: {
-                              fontFamily: 'Archivo Black',
                               style: {
+                                fontFamily: 'Archivo Black',
                                 fontSize: '48px',
-                                color: palette.accent,
+                                color: palette.accent || '#1F7E81',
                                 lineHeight: '1.1',
                               },
                               children: item.value,
@@ -397,8 +644,9 @@ export class RenderEngine {
                             props: {
                               style: {
                                 fontSize: '18px',
-                                color: palette.muted,
-                                fontWeight: 500,
+                                color: palette.muted || '#5A6B7C',
+                                fontWeight: 600,
+                                lineHeight: '1.4',
                               },
                               children: item.label,
                             },
@@ -776,8 +1024,9 @@ export class RenderEngine {
       }
 
       case 'cta-close': {
-        const ctaText = slide.data?.cta || `Ikuti ${this.tokens.brand?.handle || '@gapuramedia'} untuk data & regulasi harian.`;
-        const disclaimer = slide.data?.disclaimer || 'Informasi disajikan untuk tujuan edukasi publik dan bukan merupakan nasihat investasi keuangan.';
+        const headline = slide.teks || 'SIMPAN DATA INI UNTUK REFERENSI';
+        const ctaText = slide.data?.cta || `Ikuti ${this.tokens.brand?.handle || '@gapuramedia'} untuk data bursa & regulasi harian.`;
+        const disclaimer = slide.data?.disclaimer || 'Informasi disajikan untuk tujuan edukasi data publik dan bukan merupakan rekomendasi transaksi saham maupun nasihat hukum resmi.';
 
         return this.wrapSlide(
           {
@@ -786,9 +1035,8 @@ export class RenderEngine {
               style: {
                 display: 'flex',
                 flexDirection: 'column',
-                alignItems: 'center',
-                textAlign: 'center',
-                gap: '36px',
+                gap: '28px',
+                width: '100%',
               },
               children: [
                 {
@@ -797,41 +1045,148 @@ export class RenderEngine {
                     style: {
                       fontFamily: 'Archivo Black',
                       fontSize: '44px',
-                      color: palette.ink,
-                      lineHeight: '1.3',
-                      textAlign: 'center',
+                      color: palette.ink || '#102B45',
+                      lineHeight: '1.25',
                     },
-                    children: slide.teks,
+                    children: headline,
                   },
                 },
                 {
                   type: 'div',
                   props: {
                     style: {
-                      backgroundColor: palette.accent,
-                      color: '#ffffff',
                       fontSize: '22px',
-                      fontWeight: 700,
-                      padding: '16px 32px',
-                      borderRadius: '8px',
-                      textAlign: 'center',
+                      color: palette.accent || '#1F7E81',
+                      lineHeight: '1.4',
+                      fontWeight: 600,
                     },
                     children: ctaText,
                   },
                 },
+                // Action Grid
                 {
                   type: 'div',
                   props: {
                     style: {
-                      fontSize: '15px',
-                      color: palette.muted,
-                      lineHeight: '1.5',
-                      maxWidth: '720px',
-                      textAlign: 'center',
-                      borderTop: `1px solid ${palette.border}`,
-                      paddingTop: '20px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '12px',
+                      width: '100%',
                     },
-                    children: `Disclaimer: ${disclaimer}`,
+                    children: [
+                      {
+                        type: 'div',
+                        props: {
+                          style: {
+                            display: 'flex',
+                            alignItems: 'center',
+                            backgroundColor: '#ffffff',
+                            border: `1.5px solid ${palette.border || '#DED9CC'}`,
+                            borderRadius: '12px',
+                            padding: '16px 20px',
+                            gap: '16px',
+                          },
+                          children: [
+                            {
+                              type: 'div',
+                              props: {
+                                style: {
+                                  backgroundColor: palette.accent || '#1F7E81',
+                                  color: '#ffffff',
+                                  fontFamily: 'Archivo Black',
+                                  fontSize: '13px',
+                                  borderRadius: '6px',
+                                  padding: '5px 12px',
+                                  letterSpacing: '0.5px',
+                                },
+                                children: 'SIMPAN',
+                              },
+                            },
+                            { type: 'span', props: { style: { fontSize: '17px', fontWeight: 600, color: palette.ink || '#102B45' }, children: 'Simpan postingan ini untuk rujukan data bursa & regulasi.' } },
+                          ],
+                        },
+                      },
+                      {
+                        type: 'div',
+                        props: {
+                          style: {
+                            display: 'flex',
+                            alignItems: 'center',
+                            backgroundColor: '#ffffff',
+                            border: `1.5px solid ${palette.border || '#DED9CC'}`,
+                            borderRadius: '12px',
+                            padding: '16px 20px',
+                            gap: '16px',
+                          },
+                          children: [
+                            {
+                              type: 'div',
+                              props: {
+                                style: {
+                                  backgroundColor: palette.highlight || '#D79344',
+                                  color: '#ffffff',
+                                  fontFamily: 'Archivo Black',
+                                  fontSize: '13px',
+                                  borderRadius: '6px',
+                                  padding: '5px 12px',
+                                  letterSpacing: '0.5px',
+                                },
+                                children: 'BAGIKAN',
+                              },
+                            },
+                            { type: 'span', props: { style: { fontSize: '17px', fontWeight: 600, color: palette.ink || '#102B45' }, children: 'Bagikan ke rekan atau tim investor Anda untuk diskusi.' } },
+                          ],
+                        },
+                      },
+                      {
+                        type: 'div',
+                        props: {
+                          style: {
+                            display: 'flex',
+                            alignItems: 'center',
+                            backgroundColor: '#ffffff',
+                            border: `1.5px solid ${palette.border || '#DED9CC'}`,
+                            borderRadius: '12px',
+                            padding: '16px 20px',
+                            gap: '16px',
+                          },
+                          children: [
+                            {
+                              type: 'div',
+                              props: {
+                                style: {
+                                  backgroundColor: palette.ink || '#102B45',
+                                  color: '#ffffff',
+                                  fontFamily: 'Archivo Black',
+                                  fontSize: '13px',
+                                  borderRadius: '6px',
+                                  padding: '5px 12px',
+                                  letterSpacing: '0.5px',
+                                },
+                                children: 'DISKUSI',
+                              },
+                            },
+                            { type: 'span', props: { style: { fontSize: '17px', fontWeight: 600, color: palette.ink || '#102B45' }, children: 'Tulis pandangan atau pertanyaan di kolom komentar.' } },
+                          ],
+                        },
+                      },
+                    ],
+                  },
+                },
+                // Compliance Box
+                {
+                  type: 'div',
+                  props: {
+                    style: {
+                      backgroundColor: '#ffffff',
+                      border: `1px solid ${palette.border || '#DED9CC'}`,
+                      borderRadius: '10px',
+                      padding: '16px 20px',
+                      fontSize: '14px',
+                      lineHeight: '1.45',
+                      color: palette.muted || '#5A6B7C',
+                    },
+                    children: `DISCLAIMER RESMI: ${disclaimer}`,
                   },
                 },
               ],
@@ -924,43 +1279,61 @@ export class RenderEngine {
         props: {
           style: {
             display: 'flex',
-            flexDirection: 'column',
-            backgroundColor: palette.card_bg,
-            border: `2px solid ${palette.border}`,
-            borderLeft: `8px solid ${palette.highlight}`,
-            borderRadius: '12px',
+            alignItems: 'center',
+            backgroundColor: '#ffffff',
+            border: `1.5px solid ${palette.border || '#DED9CC'}`,
+            borderRadius: '16px',
             padding: '24px 32px',
-            gap: '8px',
+            gap: '24px',
           },
           children: [
             {
               type: 'div',
               props: {
                 style: {
-                  fontFamily: 'Archivo Black',
-                  fontSize: val.length > 12 ? '48px' : '64px',
-                  color: palette.ink,
-                  lineHeight: '1.1',
+                  width: '8px',
+                  height: '76px',
+                  backgroundColor: palette.highlight || '#D79344',
+                  borderRadius: '4px',
                 },
-                children: val,
               },
             },
-            unit
-              ? {
-                  type: 'div',
-                  props: {
-                    style: {
-                      fontSize: '20px',
-                      fontWeight: 700,
-                      color: palette.accent,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px',
+            {
+              type: 'div',
+              props: {
+                style: { display: 'flex', flexDirection: 'column', gap: '6px' },
+                children: [
+                  {
+                    type: 'div',
+                    props: {
+                      style: {
+                        fontFamily: 'Archivo Black',
+                        fontSize: val.length > 12 ? '48px' : '62px',
+                        color: palette.ink || '#102B45',
+                        lineHeight: '1.1',
+                      },
+                      children: val,
                     },
-                    children: unit,
                   },
-                }
-              : null,
-          ].filter(Boolean),
+                  unit
+                    ? {
+                        type: 'div',
+                        props: {
+                          style: {
+                            fontSize: '18px',
+                            fontWeight: 700,
+                            color: palette.accent || '#1F7E81',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.8px',
+                          },
+                          children: unit,
+                        },
+                      }
+                    : null,
+                ].filter(Boolean),
+              },
+            },
+          ],
         },
       });
     }
@@ -1267,9 +1640,99 @@ export class RenderEngine {
       });
     }
 
-    // 10. CTA Button / Footer Action (if present)
-    if (data.cta || (slideIndex === totalSlides && totalSlides > 1)) {
-      const ctaMsg = data.cta || 'Bagikan pandangan Anda di kolom komentar';
+    // Slide 1 Swipe Indicator
+    if (slideIndex === 1 && totalSlides > 1) {
+      children.push({
+        type: 'div',
+        props: {
+          style: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            backgroundColor: palette.accent || '#1F7E81',
+            color: '#ffffff',
+            fontSize: '15px',
+            fontFamily: 'Inter',
+            fontWeight: 700,
+            padding: '12px 28px',
+            borderRadius: '30px',
+            letterSpacing: '0.5px',
+            alignSelf: 'flex-start',
+            marginTop: '8px',
+          },
+          children: 'GESER KE KIRI UNTUK ANALISIS ➔',
+        },
+      });
+    }
+
+    // 10. CTA Button / Footer Action (if present or last slide)
+    if (slideIndex === totalSlides && totalSlides > 1) {
+      children.push({
+        type: 'div',
+        props: {
+          style: {
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+            width: '100%',
+            marginTop: '8px',
+          },
+          children: [
+            {
+              type: 'div',
+              props: {
+                style: {
+                  display: 'flex',
+                  alignItems: 'center',
+                  backgroundColor: '#ffffff',
+                  border: `1.5px solid ${palette.border || '#DED9CC'}`,
+                  borderRadius: '12px',
+                  padding: '14px 20px',
+                  gap: '12px',
+                },
+                children: [
+                  { type: 'span', props: { style: { fontSize: '20px' }, children: '💾' } },
+                  { type: 'span', props: { style: { fontSize: '16px', fontWeight: 700, color: palette.ink || '#102B45' }, children: 'Simpan postingan ini untuk referensi bursa & regulasi.' } },
+                ],
+              },
+            },
+            {
+              type: 'div',
+              props: {
+                style: {
+                  display: 'flex',
+                  alignItems: 'center',
+                  backgroundColor: '#ffffff',
+                  border: `1.5px solid ${palette.border || '#DED9CC'}`,
+                  borderRadius: '12px',
+                  padding: '14px 20px',
+                  gap: '12px',
+                },
+                children: [
+                  { type: 'span', props: { style: { fontSize: '20px' }, children: '✈️' } },
+                  { type: 'span', props: { style: { fontSize: '16px', fontWeight: 700, color: palette.ink || '#102B45' }, children: 'Bagikan ke rekan atau tim investor Anda.' } },
+                ],
+              },
+            },
+            {
+              type: 'div',
+              props: {
+                style: {
+                  backgroundColor: '#ffffff',
+                  border: `1px solid ${palette.border || '#DED9CC'}`,
+                  borderRadius: '10px',
+                  padding: '14px 18px',
+                  fontSize: '13px',
+                  lineHeight: '1.45',
+                  color: palette.muted || '#5A6B7C',
+                },
+                children: `DISCLAIMER RESMI: Seluruh data bersumber dari publikasi resmi otoritas (BPS, BI, OJK, BEI). Bukan rekomendasi investasi atau nasihat hukum individual.`,
+              },
+            },
+          ],
+        },
+      });
+    } else if (data.cta) {
       children.push({
         type: 'div',
         props: {
@@ -1277,16 +1740,16 @@ export class RenderEngine {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundColor: palette.accent,
+            backgroundColor: palette.accent || '#1F7E81',
             color: '#ffffff',
-            fontSize: '20px',
+            fontSize: '18px',
             fontWeight: 700,
-            padding: '16px 28px',
+            padding: '14px 24px',
             borderRadius: '8px',
             marginTop: '8px',
             textAlign: 'center',
           },
-          children: ctaMsg,
+          children: data.cta,
         },
       });
     }

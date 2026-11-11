@@ -470,15 +470,15 @@ async function updateEditorLivePreview() {
 
 async function regenerateActiveDraftAI() {
   if (!activeDraft) return;
-  const confirmRegen = confirm(`Rancang ulang draf #${activeDraft.id} ("${activeDraft.topic_title || ''}") menggunakan AI Designer? Seluruh slide akan dibuat baru secara adaptif.`);
-  if (!confirmRegen) return;
 
   const btn = document.getElementById('btn-action-regenerate-ai');
   const originalHtml = btn ? btn.innerHTML : '';
   if (btn) {
     btn.disabled = true;
-    btn.innerHTML = '⚡ Merancang via AI Designer...';
+    btn.innerHTML = '⚡ Merancang Ulang via AI...';
   }
+
+  showToast(`⚡ AI Designer sedang merancang ulang draf #${activeDraft.id}...`);
 
   try {
     const res = await fetch(`/api/drafts/${activeDraft.id}/regenerate-ai`, {
@@ -492,19 +492,24 @@ async function regenerateActiveDraftAI() {
     }
 
     const data = await res.json();
-    showToast(`✨ Sukses merancang ulang draf #${activeDraft.id} dengan ${data.rendered_slides.length} slide AI!`);
 
     activeDraft.caption = data.caption;
     activeDraft.hashtags = data.hashtags;
-    activeDraft.rendered_slides = data.rendered_slides;
+    // Map with fresh cache bust
+    activeDraft.rendered_slides = (data.rendered_slides || []).map((s) => ({
+      ...s,
+      image_url: `${(s.image_url || '').split('?')[0]}?t=${Date.now()}_${Math.random().toString(36).substring(7)}`,
+    }));
     activeSlideIndex = 0;
 
-    loadDrafts();
+    await loadDrafts();
 
     document.getElementById('editor-input-caption').value = activeDraft.caption || '';
     document.getElementById('editor-input-hashtags').value = (activeDraft.hashtags || []).join(' ');
     renderActiveSlide();
     renderThumbnailsStrip();
+
+    showToast(`✨ Sukses merancang ulang draf #${activeDraft.id}! Seluruh slide diperbarui (${activeDraft.rendered_slides.length} slide).`);
   } catch (err) {
     console.error('Error regenerateActiveDraftAI:', err);
     showToast(`Gagal merancang ulang: ${err.message}`);
@@ -527,7 +532,8 @@ function renderActiveSlide() {
       URL.revokeObjectURL(mainImg.dataset.objectUrl);
       mainImg.dataset.objectUrl = '';
     }
-    mainImg.src = `${currentSlide.image_url}?t=${Date.now()}`;
+    const cleanUrl = (currentSlide.image_url || '').split('?')[0];
+    mainImg.src = cleanUrl ? `${cleanUrl}?t=${Date.now()}_${Math.random().toString(36).substring(7)}` : '';
   }
 
   document.getElementById('editor-slide-heading').textContent = `Slide ${activeSlideIndex + 1} dari ${slides.length}`;
@@ -849,8 +855,10 @@ function renderThumbnailsStrip() {
       renderActiveSlide();
     };
 
+    const cleanUrl = (s.image_url || '').split('?')[0];
+    const cacheBuster = `t=${Date.now()}_${idx}_${Math.random().toString(36).substring(7)}`;
     box.innerHTML = `
-      <img src="${s.image_url}?t=${Date.now()}" alt="Slide ${idx + 1}">
+      <img src="${cleanUrl ? `${cleanUrl}?${cacheBuster}` : ''}" alt="Slide ${idx + 1}">
       <span class="editor-thumb-number">${idx + 1}</span>
     `;
     strip.appendChild(box);
@@ -871,7 +879,13 @@ async function saveAndRerenderSlide() {
   if (!activeDraft) return;
   const slideNo = activeSlideIndex + 1;
   const newText = document.getElementById('editor-input-slide-text').value;
-  const chosenLayout = document.getElementById('editor-select-layout').value;
+
+  let chosenLayout = document.getElementById('editor-select-layout').value;
+  if (chosenLayout === 'custom') {
+    const customInput = document.getElementById('editor-custom-layout-input');
+    chosenLayout = (customInput && customInput.value.trim()) || 'custom';
+  }
+
   const currentSlide = (activeDraft.rendered_slides || [])[activeSlideIndex] || {};
   const compiledData = getCompiledLayoutData(chosenLayout, currentSlide.data || {});
 
@@ -899,6 +913,7 @@ async function saveAndRerenderSlide() {
         activeDraft.rendered_slides[activeSlideIndex].text = newText;
         activeDraft.rendered_slides[activeSlideIndex].layout = chosenLayout;
         activeDraft.rendered_slides[activeSlideIndex].data = compiledData;
+        activeDraft.rendered_slides[activeSlideIndex].image_url = result.image_url;
       }
       renderActiveSlide();
       renderThumbnailsStrip();
@@ -2059,7 +2074,7 @@ async function autoProduceAndReviewTopic(topicId, topicTitle) {
       throw new Error(err.error || `HTTP ${res.status}`);
     }
     const data = await res.json();
-    showToast(data.is_existing ? 'Draf sudah tersedia! Membuka editor...' : '✨ Draf & slide berhasil diproduksi! Membuka editor...');
+    showToast(data.is_existing ? `Draf #${data.draft_id} dimuat! Klik '✨ Regenerate AI' jika ingin merancang ulang total.` : '✨ Draf & slide berhasil diproduksi! Membuka editor...');
     await loadDrafts();
     switchToView('view-review');
     openDraftEditor(data.draft_id);
