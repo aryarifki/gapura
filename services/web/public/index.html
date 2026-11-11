@@ -51,6 +51,14 @@
             <div class="nav-item-left"><span>📡</span> <span>Sumber Berita</span></div>
             <span class="nav-badge" id="sidebar-sources-badge">11</span>
           </div>
+          <div class="nav-item" data-view="view-trends">
+            <div class="nav-item-left"><span>🔥</span> <span>Radar Trending</span></div>
+            <span class="nav-badge" id="sidebar-trends-badge">0</span>
+          </div>
+          <div class="nav-item" data-view="view-verifications">
+            <div class="nav-item-left"><span>🛡️</span> <span>Verifikasi Berita</span></div>
+            <span class="nav-badge" id="sidebar-verif-badge">0</span>
+          </div>
 
           <div class="nav-section-label">Sistem & Studio</div>
           <div class="nav-item" data-view="view-agents">
@@ -665,6 +673,245 @@
           </div>
         </section>
 
+
+        <!-- ================================================================== -->
+        <!-- VIEW 8: RADAR TRENDING (Agen SEO) -->
+        <!-- ================================================================== -->
+        <section id="view-trends" class="view-pane">
+          <div class="redaksi-header-row" style="margin-bottom: 24px;">
+            <div class="redaksi-title-block">
+              <span class="redaksi-greeting">Agen SEO · Trend Intelligence</span>
+              <h2 style="font-family: 'Archivo Black', sans-serif; font-size: 28px; color: #fff; margin-bottom: 6px;">RADAR TRENDING</h2>
+              <p style="font-size: 13px; color: var(--muted); max-width: 680px;">
+                Berita dan percakapan yang sedang naik dari X, Google Trends, dan momentum pemberitaan. Skor virality menimbang bobot sumber, kesegaran, angka, dan relevansi niche. Promosikan trend menjadi topik editorial untuk diproses Analis.
+              </p>
+            </div>
+            <div class="redaksi-actions-right" style="display: flex; gap: 10px;">
+              <button class="btn btn-outline" id="btn-seo-scan-now">
+                <span>🔥</span> <span>Pindai Trending Sekarang</span>
+              </button>
+              <button class="btn btn-lime" id="btn-refresh-trends">
+                <span>🔄</span> <span>Muat Ulang</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="overview-stats-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 24px;">
+            <div class="overview-stat-card">
+              <div class="stat-card-header">
+                <span class="stat-card-title">Trend 3 Hari Terakhir</span>
+                <span class="stat-card-icon" style="background: rgba(215, 147, 68, 0.2); color: var(--highlight);">🔥</span>
+              </div>
+              <div class="stat-card-value" id="trend-stat-total">0</div>
+              <div class="stat-card-trend">Item lolos skor minimum</div>
+            </div>
+            <div class="overview-stat-card">
+              <div class="stat-card-header">
+                <span class="stat-card-title">Sumber Trending Aktif</span>
+                <span class="stat-card-icon" style="background: rgba(31, 126, 129, 0.2); color: var(--accent);">📡</span>
+              </div>
+              <div class="stat-card-value" id="trend-stat-sources">0</div>
+              <div class="stat-card-trend">Akun X, query, & trends</div>
+            </div>
+            <div class="overview-stat-card">
+              <div class="stat-card-header">
+                <span class="stat-card-title">Skor Tertinggi</span>
+                <span class="stat-card-icon" style="background: rgba(26, 122, 79, 0.2); color: var(--up);">📈</span>
+              </div>
+              <div class="stat-card-value" id="trend-stat-top">0</div>
+              <div class="stat-card-trend">Dari 100</div>
+            </div>
+            <div class="overview-stat-card">
+              <div class="stat-card-header">
+                <span class="stat-card-title">Sudah Dipromosikan</span>
+                <span class="stat-card-icon" style="background: rgba(16, 43, 69, 0.4); color: #fff;">🎯</span>
+              </div>
+              <div class="stat-card-value" id="trend-stat-promoted">0</div>
+              <div class="stat-card-trend">Menjadi topik editorial</div>
+            </div>
+          </div>
+
+          <div class="gallery-filter-tabs">
+            <button class="gallery-tab-btn active btn-trend-filter" data-platform="">Semua Platform</button>
+            <button class="gallery-tab-btn btn-trend-filter" data-platform="news">Momentum Berita</button>
+            <button class="gallery-tab-btn btn-trend-filter" data-platform="google_trends">Google Trends</button>
+            <button class="gallery-tab-btn btn-trend-filter" data-platform="x">X / Twitter</button>
+          </div>
+
+          <div class="activity-card" style="margin-bottom: 24px;">
+            <div class="activity-header" style="display: flex; justify-content: space-between; align-items: center;">
+              <span class="activity-title">Item Trending Teratas</span>
+              <span style="font-size: 12px; color: var(--muted);" id="trend-list-meta">—</span>
+            </div>
+            <div class="activity-list" id="trend-list-container">
+              <!-- Rendered by JS -->
+            </div>
+          </div>
+
+          <div class="agent-config-card" style="margin: 0;">
+            <div class="agent-card-title-row">
+              <h3 class="agent-card-title">⚙️ Sumber Trending yang Dipantau (Dapat Dikustomisasi)</h3>
+              <span class="pill-status active"><span class="dot"></span> Akun X & query bisa Anda ubah</span>
+            </div>
+            <p class="agent-card-desc">
+              Tambahkan akun X (format <code>@handle</code>), query X, Google Trends geo, atau query berita. Akun X hanya aktif jika <code>X_BEARER_TOKEN</code> tersedia; tanpa token, sistem otomatis memakai Google News sebagai pengganti dan mencatatnya sebagai provider yang dipakai.
+            </p>
+
+            <div class="form-grid-2col">
+              <div class="form-group-editor">
+                <label class="form-label-editor">Jenis Sumber</label>
+                <select id="trend-source-kind" class="form-input-dark form-select-dark">
+                  <option value="x_account">Akun X / Twitter</option>
+                  <option value="x_query">Query Pencarian X</option>
+                  <option value="google_trends">Google Trends (Geo)</option>
+                  <option value="news_query">Query Momentum Berita</option>
+                </select>
+              </div>
+              <div class="form-group-editor">
+                <label class="form-label-editor">Nilai (Handle / Query / Kode Geo)</label>
+                <input type="text" id="trend-source-value" class="form-input-dark" placeholder="@ojkindonesia / IHSG hari ini / ID">
+              </div>
+            </div>
+
+            <div class="form-grid-2col">
+              <div class="form-group-editor">
+                <label class="form-label-editor">Label Tampilan (Opsional)</label>
+                <input type="text" id="trend-source-label" class="form-input-dark" placeholder="OJK Indonesia (Regulator)">
+              </div>
+              <div class="form-group-editor">
+                <label class="form-label-editor">Kategori Niche</label>
+                <select id="trend-source-category" class="form-input-dark form-select-dark">
+                  <option value="pasar_modal">Pasar Modal</option>
+                  <option value="regulasi">Regulasi</option>
+                  <option value="moneter">Moneter</option>
+                  <option value="fiskal">Fiskal</option>
+                  <option value="data_makro">Data Makro</option>
+                  <option value="trending">Umum / Trending</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-grid-2col">
+              <div class="form-group-editor">
+                <label class="form-label-editor">Bobot Prioritas (1–25)</label>
+                <input type="number" id="trend-source-weight" class="form-input-dark" min="1" max="25" value="12">
+                <span class="form-help-text">Makin tinggi bobot, makin besar pengaruhnya ke skor virality.</span>
+              </div>
+              <div class="form-group-editor" style="display: flex; flex-direction: column; justify-content: center;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #fff; font-weight: 600; font-size: 13px;">
+                  <input type="checkbox" id="trend-source-active" checked style="width: 18px; height: 18px; accent-color: var(--lime);">
+                  Aktif dipantau Agen SEO
+                </label>
+              </div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px;">
+              <button type="button" class="btn btn-outline" id="btn-reset-trend-source">Reset Form</button>
+              <button type="button" class="btn btn-lime" id="btn-save-trend-source">
+                <span>➕</span> <span>Tambah / Perbarui Sumber</span>
+              </button>
+            </div>
+
+            <div style="margin-top: 20px; border-top: 1px solid var(--border); padding-top: 18px;">
+              <div class="table-responsive">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th style="padding: 12px 14px;">Jenis</th>
+                      <th style="padding: 12px 14px;">Nilai</th>
+                      <th style="padding: 12px 14px;">Label</th>
+                      <th style="padding: 12px 14px;">Kategori</th>
+                      <th style="padding: 12px 14px; text-align: center;">Bobot</th>
+                      <th style="padding: 12px 14px; text-align: center;">Terakhir Pindai</th>
+                      <th style="padding: 12px 14px; text-align: center;">Status</th>
+                      <th style="padding: 12px 14px; text-align: right;">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody id="trend-sources-table-body">
+                    <!-- Rendered by JS -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+
+        <!-- ================================================================== -->
+        <!-- VIEW 9: VERIFIKASI BERITA (Agen Verifikator) -->
+        <!-- ================================================================== -->
+        <section id="view-verifications" class="view-pane">
+          <div class="redaksi-header-row" style="margin-bottom: 24px;">
+            <div class="redaksi-title-block">
+              <span class="redaksi-greeting">Agen Verifikator · Fact-Check Redaksi</span>
+              <h2 style="font-family: 'Archivo Black', sans-serif; font-size: 28px; color: #fff; margin-bottom: 6px;">VERIFIKASI BERITA</h2>
+              <p style="font-size: 13px; color: var(--muted); max-width: 680px;">
+                Memisahkan fakta, opini, spekulasi, konten menyesatkan, dan hoaks. Setiap laporan memuat klaim yang diuji, penjelasan mendalam, miskonsepsi yang perlu diluruskan, dan rujukan. Status <strong style="color: var(--down);">hoaks terdeteksi</strong> memblokir produksi otomatis kecuali dipaksa oleh editor.
+              </p>
+            </div>
+            <div class="redaksi-actions-right">
+              <button class="btn btn-lime" id="btn-refresh-verifications">
+                <span>🔄</span> <span>Muat Ulang Laporan</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="overview-stats-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 24px;">
+            <div class="overview-stat-card">
+              <div class="stat-card-header">
+                <span class="stat-card-title">Total Laporan</span>
+                <span class="stat-card-icon" style="background: rgba(31, 126, 129, 0.2); color: var(--accent);">🛡️</span>
+              </div>
+              <div class="stat-card-value" id="verif-stat-total">0</div>
+              <div class="stat-card-trend">Seluruh riwayat verifikasi</div>
+            </div>
+            <div class="overview-stat-card">
+              <div class="stat-card-header">
+                <span class="stat-card-title">Terverifikasi</span>
+                <span class="stat-card-icon" style="background: rgba(26, 122, 79, 0.2); color: var(--up);">✅</span>
+              </div>
+              <div class="stat-card-value" id="verif-stat-verified">0</div>
+              <div class="stat-card-trend">Fakta & mostly verified</div>
+            </div>
+            <div class="overview-stat-card">
+              <div class="stat-card-header">
+                <span class="stat-card-title">Perlu Konteks / Opini</span>
+                <span class="stat-card-icon" style="background: rgba(215, 147, 68, 0.2); color: var(--highlight);">⚠️</span>
+              </div>
+              <div class="stat-card-value" id="verif-stat-context">0</div>
+              <div class="stat-card-trend">Bukan fakta utuh</div>
+            </div>
+            <div class="overview-stat-card">
+              <div class="stat-card-header">
+                <span class="stat-card-title">Menyesatkan / Hoaks</span>
+                <span class="stat-card-icon" style="background: rgba(178, 58, 72, 0.2); color: var(--down);">🚫</span>
+              </div>
+              <div class="stat-card-value" id="verif-stat-hoax">0</div>
+              <div class="stat-card-trend">Diblokir dari auto-produce</div>
+            </div>
+          </div>
+
+          <div class="gallery-filter-tabs">
+            <button class="gallery-tab-btn active btn-verif-filter" data-status="">Semua Status</button>
+            <button class="gallery-tab-btn btn-verif-filter" data-status="verified">Terverifikasi</button>
+            <button class="gallery-tab-btn btn-verif-filter" data-status="needs_context">Perlu Konteks</button>
+            <button class="gallery-tab-btn btn-verif-filter" data-status="opinion">Opini</button>
+            <button class="gallery-tab-btn btn-verif-filter" data-status="misleading">Menyesatkan</button>
+            <button class="gallery-tab-btn btn-verif-filter" data-status="hoax_detected">Hoaks</button>
+            <button class="gallery-tab-btn btn-verif-filter" data-status="unverified">Belum Terverifikasi</button>
+          </div>
+
+          <div class="activity-card">
+            <div class="activity-header" style="display: flex; justify-content: space-between; align-items: center;">
+              <span class="activity-title">Riwayat Laporan Verifikasi</span>
+              <span style="font-size: 12px; color: var(--muted);" id="verif-list-meta">—</span>
+            </div>
+            <div class="activity-list" id="verification-list-container">
+              <!-- Rendered by JS -->
+            </div>
+          </div>
+        </section>
+
         <!-- Modal Tambah / Edit Sumber -->
         <div id="modal-source" class="modal-source-overlay" style="display: none; position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); align-items: center; justify-content: center; padding: 20px;">
           <div class="modal-content" style="max-width: 540px; width: 100%; background: #131720; border: 1px solid var(--border); border-radius: 12px; padding: 24px; position: relative; box-shadow: 0 20px 40px rgba(0,0,0,0.8);">
@@ -798,6 +1045,20 @@
               <div class="agent-tab-texts">
                 <span class="agent-tab-name">Designer</span>
                 <span class="agent-tab-role">Design Tokens & Layout</span>
+              </div>
+            </button>
+            <button class="agent-nav-tab" data-agent="seo">
+              <span class="agent-tab-icon" style="color: var(--highlight);">🔥</span>
+              <div class="agent-tab-texts">
+                <span class="agent-tab-name">SEO</span>
+                <span class="agent-tab-role">Pemburu Trending</span>
+              </div>
+            </button>
+            <button class="agent-nav-tab" data-agent="verifikator">
+              <span class="agent-tab-icon" style="color: var(--up);">🛡️</span>
+              <div class="agent-tab-texts">
+                <span class="agent-tab-name">Verifikator</span>
+                <span class="agent-tab-role">Fact-Check & Konteks</span>
               </div>
             </button>
           </div>
@@ -1176,6 +1437,136 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
             </div>
           </div>
 
+          <!-- TAB 5: SEO (TREND INTELLIGENCE) -->
+          <div class="agent-tab-panel" id="tab-panel-seo">
+            <div class="agent-config-card">
+              <div class="agent-card-title-row">
+                <h3 class="agent-card-title">🔥 Konfigurasi Agen SEO (Pemburu Trending)</h3>
+                <span class="pill-status active"><span class="dot"></span> X · Google Trends · Momentum Berita</span>
+              </div>
+              <p class="agent-card-desc">Agen SEO memindai sumber trending yang Anda tentukan, memberi skor virality, lalu mengusulkan sudut liputan. Sumber (akun X, query, geo trends) dikelola di view <strong>Radar Trending</strong>.</p>
+
+              <div class="form-grid-2col">
+                <div class="form-group-editor">
+                  <label class="form-label-editor">Penyedia LLM (Provider)</label>
+                  <select id="seo-provider" class="form-input-dark form-select-dark">
+                    <option value="gemini">Google Gemini (Native SDK/REST)</option>
+                    <option value="openai">OpenAI (GPT-4o, GPT-4o-mini)</option>
+                    <option value="openrouter">OpenRouter (Multi-Model Hub)</option>
+                    <option value="groq">Groq (Ultra Fast Inference)</option>
+                    <option value="deepseek">DeepSeek (V3, R1)</option>
+                    <option value="custom">Ollama / Custom OpenAI-Compatible</option>
+                  </select>
+                </div>
+                <div class="form-group-editor">
+                  <label class="form-label-editor">Nama Model</label>
+                  <input type="text" id="seo-model" class="form-input-dark" value="gemini-3.5-flash-lite">
+                  <span class="form-help-text">Model untuk analisis sudut liputan & relevansi niche.</span>
+                </div>
+              </div>
+
+              <div class="form-grid-2col">
+                <div class="form-group-editor">
+                  <label class="form-label-editor">Base Endpoint URL</label>
+                  <input type="text" id="seo-endpoint" class="form-input-dark" value="https://generativelanguage.googleapis.com">
+                </div>
+                <div class="form-group-editor">
+                  <label class="form-label-editor">API Key</label>
+                  <div class="input-with-toggle">
+                    <input type="password" id="seo-api-key" class="form-input-dark" placeholder="Kosongkan untuk memakai env GEMINI_API_KEY">
+                    <button type="button" class="btn-toggle-pw" onclick="togglePasswordVisibility('seo-api-key')">👁️</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-group-editor">
+                <label class="form-label-editor">Ambang Skor Virality Minimum (0–100)</label>
+                <input type="number" id="seo-min-virality" class="form-input-dark" min="0" max="100" value="55">
+                <span class="form-help-text">Trend di bawah ambang ini tetap tersimpan, tetapi ditandai sebagai sinyal lemah.</span>
+              </div>
+
+              <div class="form-group-editor">
+                <label class="form-label-editor">Instruksi Sistem Agen SEO (System Prompt)</label>
+                <textarea id="seo-prompt" class="form-input-dark form-textarea" rows="4"></textarea>
+              </div>
+
+              <div class="form-group-editor" style="margin-top: 15px;">
+                <label class="form-label-editor">Panduan & Strategi Trending (skills.md Agen SEO)</label>
+                <textarea id="seo-skills-md" class="form-input-dark form-textarea" rows="6" placeholder="Kustomisasi strategi pemburuan trending, daftar akun X prioritas, aturan relevansi niche..."></textarea>
+                <span class="form-help-text">File tersimpan di <code style="color: var(--lime);">config/skills/seo.skills.md</code> dan otomatis diinjeksi ke prompt Agen SEO.</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB 6: VERIFIKATOR (FACT-CHECK) -->
+          <div class="agent-tab-panel" id="tab-panel-verifikator">
+            <div class="agent-config-card">
+              <div class="agent-card-title-row">
+                <h3 class="agent-card-title">🛡️ Konfigurasi Agen Verifikator (Fact-Check Redaksi)</h3>
+                <span class="pill-status active"><span class="dot"></span> Fakta · Opini · Hoaks · Konteks</span>
+              </div>
+              <p class="agent-card-desc">Verifikator menguji klaim utama terhadap tier sumber, angka, sinyal bahasa, dan korroborasi lintas media. Status akhir menentukan apakah topik boleh diproduksi otomatis.</p>
+
+              <div class="form-grid-2col">
+                <div class="form-group-editor">
+                  <label class="form-label-editor">Penyedia LLM (Provider)</label>
+                  <select id="verifikator-provider" class="form-input-dark form-select-dark">
+                    <option value="gemini">Google Gemini (Native SDK/REST)</option>
+                    <option value="openai">OpenAI (GPT-4o, GPT-4o-mini)</option>
+                    <option value="openrouter">OpenRouter (Multi-Model Hub)</option>
+                    <option value="groq">Groq (Ultra Fast Inference)</option>
+                    <option value="deepseek">DeepSeek (V3, R1)</option>
+                    <option value="custom">Ollama / Custom OpenAI-Compatible</option>
+                  </select>
+                </div>
+                <div class="form-group-editor">
+                  <label class="form-label-editor">Nama Model</label>
+                  <input type="text" id="verifikator-model" class="form-input-dark" value="gemini-3.5-flash-lite">
+                  <span class="form-help-text">Model penalaran untuk rubrik verifikasi.</span>
+                </div>
+              </div>
+
+              <div class="form-grid-2col">
+                <div class="form-group-editor">
+                  <label class="form-label-editor">Base Endpoint URL</label>
+                  <input type="text" id="verifikator-endpoint" class="form-input-dark" value="https://generativelanguage.googleapis.com">
+                </div>
+                <div class="form-group-editor">
+                  <label class="form-label-editor">API Key</label>
+                  <div class="input-with-toggle">
+                    <input type="password" id="verifikator-api-key" class="form-input-dark" placeholder="Kosongkan untuk memakai env GEMINI_API_KEY">
+                    <button type="button" class="btn-toggle-pw" onclick="togglePasswordVisibility('verifikator-api-key')">👁️</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-grid-2col">
+                <div class="form-group-editor">
+                  <label class="form-label-editor">Ambang Keyakinan Minimum untuk Publikasi (0–100)</label>
+                  <input type="number" id="verifikator-min-confidence" class="form-input-dark" min="0" max="100" value="60">
+                  <span class="form-help-text">Di bawah ambang ini, status ditahan sebagai "belum terverifikasi" dan diberi disclaimer.</span>
+                </div>
+                <div class="form-group-editor" style="display: flex; flex-direction: column; justify-content: center;">
+                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #fff; font-weight: 600; font-size: 13px;">
+                    <input type="checkbox" id="verifikator-block-hoax" checked style="width: 18px; height: 18px; accent-color: var(--lime);">
+                    Blokir produksi otomatis jika status hoaks terdeteksi
+                  </label>
+                </div>
+              </div>
+
+              <div class="form-group-editor">
+                <label class="form-label-editor">Instruksi Sistem Agen Verifikator (System Prompt)</label>
+                <textarea id="verifikator-prompt" class="form-input-dark form-textarea" rows="4"></textarea>
+              </div>
+
+              <div class="form-group-editor" style="margin-top: 15px;">
+                <label class="form-label-editor">Panduan & Rubrik Verifikasi (skills.md Agen Verifikator)</label>
+                <textarea id="verifikator-skills-md" class="form-input-dark form-textarea" rows="6" placeholder="Kustomisasi rubrik verifikasi, daftar tier sumber rujukan, aturan penjelasan miskonsepsi..."></textarea>
+                <span class="form-help-text">File tersimpan di <code style="color: var(--lime);">config/skills/verifikator.skills.md</code> dan otomatis diinjeksi ke prompt Verifikator.</span>
+              </div>
+            </div>
+          </div>
+
           <!-- Sticky Bottom Save Bar -->
           <div class="sticky-save-bar">
             <div class="sticky-save-info">
@@ -1195,6 +1586,6 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
   <!-- Toast -->
   <div id="toast" class="toast"></div>
 
-  <script src="/app.js?v=3.5.0"></script>
+  <script src="/app.js?v=3.6.0"></script>
 </body>
 </html>

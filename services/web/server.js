@@ -17,6 +17,8 @@ import { produceSingleTopicDraft, buildCarouselSlides } from '../copywriter/copy
 import { designCarouselSlides } from '../designer/designer.js';
 import { loadAgentsConfig, loadAgentSkills, saveAgentSkills } from '../common/llm.js';
 import { runScout } from '../scout/scout.js';
+import { runSeoScan, listTrends, promoteTrendToTopic } from '../seo/seo.js';
+import { verifyTopic, getLatestVerification, listVerifications } from '../verificator/verificator.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -42,6 +44,18 @@ const pool = new Pool({
   password: process.env.HME_DB_PASSWORD,
   database: process.env.HME_DB_NAME || 'hme',
 });
+
+async function writeAudit(entity, entityId, action, actor = 'web_admin', payload = {}) {
+  try {
+    await pool.query(
+      'INSERT INTO audit_log (entity, entity_id, action, actor, payload) VALUES ($1, $2, $3, $4, $5)',
+      [entity, entityId || 0, action, actor, JSON.stringify(payload)]
+    );
+  } catch (auditError) {
+    // Jangan menutupi error utama jika database audit sedang bermasalah.
+    console.error('[Audit] gagal menulis log:', auditError.message);
+  }
+}
 
 const n8nPool = new Pool({
   host: process.env.DB_POSTGRESDB_HOST || '127.0.0.1',
@@ -82,6 +96,21 @@ app.use(express.static(path.join(__dirname, 'public'), {
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', app: 'gapura-dashboard', version: '2.0.0' });
+});
+
+// Log error/aksi dari browser agar tombol yang gagal dapat ditelusuri dari
+// menu Log Aktivitas, bukan hanya dari console browser.
+app.post('/api/client-log', async (req, res) => {
+  const body = req.body || {};
+  await writeAudit('web_ui', null, `client_${body.level || 'info'}`, 'web_browser', {
+    action: body.action || 'unknown',
+    message: String(body.message || '').slice(0, 1000),
+    stack: body.stack ? String(body.stack).slice(0, 3000) : null,
+    meta: body.meta || {},
+    url: body.url || null,
+    user_agent: req.get('user-agent') || null,
+  });
+  res.status(204).end();
 });
 
 // 1. Dashboard Stats
@@ -684,9 +713,23 @@ app.post('/api/topics/:id/auto-produce', async (req, res) => {
     }
 
     const topic = topics[0];
+
+    // Gate verifikasi: konten berstatus hoaks tidak boleh diproduksi otomatis.
+    const { rows: verificationRows } = await pool.query(
+      'SELECT * FROM verification_reports WHERE topic_id = $1 ORDER BY created_at DESC LIMIT 1',
+      [topicId]
+    );
+    const latestVerification = verificationRows[0] || null;
+    if (latestVerification?.status === 'hoax_detected' && !force) {
+      return res.status(409).json({
+        error: 'Konten terindikasi hoaks dan diblokir dari produksi otomatis. Tinjau laporan verifikasi atau kirim force=true setelah review manual.',
+        verification: latestVerification,
+      });
+    }
+
     if (existingDrafts.length > 0 && force) {
       const draftId = existingDrafts[0].id;
-      const carouselData = await buildCarouselSlides(topic);
+      const carouselData = await buildCarouselSlides(topic, latestVerification);
       const renderResp = await fetch(`${RENDER_SERVICE_URL}/render`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Render-Secret': RENDER_SECRET },
@@ -836,6 +879,8 @@ app.get('/api/agents/config', (req, res) => {
       analis: loadAgentSkills('analis'),
       copywriter: loadAgentSkills('copywriter'),
       designer: loadAgentSkills('designer'),
+      seo: loadAgentSkills('seo'),
+      verifikator: loadAgentSkills('verifikator'),
     };
     res.json(config);
   } catch (err) {
@@ -852,7 +897,7 @@ app.post('/api/agents/config', async (req, res) => {
 
     // 1. Simpan skills.md kustom untuk masing-masing agen
     if (newConfig.skills && typeof newConfig.skills === 'object') {
-      ['scout', 'analis', 'copywriter', 'designer'].forEach((key) => {
+      ['scout', 'analis', 'copywriter', 'designer', 'seo', 'verifikator'].forEach((key) => {
         if (typeof newConfig.skills[key] === 'string') {
           saveAgentSkills(key, newConfig.skills[key]);
         }
@@ -912,7 +957,7 @@ app.post('/api/agents/config', async (req, res) => {
       [JSON.stringify({ updated_agents: Object.keys(newConfig) })]
     );
 
-    res.json({ status: 'success', message: 'Konfigurasi 4 Agen AI dan seluruh berkas skills.md berhasil disimpan dan diterapkan ke seluruh sistem.' });
+    res.json({ status: 'success', message: 'Konfigurasi 6 Agen AI dan seluruh berkas skills.md berhasil disimpan dan diterapkan ke seluruh sistem.' });
   } catch (err) {
     console.error('[Web API] Gagal menyimpan config agen:', err);
     res.status(500).json({ error: err.message });
@@ -1139,6 +1184,168 @@ app.post('/api/sources/poll', async (req, res) => {
     });
   } catch (err) {
     console.error('[Web API] Error running scout poll:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==============================================================================
+// 12. Agen SEO — Radar Trending
+// ==============================================================================
+app.get('/api/trend-sources', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT ts.*,
+              (SELECT COUNT(*)::int FROM trend_items ti WHERE ti.trend_source_id = ts.id) AS total_items
+       FROM trend_sources ts
+       ORDER BY ts.is_active DESC, ts.weight DESC, ts.id ASC`
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/trend-sources', async (req, res) => {
+  const { kind, value, label = null, category = 'trending', weight = 10, poll_interval_mins = 60, is_active = true } = req.body || {};
+  const allowed = ['x_account', 'x_query', 'google_trends', 'news_query'];
+  if (!allowed.includes(kind) || !value) {
+    return res.status(400).json({ error: `kind wajib salah satu dari: ${allowed.join(', ')} dan value wajib diisi.` });
+  }
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO trend_sources (kind, value, label, category, weight, poll_interval_mins, is_active, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())
+       RETURNING *`,
+      [kind, String(value).trim(), label, category, parseInt(weight) || 10, parseInt(poll_interval_mins) || 60, Boolean(is_active)]
+    );
+    await pool.query(
+      "INSERT INTO audit_log (entity, entity_id, action, actor, payload) VALUES ('trend_source', $1, 'create', 'web_admin', $2)",
+      [rows[0].id, JSON.stringify({ kind, value, label, category })]
+    );
+    res.json({ status: 'success', source: rows[0] });
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'Sumber trending ini sudah terdaftar.' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/trend-sources/:id', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const { kind, value, label = null, category = 'trending', weight = 10, poll_interval_mins = 60, is_active = true } = req.body || {};
+  const allowed = ['x_account', 'x_query', 'google_trends', 'news_query'];
+  if (!allowed.includes(kind) || !value) {
+    return res.status(400).json({ error: 'kind dan value wajib valid.' });
+  }
+  try {
+    const { rows } = await pool.query(
+      `UPDATE trend_sources
+       SET kind=$1, value=$2, label=$3, category=$4, weight=$5, poll_interval_mins=$6, is_active=$7, updated_at=NOW()
+       WHERE id=$8 RETURNING *`,
+      [kind, String(value).trim(), label, category, parseInt(weight) || 10, parseInt(poll_interval_mins) || 60, Boolean(is_active), id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Sumber trending tidak ditemukan.' });
+    await pool.query(
+      "INSERT INTO audit_log (entity, entity_id, action, actor, payload) VALUES ('trend_source', $1, 'update', 'web_admin', $2)",
+      [id, JSON.stringify({ kind, value, label, is_active })]
+    );
+    res.json({ status: 'success', source: rows[0] });
+  } catch (err) {
+    await writeAudit('trend_source', id, 'error_update', 'web_admin', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/trend-sources/:id', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  try {
+    const { rowCount } = await pool.query('DELETE FROM trend_sources WHERE id = $1', [id]);
+    if (rowCount === 0) return res.status(404).json({ error: 'Sumber trending tidak ditemukan.' });
+    await pool.query(
+      "INSERT INTO audit_log (entity, entity_id, action, actor, payload) VALUES ('trend_source', $1, 'delete', 'web_admin', '{}')",
+      [id]
+    );
+    res.json({ status: 'success' });
+  } catch (err) {
+    await writeAudit('trend_source', id, 'error_delete', 'web_admin', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/seo/scan', async (req, res) => {
+  try {
+    console.log('[Web API] Memulai pemindaian Agen SEO...');
+    const summary = await runSeoScan({ sourceId: req.body?.source_id ? parseInt(req.body.source_id, 10) : null });
+    res.json({
+      status: 'success',
+      message: `SEO selesai: ${summary.items_seen} item dipindai dari ${summary.sources} sumber, ${summary.items_new} item baru.`,
+      summary,
+    });
+  } catch (err) {
+    console.error('[Web API] SEO scan error:', err);
+    await writeAudit('seo', 0, 'error_scan', 'web_admin', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/seo/trends', async (req, res) => {
+  try {
+    const rows = await listTrends({
+      limit: req.query.limit || 50,
+      platform: req.query.platform || null,
+      minScore: req.query.min_score || 0,
+    });
+    res.json(rows);
+  } catch (err) {
+    await writeAudit('seo', 0, 'error_list', 'web_admin', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/seo/trends/:id/promote', async (req, res) => {
+  const trendId = parseInt(req.params.id, 10);
+  try {
+    const result = await promoteTrendToTopic(trendId);
+    res.json({ status: 'success', ...result, message: 'Trend dipromosikan menjadi topik editorial.' });
+  } catch (err) {
+    await writeAudit('seo', trendId, 'error_promote', 'web_admin', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==============================================================================
+// 13. Agen Verifikator — Fact-Check
+// ==============================================================================
+app.post('/api/topics/:id/verify', async (req, res) => {
+  const topicId = parseInt(req.params.id, 10);
+  try {
+    console.log(`[Web API] Verifikasi topik #${topicId}...`);
+    const report = await verifyTopic(topicId);
+    res.json({ status: 'success', report });
+  } catch (err) {
+    console.error('[Web API] Verifikasi error:', err);
+    await writeAudit('topic', topicId, 'error_verify', 'web_admin', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/topics/:id/verification', async (req, res) => {
+  const topicId = parseInt(req.params.id, 10);
+  try {
+    const report = await getLatestVerification(topicId);
+    if (!report) return res.status(404).json({ error: 'Belum ada laporan verifikasi untuk topik ini.' });
+    res.json(report);
+  } catch (err) {
+    await writeAudit('topic', topicId, 'error_get_verification', 'web_admin', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/verifications', async (req, res) => {
+  try {
+    const rows = await listVerifications({ limit: req.query.limit || 50, status: req.query.status || null });
+    res.json(rows);
+  } catch (err) {
+    await writeAudit('verifications', 0, 'error_list', 'web_admin', { error: err.message });
     res.status(500).json({ error: err.message });
   }
 });

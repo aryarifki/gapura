@@ -1,4 +1,4 @@
-# 🏛️ Gapura Media Engine (GME v2.0)
+# 🏛️ Gapura Media Engine (GME v2.1)
 > **Sistem Otomasi Konten Instagram Data-Editorial & Regulasi Finansial**  
 > Akun Instagram Resmi: **[`@gapuramedia`](https://instagram.com/gapuramedia)**  
 > Portal Dashboard: **[https://gapura.avenia.my.id](https://gapura.avenia.my.id)** · Orkestrasi Workflow: **[https://n8n.avenia.my.id](https://n8n.avenia.my.id)**
@@ -7,27 +7,38 @@
 
 ## 📌 Ringkasan Proyek
 
-**Gapura Media Engine (GME v2.0)** adalah platform otomasi ruang redaksi modern (*newsroom automation*) yang dirancang khusus untuk akun Instagram niche: **data pasar modal & bursa saham, regulasi hukum keuangan (OJK/BI/MK), dan indikator makro ekonomi Indonesia**.
+**Gapura Media Engine (GME v2.1)** adalah platform otomasi ruang redaksi modern (*newsroom automation*) yang dirancang khusus untuk akun Instagram niche: **data pasar modal & bursa saham, regulasi hukum keuangan (OJK/BI/MK), dan indikator makro ekonomi Indonesia**.
 
-Platform ini menggabungkan **4 Agen AI otonom** dengan pengawasan manusia (*Human-in-the-Loop*), mesin render deterministik berbasis SVG-to-PNG (*Satori + Sharp*), serta dashboard editorial berbasis web yang responsif.
+Platform ini menggabungkan **6 Agen AI otonom** dengan pengawasan manusia (*Human-in-the-Loop*), mesin render deterministik berbasis SVG-to-PNG (*Satori + Sharp*), serta dashboard editorial berbasis web yang responsif.
 
 ```
-       ┌──────────────┐     ┌──────────────┐     ┌────────────────┐     ┌────────────────┐
-       │  AGEN SCOUT  │ ──► │ AGEN ANALIS  │ ──► │ AGEN DESIGNER  │ ──► │AGEN COPYWRITER │
-       │ (Kurasi RSS) │     │(Skor 0 - 100)│     │(AI Dir. Visual)│     │ (Prosa Berita) │
-       └──────────────┘     └──────────────┘     └────────────────┘     └────────────────┘
-                                                           │
-                                                           ▼
-                                                ┌─────────────────────┐
-                                                │ RENDER MICROSERVICE │
-                                                │   (Satori + Sharp)  │
-                                                └─────────────────────┘
-                                                           │
-                                                           ▼
-                                                ┌─────────────────────┐
-                                                │    WEB DASHBOARD    │
-                                                │ (Review & Posting)  │
-                                                └─────────────────────┘
+   ┌──────────────┐   ┌──────────────┐   ┌──────────────────┐
+   │  AGEN SCOUT  │   │   AGEN SEO   │   │ AGEN VERIFIKATOR │
+   │ (Kurasi RSS) │   │(Trending/X)  │   │ (Fact-Check)     │
+   └──────┬───────┘   └──────┬───────┘   └─────────┬────────┘
+          │                  │                     │
+          └──────────► ┌─────▼──────┐ ◄────────────┘
+                       │ AGEN ANALIS│
+                       │(Skor 0-100)│
+                       └─────┬──────┘
+                             │
+                             ▼
+                    ┌────────────────┐     ┌────────────────┐
+                    │ AGEN DESIGNER  │ ──► │AGEN COPYWRITER │
+                    │(AI Dir. Visual)│     │ (Prosa Berita) │
+                    └────────────────┘     └───────┬────────┘
+                                                   │
+                                                   ▼
+                                        ┌─────────────────────┐
+                                        │ RENDER MICROSERVICE │
+                                        │   (Satori + Sharp)  │
+                                        └──────────┬──────────┘
+                                                   │
+                                                   ▼
+                                        ┌─────────────────────┐
+                                        │    WEB DASHBOARD    │
+                                        │ (Review & Posting)  │
+                                        └─────────────────────┘
 ```
 
 ---
@@ -53,7 +64,7 @@ Platform ini menggabungkan **4 Agen AI otonom** dengan pengawasan manusia (*Huma
 5. **Studio Desain & Pembuatan Postingan Kustom**
    - Membuat postingan mandiri on-the-fly dari form Studio Desain.
    - Pratinjau live perubahan token desain (palet warna `#102B45` Navy, `#1F7E81` Deep Teal, `#D79344` Golden Amber) di kanvas simulator ponsel.
-6. **Kustomisasi Penuh 4 Agen AI & Skills.md**
+6. **Kustomisasi Penuh 6 Agen AI & Skills.md**
    - Konfigurasi independen untuk setiap agen: Provider (Gemini / OpenAI Compatible), Endpoint, API Key, Model, dan System Prompt.
    - **Editor `skills.md` Kustom:** Setiap agen dapat disematkan berkas panduan eksekusi mandiri di `/root/gapura/config/skills/`.
 7. **Manajemen Sumber Berita Niche**
@@ -65,6 +76,16 @@ Platform ini menggabungkan **4 Agen AI otonom** dengan pengawasan manusia (*Huma
    - Header HTTP anti-stale (`Cache-Control: no-store, no-cache, must-revalidate`, `Surrogate-Control: no-store`) memastikan Cloudflare CDN dan browser tidak menyajikan skrip atau gambar usang.
    - Automatic query busting unik `?t=${Date.now()}_...` pada seluruh aset dinamis.
 
+10. **Agen SEO — Radar Trending (Sumber X Dapat Dikustomisasi)**
+    - Memindai akun X (`@handle`), query X, Google Trends geo, dan momentum Google News; daftar sumber dapat ditambah/diubah langsung dari dashboard (**Radar Trending**).
+    - Skor virality menimbang bobot sumber, kesegaran, angka, dan relevansi niche; item teratas dapat dipromosikan menjadi topik editorial dengan satu klik.
+    - Tanpa `X_BEARER_TOKEN`, jalur X otomatis dialihkan ke Google News dan provider yang benar-benar dipakai dicatat pada setiap item (tidak menyamar sebagai data X).
+
+11. **Agen Verifikator — Fact-Check & Anti-Miskonsepsi**
+    - Memisahkan fakta, opini, spekulasi, konten menyesatkan, dan hoaks melalui sinyal deterministik (tier sumber, klaim angka, hedge/clickbait), korroborasi lintas media (Google News RSS + kemiripan judul lokal `pg_trgm`), dan rubrik LLM.
+    - Setiap laporan memuat klaim yang diuji, penjelasan mendalam, miskonsepsi yang perlu diluruskan, sinyal risiko, rujukan, dan disclaimer redaksi.
+    - Status `hoax_detected` memblokir produksi otomatis (HTTP 409) kecuali editor memaksa; slide verifikasi otomatis disisipkan ke carousel dan caption.
+
 ---
 
 ## 🚀 Panduan Cepat Penggunaan Aplikasi
@@ -74,12 +95,13 @@ Panduan lengkap langkah demi langkah tersedia di:
 
 ### Alur Kerja Harian Redaktur:
 1. Buka dashboard di browser: **`https://gapura.avenia.my.id`**.
-2. Masuk ke menu **Radar Topik**, pilih berita terverifikasi yang menarik, dan klik judulnya.
-3. Sistem secara otomatis menjalankan AI Designer & Copywriter, lalu membuka draf di **Antrian Review**.
-4. Periksa visual slide, gunakan tombol panah atau strip thumbnail untuk memeriksa slide 1 sampai penutup.
-5. Jika ingin sudut pandang visual baru, klik **`✨ Regenerate AI (Desain Ulang)`**.
-6. Sesuaikan teks jika diperlukan, lalu klik **`🔄 Simpan & Render Ulang Slide`**.
-7. Salin caption melalui tombol **`📋 Salin Caption & Hashtags`** atau unduh seluruh gambar melalui **`📥 Download Semua Slide (ZIP)`**.
+2. (Opsional) Buka **Radar Trending** untuk memindai berita/percakapan naik daun, lalu promosikan trend menjadi topik editorial.
+3. Masuk ke menu **Radar Topik**, pilih berita terverifikasi yang menarik, dan klik judulnya.
+4. Sistem menjalankan Agen Verifikator, lalu AI Designer & Copywriter; draf terbuka di **Antrian Review**.
+5. Periksa visual slide, gunakan tombol panah atau strip thumbnail untuk memeriksa slide 1 sampai penutup.
+6. Jika ingin sudut pandang visual baru, klik **`✨ Regenerate AI (Desain Ulang)`**.
+7. Sesuaikan teks jika diperlukan, lalu klik **`🔄 Simpan & Render Ulang Slide`**.
+8. Salin caption melalui tombol **`📋 Salin Caption & Hashtags`** atau unduh seluruh gambar melalui **`📥 Download Semua Slide (ZIP)`**.
 
 ---
 
@@ -107,8 +129,10 @@ Dokumen evaluasi teknis, daftar permasalahan yang telah diselesaikan, dan fitur 
 - [x] AI Creative Director (Agen Designer adaptif bebas template kaku)
 - [x] 1-Click Auto-Produce dari Radar Topik
 - [x] Eliminasi Masalah Cloudflare Cache Staling & Dialog `confirm()`
-- [x] Kustomisasi Penuh 4 Agen AI & berkas `skills.md` per agen
+- [x] Kustomisasi Penuh 6 Agen AI & berkas `skills.md` per agen
 - [x] Manajemen Sumber Berita Niche Dinamis
+- [x] Agen SEO (Radar Trending) dengan sumber X/Google Trends yang dapat dikustomisasi
+- [x] Agen Verifikator (fact-check, anti-miskonsepsi, gate hoaks)
 - [ ] Integrasi Langsung Meta Graph API (Instagram Auto-Publish) *(Menunggu Meta App & Token)*
 - [ ] Bot Notifikasi & Approval Telegram *(Menunggu Telegram Bot Token)*
 - [ ] UI Kalender Konten Interaktif (Drag & Drop Scheduler)

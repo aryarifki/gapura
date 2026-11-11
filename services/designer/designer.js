@@ -32,8 +32,13 @@ ${captionBrief ? `Konteks Editorial:\n${captionBrief}` : ''}
 
 TUGAS ANDA SEBAGAI AI CREATIVE DIRECTOR & VISUAL ARCHITECT:
 Anda memiliki KEBEBASAN PENUH (FULL AUTONOMY). JANGAN KAKU DENGAN TEMPLATE TERTENTU:
-1. Tentukan sendiri jumlah slide yang paling ideal (3 hingga 8 slide) agar cerita tersampaikan secara utuh, berbobot, dan tidak terpotong.
-2. Rancang struktur visual setiap slide secara bebas dan dinamis sesuai kebutuhan esensi berita:
+1. Tentukan sendiri jumlah slide yang paling ideal (4 hingga 9 slide) agar cerita tersampaikan secara utuh, berbobot, dan tidak terpotong.
+   ATURAN UTUH: dilarang memotong teks dengan "...". Jika satu slide tidak cukup, pecah menjadi beberapa slide lanjutan.
+2. ATURAN COVER (SLIDE 1) — WAJIB DIPATUHI:
+   - Slide 1 adalah cover murni: HANYA berisi judul berita utama (dan boleh satu angka utama yang benar-benar ada di berita).
+   - DILARANG menaruh di slide 1: tag/kategori, nomor halaman, nama sumber, ajakan swipe, bullet, disclaimer, subtitle promosi, atau keterangan tambahan apa pun.
+   - Judul cover maksimal ~150 karakter; tulis sebagai headline, bukan paragraf.
+3. Rancang struktur visual setiap slide isi (mulai slide 2) secara bebas dan dinamis sesuai kebutuhan esensi berita:
    - Anda bebas menamai layout atau merancang komposisi bebas (misal: "cover-editorial", "stat-spotlight", "dual-perspective", "deep-analysis", "regulatory-focus", "takeaway-points", "market-snapshot", atau nama deskriptif lainnya).
    - Anda bebas menyusun elemen visual di dalam objek "data":
      * Hero angka/stat: "value", "unit", "title", "subtitle"
@@ -43,8 +48,10 @@ Anda memiliki KEBEBASAN PENUH (FULL AUTONOMY). JANGAN KAKU DENGAN TEMPLATE TERTE
      * Poin-poin/list takeaways: "bullets": ["...", "..."]
      * Klausul hukum/catatan penting: "callout": "..." atau "regulasi": "..."
      * Ajakan diskusi / CTA: "cta": "..."
-3. Ekstrak data nyata, angka akurat, dan fakta langsung dari teks berita. Dilarang mengarang fakta fiktif.
-4. Tulis narasi teks (prosa editorial berbobot) yang mengalir dari slide ke slide.
+     * Verifikasi fakta: "status": "verified|mostly_verified|needs_context|unverified|opinion|speculation|misleading|hoax_detected", "claim": "...", "explanation": "...", "misconception": "...", "sources": ["..."]
+   - WAJIB akhiri carousel dengan satu slide penutup ber-layout "cta-close" berisi pertanyaan diskusi + CTA + disclaimer.
+4. Ekstrak data nyata, angka akurat, dan fakta langsung dari teks berita. Dilarang mengarang fakta fiktif.
+5. Tulis narasi teks (prosa editorial berbobot) yang mengalir dari slide ke slide. Setiap slide isi maksimal ~300 karakter teks narasi; jika lebih, pecah menjadi slide berikutnya.
 
 Kembalikan HANYA format JSON valid berikut tanpa markdown wrap:
 {
@@ -54,9 +61,9 @@ Kembalikan HANYA format JSON valid berikut tanpa markdown wrap:
       "layout": "nama-layout-bebas-pilihan-ai",
       "teks": "Teks narasi atau headline utama slide",
       "data": {
-        "title": "Judul / Sub-topik slide",
-        "subtitle": "Kategori / Keterangan ringkas",
-        "category": "Kategori Niche"
+        "title": "Untuk slide 1: judul berita utama saja. Untuk slide isi: sub-topik slide.",
+        "subtitle": "Keterangan ringkas (hanya untuk slide isi, tidak untuk cover)",
+        "category": "Kategori Niche (hanya untuk slide isi)"
       },
       "source": "${topic.primary_source || '@gapuramedia'}"
     }

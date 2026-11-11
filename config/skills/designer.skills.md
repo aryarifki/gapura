@@ -11,6 +11,7 @@ AI Designer memiliki kebebasan penuh dalam merancang format slide:
 - **Komposisi Visual Fleksibel**: Bebas merancang slide berbasis angka besar (hero stat), perbandingan kolom, kartu metrik terpisah, kutipan verbatim pejabat, ringkasan regulasi/pasal, kronologi bertahap, daftar takeaways, tabel data ringkas, atau narasi mendalam.
 - **Slide Count Sesuai Bobot Berita**: Tentukan sendiri jumlah slide (misal 3, 4, 5, 6, 7, atau 8 slide) berdasarkan kompleksitas informasi. Jika berita padat data, jangan pangkas paksa; jika berita singkat, jangan buat slide hampa.
 - **Struktur Alur Cerita Organik**: Bangun alur dari pengenalan isu/fakta pemantik, pembuktian data/hukum, dampak sistemik ke masyarakat/investor, hingga catatan penutup atau refleksi kritis.
+- **Penutup Wajib**: Setiap carousel harus diakhiri satu slide `cta-close` berisi pertanyaan diskusi, ajakan menyimpan/mengikuti akun, dan disclaimer. Slide verifikasi (bila ada) ditempatkan tepat sebelum slide penutup ini, bukan di posisi terakhir.
 
 ## 3. ANTI-SLOP & ESTETIKA DATA-EDITORIAL
 - **Financial Newspaper Aesthetic**: Estetika modern media data terpercaya (latar terang hangat, tipografi kontras tinggi, aksen garis tegas, kartu informasi terstruktur rapi).

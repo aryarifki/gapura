@@ -74,7 +74,7 @@ export async function callAgentLLM(agentKey, promptText, systemPrompt = '', json
   const provider = (agentCfg.provider || 'gemini').toLowerCase();
   const endpoint = agentCfg.endpoint || 'https://generativelanguage.googleapis.com';
   const apiKey = agentCfg.api_key || process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY || '';
-  const model = agentCfg.model || 'gemini-2.0-flash';
+  const model = agentCfg.model || 'gemini-3.5-flash-lite';
 
   if (!apiKey || apiKey.trim().length === 0) {
     throw new Error(`API Key untuk agen ${agentKey} belum dikonfigurasi.`);

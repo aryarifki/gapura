@@ -31,8 +31,159 @@ function cleanSentence(s) {
   return s.replace(/\s+/g, ' ').replace(/^[-–—•\s]+/, '').trim();
 }
 
+/**
+ * Pecah teks menjadi beberapa bagian utuh tanpa memotong kata/kalimat.
+ * Dipakai agar carousel tidak pernah membuang informasi (tidak ada "...").
+ */
+export function chunkText(text, maxChars = 300) {
+  const clean = cleanSentence(text);
+  if (!clean) return [];
+  if (clean.length <= maxChars) return [clean];
+
+  const sentences = clean.split(/(?<=[.!?])\s+/).filter(Boolean);
+  const chunks = [];
+  let current = '';
+
+  const pushCurrent = () => {
+    if (current.trim()) chunks.push(current.trim());
+    current = '';
+  };
+
+  for (const sentence of sentences) {
+    if (sentence.length > maxChars) {
+      pushCurrent();
+      // Kalimat ekstrem panjang: pecah per kata, jangan per karakter.
+      let buf = '';
+      for (const word of sentence.split(/\s+/)) {
+        if ((buf ? buf + ' ' : '') .length + word.length > maxChars && buf) {
+          chunks.push(buf.trim());
+          buf = word;
+        } else {
+          buf = buf ? `${buf} ${word}` : word;
+        }
+      }
+      if (buf.trim()) chunks.push(buf.trim());
+      continue;
+    }
+    if ((current ? current + ' ' : '').length + sentence.length > maxChars && current) {
+      pushCurrent();
+    }
+    current = current ? `${current} ${sentence}` : sentence;
+  }
+  pushCurrent();
+  return chunks;
+}
+
+/** Normalisasi nomor slide setelah injeksi/pemecahan. */
+function renumberSlides(slides) {
+  slides.forEach((slide, idx) => {
+    slide.no = idx + 1;
+  });
+  return slides;
+}
+
+/** Label kredibilitas dari confidence 0-100. */
+function credibilityLabel(confidence) {
+  const n = parseInt(confidence, 10) || 0;
+  if (n >= 85) return 'Tinggi';
+  if (n >= 65) return 'Sedang';
+  return 'Rendah';
+}
+
+/**
+ * Slide verifikasi dari laporan Agen Verifikator (bila tersedia).
+ */
+export function buildVerificationSlide(verification, topic, slideNo) {
+  if (!verification) return null;
+  const v = typeof verification === 'string' ? { status: verification } : verification;
+  const corroboration = v.corroboration || {};
+  const examples = corroboration.google_news?.examples || [];
+  const misconceptions = Array.isArray(v.misconceptions) ? v.misconceptions : [];
+  const claim =
+    v.claim ||
+    (Array.isArray(v.claims) && v.claims[0]?.claim) ||
+    topic.title;
+
+  const sources = examples
+    .filter((e) => e && (e.url || e.domain))
+    .slice(0, 3)
+    .map((e) => `${e.domain || 'sumber'}${e.title ? ` — ${String(e.title).slice(0, 90)}` : ''}`);
+
+  return {
+    no: slideNo,
+    layout: 'verifikasi',
+    teks: claim,
+    data: {
+      status: v.status || 'unverified',
+      claim,
+      explanation: v.deep_explanation || v.summary || '',
+      misconception: misconceptions[0] || '',
+      sources,
+      credibility: credibilityLabel(v.confidence),
+      confidence: v.confidence || 0,
+    },
+    source: topic.primary_source || '@gapuramedia',
+  };
+}
+
+/** Blok catatan verifikasi untuk caption. */
+export function verificationCaptionBlock(verification) {
+  if (!verification) return '';
+  const statusLabel = {
+    verified: 'TERVERIFIKASI',
+    mostly_verified: 'SEBAGIAN BESAR TERVERIFIKASI',
+    needs_context: 'PERLU KONTEKS',
+    unverified: 'BELUM TERVERIFIKASI',
+    opinion: 'OPINI / ANALISIS',
+    speculation: 'SPEKULASI',
+    misleading: 'BERPOTENSI MENYESATKAN',
+    hoax_detected: 'HOAKS / TIDAK VALID',
+  }[verification.status] || 'BELUM TERVERIFIKASI';
+
+  const lines = [`Catatan Verifikasi — ${statusLabel} (keyakinan ${verification.confidence || 0}%)`];
+  if (verification.summary) lines.push(verification.summary);
+  if (verification.deep_explanation) lines.push(verification.deep_explanation);
+  if (Array.isArray(verification.misconceptions) && verification.misconceptions[0]) {
+    lines.push(`Yang sering disalahpahami: ${verification.misconceptions[0]}`);
+  }
+  if (verification.disclaimer) lines.push(verification.disclaimer);
+  return lines.join('\n');
+}
+
 // Generator Carousel Data-Editorial Deterministik yang Menyesuaikan Isi Berita secara Cerdas
-export function buildDeterministicCarouselSlides(topic) {
+/**
+ * Slide penutup standar (CTA + disclaimer). Dipakai baik oleh jalur
+ * deterministik maupun jalur AI Designer agar carousel selalu punya penutup
+ * dan slide verifikasi tidak pernah jatuh di posisi terakhir.
+ */
+export function buildCloseSlide(topic) {
+  const isRegulasi = /ojk|pojk|peraturan|uu|hukum|sanksi|denda|aturan/i.test(topic.title);
+  const isCurrency = /rupiah|dolar|kurs|valas|nilai tukar/i.test(topic.title);
+  const isMarket = /ihsg|saham|bursa|emiten|dividen|pasar modal/i.test(topic.title);
+
+  const question = isCurrency
+    ? 'Bagaimana pergerakan kurs ini memengaruhi biaya operasional dan investasimu?'
+    : isRegulasi
+    ? 'Apakah institusi dan portofoliomu sudah siap memenuhi kepatuhan aturan baru ini?'
+    : isMarket
+    ? 'Bagaimana strategimu menyikapi dinamika dan likuiditas bursa saat ini?'
+    : 'Bagaimana tren data makro ini memengaruhi keputusan finansialmu ke depan?';
+
+  return {
+    no: 0,
+    layout: 'cta-close',
+    teks: question,
+    data: {
+      cta: 'Simpan postingan ini & ikuti @gapuramedia untuk update data, hukum, dan ekonomi bursa harian.',
+      disclaimer: isRegulasi
+        ? 'Konten ini disajikan untuk edukasi hukum & regulasi publik, bukan merupakan nasihat hukum resmi.'
+        : 'Konten ini disajikan untuk edukasi data pasar publik, bukan merupakan rekomendasi investasi beli/jual saham.',
+    },
+    source: '@gapuramedia',
+  };
+}
+
+export function buildDeterministicCarouselSlides(topic, verification = null) {
   const fullText = `${topic.title}. ${topic.summary || ''}`;
 
   // 1. Ekstraksi Angka & Entitas Faktual Nyata dari Berita
@@ -97,30 +248,33 @@ export function buildDeterministicCarouselSlides(topic) {
 
   const slides = [];
 
-  // Slide 1: Cover Stat (Hook Utama Berita)
+  // Slide 1: Cover murni — hanya judul + angka utama bila benar-benar informatif.
+  const hasNumericHook = Boolean(pojkMatch || rupiahMatch || dollarMatch || percentMatch || poinMatch);
   slides.push({
     no: 1,
-    layout: 'cover-stat',
+    layout: 'cover-focus',
     teks: topic.title,
     data: {
-      value: hookValue,
-      unit: hookUnit,
       title: topic.title,
-      category: categoryName,
+      ...(hasNumericHook ? { value: hookValue, unit: hookUnit } : {}),
     },
     source: topic.primary_source || '@gapuramedia',
   });
 
-  // Slide 2: Big Statement (Konteks Inti Berita)
-  slides.push({
-    no: 2,
-    layout: 'big-statement',
-    teks: s1,
-    data: {
-      author: topic.primary_source || 'Otoritas Terkait',
-      category: 'FAKTA KUNCI',
-    },
-    source: topic.primary_source || '@gapuramedia',
+  // Slide 2+: Big Statement (konteks inti) — teks panjang dipecah ke slide lanjutan,
+  // bukan dipotong dengan "...".
+  const s1Chunks = chunkText(s1, 300);
+  s1Chunks.forEach((chunk, idx) => {
+    slides.push({
+      no: slides.length + 1,
+      layout: 'big-statement',
+      teks: chunk,
+      data: {
+        author: idx === 0 ? topic.primary_source || 'Otoritas Terkait' : null,
+        category: idx === 0 ? 'FAKTA KUNCI' : 'LANJUTAN KONTEKS',
+      },
+      source: topic.primary_source || '@gapuramedia',
+    });
   });
 
   // Slide 3: Evidence (Menyesuaikan Otomatis Isi Berita)
@@ -155,61 +309,56 @@ export function buildDeterministicCarouselSlides(topic) {
         source: topic.primary_source || '@gapuramedia',
       });
     } else {
-      slides.push({
-        no: 3,
-        layout: 'big-statement',
-        teks: s2 !== s1 ? s2 : 'Pencatatan data ini menjadi indikator penting dalam mengukur arah stabilitas fundamental ekonomi dan sentimen pasar modal nasional.',
-        data: {
-          author: topic.primary_source,
-          category: 'SOROTAN DATA',
-        },
-        source: topic.primary_source || '@gapuramedia',
+      const s2Text = s2 !== s1 ? s2 : 'Pencatatan data ini menjadi indikator penting dalam mengukur arah stabilitas fundamental ekonomi dan sentimen pasar modal nasional.';
+      chunkText(s2Text, 300).forEach((chunk, idx) => {
+        slides.push({
+          no: slides.length + 1,
+          layout: 'big-statement',
+          teks: chunk,
+          data: {
+            author: idx === 0 ? topic.primary_source : null,
+            category: idx === 0 ? 'SOROTAN DATA' : 'LANJUTAN DATA',
+          },
+          source: topic.primary_source || '@gapuramedia',
+        });
       });
     }
   }
 
-  // Slide 4: Implikasi Nyata (Comparison)
-  slides.push({
-    no: 4,
-    layout: 'comparison',
-    teks: 'Dampak & Implikasi bagi Pelaku Pasar',
-    data: {
-      left: {
-        title: isRegulasi ? 'Fokus Regulasi' : 'Kondisi Pemicu',
-        text: s2.length > 25 ? s2.slice(0, 140) + '...' : 'Faktor katalis domestik dan stabilitas likuiditas menjadi penopang utama.',
+  // Slide 4+: Implikasi Nyata (Comparison) — teks utuh, dipecah bila perlu.
+  const leftText = s2.length > 25 ? s2 : 'Faktor katalis domestik dan stabilitas likuiditas menjadi penopang utama.';
+  const rightText = s3.length > 25 && s3 !== s2 ? s3 : 'Pelaku pasar perlu mencermati transmisi kebijakan terhadap pergerakan suku bunga dan portofolio.';
+  const leftChunks = chunkText(leftText, 320);
+  const rightChunks = chunkText(rightText, 320);
+  const comparisonParts = Math.max(leftChunks.length, rightChunks.length);
+
+  for (let i = 0; i < comparisonParts; i++) {
+    slides.push({
+      no: slides.length + 1,
+      layout: 'comparison',
+      teks: comparisonParts > 1 ? `Dampak & Implikasi bagi Pelaku Pasar (${i + 1}/${comparisonParts})` : 'Dampak & Implikasi bagi Pelaku Pasar',
+      data: {
+        left: {
+          title: i === 0 ? (isRegulasi ? 'Fokus Regulasi' : 'Kondisi Pemicu') : 'Lanjutan Konteks',
+          text: leftChunks[i] || '—',
+        },
+        right: {
+          title: i === 0 ? (isRegulasi ? 'Kewajiban Pelaku' : 'Arah Prospek') : 'Lanjutan Dampak',
+          text: rightChunks[i] || '—',
+        },
+        category: 'ANALISIS DAMPAK',
       },
-      right: {
-        title: isRegulasi ? 'Kewajiban Pelaku' : 'Arah Prospek',
-        text: s3.length > 25 && s3 !== s2 ? s3.slice(0, 140) + '...' : 'Pelaku pasar perlu mencermati transmisi kebijakan terhadap pergerakan suku bunga dan portofolio.',
-      },
-      category: 'ANALISIS DAMPAK',
-    },
-    source: topic.primary_source || '@gapuramedia',
-  });
+      source: topic.primary_source || '@gapuramedia',
+    });
+  }
 
   // Slide 5: CTA Close (Penutup, Pertanyaan Diskusi & Disclaimer)
-  const questionTopic = isCurrency
-    ? 'Bagaimana pergerakan kurs ini memengaruhi biaya operasional dan investasimu?'
-    : isRegulasi
-    ? 'Apakah institusi dan portofoliomu sudah siap memenuhi kepatuhan aturan baru ini?'
-    : isMarket
-    ? 'Bagaimana strategimu menyikapi dinamika dan likuiditas bursa saat ini?'
-    : 'Bagaimana tren data makro ini memengaruhi keputusan finansialmu ke depan?';
+  const verificationSlide = buildVerificationSlide(verification, topic, slides.length + 1);
+  if (verificationSlide) slides.push(verificationSlide);
 
-  slides.push({
-    no: 5,
-    layout: 'cta-close',
-    teks: questionTopic,
-    data: {
-      cta: 'Simpan postingan ini & ikuti @gapuramedia untuk update data, hukum, dan ekonomi bursa harian.',
-      disclaimer: isRegulasi
-        ? 'Konten ini disajikan untuk edukasi hukum & regulasi publik, bukan merupakan nasihat hukum resmi.'
-        : 'Konten ini disajikan untuk edukasi data pasar publik, bukan merupakan rekomendasi investasi beli/jual saham.',
-    },
-    source: '@gapuramedia',
-  });
+  slides.push({ ...buildCloseSlide(topic), no: slides.length + 1 });
 
-  const caption = `${topic.title}\n\n${topic.summary || ''}\n\nAnalisis Editorial:\nLangkah dan data yang dilaporkan oleh ${topic.primary_source || 'otoritas'} ini memperlihatkan perkembangan penting yang patut dicermati oleh pelaku pasar, investor, dan pengambil keputusan. Informasi faktual ini memberikan gambaran objektif mengenai arah kebijakan dan stabilitas fundamental ekonomi nasional.\n\nSumber Data: ${topic.primary_source} (${topic.url})\n\n---\nDisclaimer: Informasi disajikan untuk tujuan edukasi publik dan bukan merupakan rekomendasi investasi beli/jual saham atau nasihat hukum resmi.`;
+  let caption = `${topic.title}\n\n${topic.summary || ''}\n\nAnalisis Editorial:\nLangkah dan data yang dilaporkan oleh ${topic.primary_source || 'otoritas'} ini memperlihatkan perkembangan penting yang patut dicermati oleh pelaku pasar, investor, dan pengambil keputusan. Informasi faktual ini memberikan gambaran objektif mengenai arah kebijakan dan stabilitas fundamental ekonomi nasional.\n\nSumber Data: ${topic.primary_source} (${topic.url})\n\n---\nDisclaimer: Informasi disajikan untuk tujuan edukasi publik dan bukan merupakan rekomendasi investasi beli/jual saham atau nasihat hukum resmi.`;
 
   const hashtags = [
     '#GapuraMedia',
@@ -224,19 +373,24 @@ export function buildDeterministicCarouselSlides(topic) {
     '#KeterbukaanInformasi',
   ];
 
+  if (verification) {
+    caption = `${caption}\n\n${verificationCaptionBlock(verification)}`;
+  }
+
   return {
-    slides,
+    slides: renumberSlides(slides),
     caption,
     hashtags,
     disclaimer_type: isRegulasi ? 'hukum' : 'keuangan',
-    needs_review: false,
+    needs_review: Boolean(verification && ['hoax_detected', 'misleading', 'unverified'].includes(verification.status)),
+    verification_status: verification?.status || null,
   };
 }
 
 /**
  * Build Carousel Slides: Menggabungkan kekuatan Agen Designer (Full AI) dan Copywriter
  */
-export async function buildCarouselSlides(topic) {
+export async function buildCarouselSlides(topic, verification = null) {
   const cfg = loadAgentsConfig();
   const copyCfg = cfg.copywriter || {};
 
@@ -250,8 +404,23 @@ export async function buildCarouselSlides(topic) {
   }
 
   if (!slides || slides.length === 0) {
-    const fallback = buildDeterministicCarouselSlides(topic);
+    const fallback = buildDeterministicCarouselSlides(topic, verification);
     slides = fallback.slides;
+  } else {
+    // Normalisasi output AI Designer: slide 1 selalu cover murni, carousel
+    // selalu punya penutup, dan slide verifikasi disisipkan sebelum penutup.
+    slides = slides.filter((sl) => sl && sl.layout !== 'verifikasi');
+    if (slides[0]) slides[0].layout = 'cover-focus';
+
+    const hasCloseSlide = slides.some((sl) => /^(cta-close|cta|close|penutup)/i.test(String(sl.layout || '')));
+    if (!hasCloseSlide) slides.push(buildCloseSlide(topic));
+
+    const verSlide = buildVerificationSlide(verification, topic, 0);
+    if (verSlide) {
+      const insertAt = Math.max(1, slides.length - 1);
+      slides.splice(insertAt, 0, verSlide);
+    }
+    slides = renumberSlides(slides);
   }
 
   // 2. Susun Caption Editorial & Hashtags oleh AGEN COPYWRITER
@@ -281,12 +450,17 @@ Kembalikan HANYA format JSON valid berikut tanpa markdown wrap:
     }
   }
 
+  if (verification) {
+    caption = `${caption}\n\n${verificationCaptionBlock(verification)}`;
+  }
+
   return {
-    slides,
+    slides: renumberSlides(slides),
     caption,
     hashtags,
     disclaimer_type: isRegulasi ? 'hukum' : 'keuangan',
-    needs_review: false,
+    needs_review: Boolean(verification && ['hoax_detected', 'misleading', 'unverified'].includes(verification.status)),
+    verification_status: verification?.status || null,
   };
 }
 
@@ -305,7 +479,11 @@ export async function produceSingleTopicDraft(topic, dbClient = null) {
     }
 
     console.log(`[Copywriter] Memproduksi draf untuk Topik #${topic.id}: "${topic.title}"...`);
-    const carouselData = await buildCarouselSlides(topic);
+    const { rows: verificationRows } = await client.query(
+      'SELECT * FROM verification_reports WHERE topic_id = $1 ORDER BY created_at DESC LIMIT 1',
+      [topic.id]
+    );
+    const carouselData = await buildCarouselSlides(topic, verificationRows[0] || null);
 
     // 1. Simpan ke tabel drafts
     const insertDraft = await client.query(
@@ -396,6 +574,7 @@ export async function runCopywriter(maxDrafts = 3) {
        FROM topics t
        JOIN topic_scores ts ON t.id = ts.topic_id
        WHERE t.status = 'scored'
+         AND COALESCE(t.verification_status, '') <> 'hoax_detected'
        ORDER BY ts.score_total DESC, t.id ASC
        LIMIT $1`,
       [maxDrafts]

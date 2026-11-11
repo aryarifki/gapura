@@ -16,6 +16,62 @@ let editorLivePreviewDebounceTimer = null;
 let designStudioDebounceTimer = null;
 let designStudioInitialized = false;
 
+// Logging terpusat: setiap klik tombol dan error frontend dikirim ke audit_log.
+// Logging bersifat best-effort agar kegagalan logger tidak memblokir UI.
+function reportClientLog(level, action, error = null, meta = {}) {
+  const payload = {
+    level,
+    action,
+    message: error?.message || String(error || ''),
+    stack: error?.stack || null,
+    meta,
+    url: window.location.href,
+  };
+  return fetch('/api/client-log', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    keepalive: true,
+  }).catch(() => undefined);
+}
+
+window.addEventListener('error', (event) => {
+  reportClientLog('error', 'window.error', event.error || new Error(event.message), {
+    source: event.filename,
+    line: event.lineno,
+    column: event.colno,
+  });
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  reportClientLog('error', 'unhandledrejection', event.reason instanceof Error ? event.reason : new Error(String(event.reason)));
+});
+
+document.addEventListener('click', (event) => {
+  const target = event.target.closest('button, [role="button"], .nav-item');
+  if (target) {
+    reportClientLog('info', 'ui.click', null, {
+      id: target.id || null,
+      text: (target.innerText || target.getAttribute('aria-label') || '').trim().slice(0, 120),
+      view: target.closest('.view-pane')?.id || null,
+    });
+  }
+});
+
+function bindClick(id, handler) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.onclick = async (event) => {
+    try {
+      return await handler(event);
+    } catch (error) {
+      await reportClientLog('error', `ui.action.${id}`, error);
+      console.error(`Error action ${id}:`, error);
+      showToast(`Terjadi kesalahan: ${error.message}`);
+    }
+  };
+}
+
 // 1. Inisialisasi & Navigasi
 document.addEventListener('DOMContentLoaded', () => {
   setupNavigation();
@@ -63,6 +119,11 @@ function setupNavigation() {
         loadTopics();
       } else if (viewId === 'view-sources') {
         loadSources();
+      } else if (viewId === 'view-trends') {
+        loadTrends();
+        loadTrendSources();
+      } else if (viewId === 'view-verifications') {
+        loadVerifications();
       } else if (viewId === 'view-agents') {
         loadAgentsConfigUI();
       } else if (viewId === 'view-n8n') {
@@ -160,15 +221,15 @@ function setupNavigation() {
   }
 
   // Slide Navigation Arrows
-  document.getElementById('btn-slide-prev').onclick = () => navigateSlide(-1);
-  document.getElementById('btn-slide-next').onclick = () => navigateSlide(1);
+  bindClick('btn-slide-prev', () => navigateSlide(-1));
+  bindClick('btn-slide-next', () => navigateSlide(1));
 
   // Editor Actions
-  document.getElementById('btn-save-and-rerender').onclick = saveAndRerenderSlide;
-  document.getElementById('btn-save-text-only').onclick = saveTextOnly;
-  document.getElementById('btn-copy-caption-full').onclick = copyFullCaption;
-  document.getElementById('btn-download-all-slides').onclick = downloadAllSlides;
-  document.getElementById('btn-open-single-slide').onclick = openCurrentSlideFull;
+  bindClick('btn-save-and-rerender', saveAndRerenderSlide);
+  bindClick('btn-save-text-only', saveTextOnly);
+  bindClick('btn-copy-caption-full', copyFullCaption);
+  bindClick('btn-download-all-slides', downloadAllSlides);
+  bindClick('btn-open-single-slide', openCurrentSlideFull);
 
   const regenBtn = document.getElementById('btn-action-regenerate-ai');
   if (regenBtn) regenBtn.onclick = regenerateActiveDraftAI;
@@ -207,10 +268,10 @@ function setupNavigation() {
   if (delSlideBtn) delSlideBtn.onclick = deleteSlideFromDraft;
 
   // Decision Buttons in Editor
-  document.getElementById('btn-action-post-now').onclick = () => approveCurrentDraft('auto');
-  document.getElementById('btn-action-approve-auto').onclick = () => approveCurrentDraft('auto');
-  document.getElementById('btn-action-approve-manual').onclick = () => approveCurrentDraft('manual');
-  document.getElementById('btn-action-reject').onclick = rejectCurrentDraft;
+  bindClick('btn-action-post-now', () => approveCurrentDraft('auto'));
+  bindClick('btn-action-approve-auto', () => approveCurrentDraft('auto'));
+  bindClick('btn-action-approve-manual', () => approveCurrentDraft('manual'));
+  bindClick('btn-action-reject', rejectCurrentDraft);
 
   // n8n Controls
   if (document.getElementById('btn-toggle-wf-dark')) document.getElementById('btn-toggle-wf-dark').onclick = toggleWorkflowState;
@@ -218,6 +279,35 @@ function setupNavigation() {
 
   // Tokens Save (Fallback / Legacy)
   if (document.getElementById('btn-save-tokens-dark')) document.getElementById('btn-save-tokens-dark').onclick = saveTokensYaml;
+
+  // Agen SEO — Radar Trending Controls
+  if (document.getElementById('btn-seo-scan-now')) document.getElementById('btn-seo-scan-now').onclick = runSeoScanNow;
+  bindClick('btn-refresh-trends', async () => { await Promise.all([loadTrends(), loadTrendSources()]); });
+  if (document.getElementById('btn-save-trend-source')) document.getElementById('btn-save-trend-source').onclick = saveTrendSource;
+  if (document.getElementById('btn-reset-trend-source')) document.getElementById('btn-reset-trend-source').onclick = resetTrendSourceForm;
+
+  document.querySelectorAll('.btn-trend-filter').forEach((btn) => {
+    btn.onclick = () => {
+      document.querySelectorAll('.btn-trend-filter').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeTrendPlatform = btn.dataset.platform || '';
+      loadTrends();
+    };
+  });
+
+  // Agen Verifikator Controls
+  bindClick('btn-refresh-verifications', loadVerifications);
+  document.querySelectorAll('.btn-verif-filter').forEach((btn) => {
+    btn.onclick = () => {
+      document.querySelectorAll('.btn-verif-filter').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeVerifStatus = btn.dataset.status || '';
+      loadVerifications();
+    };
+  });
+
+  // Badge ringkas di sidebar (trending & verifikasi)
+  refreshSeoVerifBadges();
 }
 
 // 2. Fetch Overview Stats
@@ -2106,6 +2196,11 @@ function switchToView(viewId) {
     loadTopics();
   } else if (viewId === 'view-sources') {
     loadSources();
+  } else if (viewId === 'view-trends') {
+    loadTrends();
+    loadTrendSources();
+  } else if (viewId === 'view-verifications') {
+    loadVerifications();
   } else if (viewId === 'view-agents') {
     loadAgentsConfigUI();
   } else if (viewId === 'view-n8n') {
@@ -2216,6 +2311,27 @@ async function loadAgentsConfigUI() {
     if (document.getElementById('designer-autofit')) {
       document.getElementById('designer-autofit').checked = designer.auto_fit_text !== false;
     }
+
+    // SEO (Trend Intelligence)
+    const seo = config.seo || {};
+    if (document.getElementById('seo-provider')) document.getElementById('seo-provider').value = seo.provider || 'gemini';
+    if (document.getElementById('seo-model')) document.getElementById('seo-model').value = seo.model || 'gemini-3.5-flash-lite';
+    if (document.getElementById('seo-endpoint')) document.getElementById('seo-endpoint').value = seo.endpoint || 'https://generativelanguage.googleapis.com';
+    if (document.getElementById('seo-api-key')) document.getElementById('seo-api-key').value = seo.api_key || '';
+    if (document.getElementById('seo-min-virality')) document.getElementById('seo-min-virality').value = seo.min_virality_score ?? 55;
+    if (document.getElementById('seo-prompt')) document.getElementById('seo-prompt').value = seo.system_prompt ?? '';
+    if (document.getElementById('seo-skills-md')) document.getElementById('seo-skills-md').value = (config.skills && config.skills.seo) || '';
+
+    // Verifikator (Fact-Check)
+    const verif = config.verifikator || {};
+    if (document.getElementById('verifikator-provider')) document.getElementById('verifikator-provider').value = verif.provider || 'gemini';
+    if (document.getElementById('verifikator-model')) document.getElementById('verifikator-model').value = verif.model || 'gemini-3.5-flash-lite';
+    if (document.getElementById('verifikator-endpoint')) document.getElementById('verifikator-endpoint').value = verif.endpoint || 'https://generativelanguage.googleapis.com';
+    if (document.getElementById('verifikator-api-key')) document.getElementById('verifikator-api-key').value = verif.api_key || '';
+    if (document.getElementById('verifikator-min-confidence')) document.getElementById('verifikator-min-confidence').value = verif.min_confidence_publish ?? 60;
+    if (document.getElementById('verifikator-block-hoax')) document.getElementById('verifikator-block-hoax').checked = verif.block_hoax !== false;
+    if (document.getElementById('verifikator-prompt')) document.getElementById('verifikator-prompt').value = verif.system_prompt ?? '';
+    if (document.getElementById('verifikator-skills-md')) document.getElementById('verifikator-skills-md').value = (config.skills && config.skills.verifikator) || '';
   } catch (err) {
     console.error('Error loadAgentsConfigUI:', err);
   }
@@ -2299,11 +2415,30 @@ async function saveAgentsConfigUI() {
         },
         auto_fit_text: document.getElementById('designer-autofit')?.checked !== false,
       },
+      seo: {
+        provider: document.getElementById('seo-provider')?.value || 'gemini',
+        endpoint: document.getElementById('seo-endpoint')?.value || 'https://generativelanguage.googleapis.com',
+        api_key: document.getElementById('seo-api-key')?.value || '',
+        model: document.getElementById('seo-model')?.value || 'gemini-3.5-flash-lite',
+        min_virality_score: parseInt(document.getElementById('seo-min-virality')?.value || '55'),
+        system_prompt: document.getElementById('seo-prompt')?.value || '',
+      },
+      verifikator: {
+        provider: document.getElementById('verifikator-provider')?.value || 'gemini',
+        endpoint: document.getElementById('verifikator-endpoint')?.value || 'https://generativelanguage.googleapis.com',
+        api_key: document.getElementById('verifikator-api-key')?.value || '',
+        model: document.getElementById('verifikator-model')?.value || 'gemini-3.5-flash-lite',
+        min_confidence_publish: parseInt(document.getElementById('verifikator-min-confidence')?.value || '60'),
+        block_hoax: document.getElementById('verifikator-block-hoax')?.checked !== false,
+        system_prompt: document.getElementById('verifikator-prompt')?.value || '',
+      },
       skills: {
         scout: document.getElementById('scout-skills-md')?.value || '',
         analis: document.getElementById('analis-skills-md')?.value || '',
         copywriter: document.getElementById('copywriter-skills-md')?.value || '',
         designer: document.getElementById('designer-skills-md')?.value || '',
+        seo: document.getElementById('seo-skills-md')?.value || '',
+        verifikator: document.getElementById('verifikator-skills-md')?.value || '',
       },
     };
 
@@ -2328,6 +2463,526 @@ async function saveAgentsConfigUI() {
       b.disabled = false;
       b.innerHTML = '<span>💾</span> <span>Simpan & Terapkan Perubahan</span>';
     });
+  }
+}
+
+// ==============================================================================
+// 13. Agen SEO — Radar Trending
+// ==============================================================================
+let activeTrendPlatform = '';
+let editingTrendSourceId = null;
+
+const TREND_PLATFORM_META = {
+  x: { label: 'X / Twitter', cls: 'x' },
+  google_trends: { label: 'Google Trends', cls: 'trends' },
+  news: { label: 'Momentum Berita', cls: 'news' },
+};
+
+const TREND_SOURCE_KIND_META = {
+  x_account: { label: 'Akun X', cls: 'x' },
+  x_query: { label: 'Query X', cls: 'x' },
+  google_trends: { label: 'Google Trends', cls: 'trends' },
+  news_query: { label: 'Query Berita', cls: 'news' },
+};
+
+async function refreshSeoVerifBadges() {
+  try {
+    const [tRes, vRes] = await Promise.all([
+      fetch('/api/seo/trends?limit=100').catch(() => null),
+      fetch('/api/verifications?limit=100').catch(() => null),
+    ]);
+    if (tRes && tRes.ok) {
+      const trends = await tRes.json();
+      const badge = document.getElementById('sidebar-trends-badge');
+      if (badge) {
+        const count = Array.isArray(trends) ? trends.length : 0;
+        badge.textContent = count;
+        badge.style.display = count > 0 ? 'inline-block' : 'none';
+      }
+    }
+    if (vRes && vRes.ok) {
+      const reports = await vRes.json();
+      const badge = document.getElementById('sidebar-verif-badge');
+      if (badge) {
+        const count = Array.isArray(reports) ? reports.length : 0;
+        badge.textContent = count;
+        badge.style.display = count > 0 ? 'inline-block' : 'none';
+      }
+    }
+  } catch (err) {
+    console.warn('Gagal memperbarui badge SEO/Verifikator:', err);
+  }
+}
+
+async function loadTrends() {
+  const container = document.getElementById('trend-list-container');
+  if (!container) return;
+  container.innerHTML = '<div class="empty-state-mini">Memuat item trending…</div>';
+
+  try {
+    const params = new URLSearchParams({ limit: '60' });
+    if (activeTrendPlatform) params.set('platform', activeTrendPlatform);
+    const res = await fetch(`/api/seo/trends?${params.toString()}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const items = await res.json();
+
+    renderTrendList(Array.isArray(items) ? items : []);
+  } catch (err) {
+    console.error('Error loadTrends:', err);
+    reportClientLog('error', 'loadTrends', err);
+    container.innerHTML = `<div class="empty-state-mini" style="color: var(--down);">Gagal memuat trending: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function renderTrendList(items) {
+  const container = document.getElementById('trend-list-container');
+  const meta = document.getElementById('trend-list-meta');
+  if (!container) return;
+
+  if (meta) meta.textContent = `${items.length} item · 3 hari terakhir`;
+
+  const totalEl = document.getElementById('trend-stat-total');
+  const topEl = document.getElementById('trend-stat-top');
+  const promotedEl = document.getElementById('trend-stat-promoted');
+  if (totalEl) totalEl.textContent = items.length;
+  if (topEl) topEl.textContent = items.length ? Math.max(...items.map((i) => Number(i.virality_score) || 0)) : 0;
+  if (promotedEl) promotedEl.textContent = items.filter((i) => i.promoted_topic_id).length;
+
+  if (items.length === 0) {
+    container.innerHTML = '<div class="empty-state-mini">Belum ada item trending. Jalankan <strong>Pindai Trending Sekarang</strong>.</div>';
+    return;
+  }
+
+  container.innerHTML = items.map((item) => {
+    const platform = TREND_PLATFORM_META[item.platform] || { label: item.platform || 'Trending', cls: 'news' };
+    const score = Number(item.virality_score) || 0;
+    const scoreClass = score >= 70 ? 'hot' : score >= 45 ? 'warm' : 'cool';
+    const keywords = Array.isArray(item.matched_keywords) ? item.matched_keywords.slice(0, 4) : [];
+    const traffic = item.engagement && item.engagement.traffic_label ? item.engagement.traffic_label : null;
+    const author = item.author || (item.source_label ? `Sumber: ${item.source_label}` : '');
+    const title = item.title || '(tanpa judul)';
+    const snippet = item.snippet ? String(item.snippet).slice(0, 260) : '';
+    const isPromoted = Boolean(item.promoted_topic_id);
+
+    return `
+      <div class="trend-item-card">
+        <div class="trend-score-block ${scoreClass}">
+          <span class="trend-score-val">${score}</span>
+          <span class="trend-score-label">virality</span>
+        </div>
+        <div class="trend-body">
+          <div class="trend-meta">
+            <span class="trend-platform-badge ${platform.cls}">${escapeHtml(platform.label)}</span>
+            ${author ? `<span class="trend-author">${escapeHtml(author)}</span>` : ''}
+            ${traffic ? `<span class="trend-traffic">📈 ${escapeHtml(traffic)}</span>` : ''}
+            <span class="trend-time">${formatTimeAgo(item.fetched_at || item.published_at)}</span>
+            ${isPromoted ? '<span class="trend-status-badge promoted">✓ Sudah jadi topik</span>' : ''}
+          </div>
+          ${item.url
+            ? `<a class="trend-title" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(title)}</a>`
+            : `<div class="trend-title">${escapeHtml(title)}</div>`}
+          ${snippet ? `<p class="trend-snippet">${escapeHtml(snippet)}</p>` : ''}
+          <div class="trend-footer">
+            <div class="trend-keywords">
+              ${keywords.map((k) => `<span class="trend-keyword">${escapeHtml(k)}</span>`).join('')}
+            </div>
+            <button type="button" class="btn-trend-promote" data-trend-id="${item.id}" ${isPromoted ? 'disabled' : ''}>
+              ${isPromoted ? 'Sudah Dipromosikan' : '🎯 Promosikan → Topik'}
+            </button>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+
+  container.querySelectorAll('.btn-trend-promote').forEach((btn) => {
+    btn.onclick = () => promoteTrend(parseInt(btn.dataset.trendId, 10), btn);
+  });
+}
+
+async function promoteTrend(trendId, btn) {
+  if (!trendId) return;
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Mempromosikan…';
+  try {
+    const res = await fetch(`/api/seo/trends/${trendId}/promote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actor: 'web_admin' }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    showToast(data.is_existing ? `Trend ini sudah menjadi topik #${data.topic_id}.` : `✅ Trend dipromosikan menjadi topik #${data.topic_id}.`);
+    btn.innerHTML = '✓ Sudah Dipromosikan';
+    await loadTrends();
+    refreshSeoVerifBadges();
+  } catch (err) {
+    console.error('Error promoteTrend:', err);
+    reportClientLog('error', 'promoteTrend', err, { trendId });
+    showToast(`Gagal mempromosikan trend: ${err.message}`);
+    btn.disabled = false;
+    btn.innerHTML = original;
+  }
+}
+
+async function runSeoScanNow() {
+  const btn = document.getElementById('btn-seo-scan-now');
+  if (!btn) return;
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span>⏳</span> <span>Memindai sumber trending…</span>';
+  try {
+    const res = await fetch('/api/seo/scan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    const errCount = data.summary?.errors?.length || 0;
+    showToast(data.message + (errCount ? ` (${errCount} sumber gagal, lihat tabel sumber)` : ''));
+    await Promise.all([loadTrends(), loadTrendSources()]);
+    refreshSeoVerifBadges();
+  } catch (err) {
+    console.error('Error runSeoScanNow:', err);
+    reportClientLog('error', 'runSeoScanNow', err);
+    showToast(`Gagal memindai trending: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = original;
+  }
+}
+
+async function loadTrendSources() {
+  const tbody = document.getElementById('trend-sources-table-body');
+  if (!tbody) return;
+  try {
+    const res = await fetch('/api/trend-sources');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const rows = await res.json();
+    renderTrendSources(Array.isArray(rows) ? rows : []);
+  } catch (err) {
+    console.error('Error loadTrendSources:', err);
+    reportClientLog('error', 'loadTrendSources', err);
+    tbody.innerHTML = `<tr><td colspan="8" style="padding: 16px; color: var(--down);">Gagal memuat sumber trending: ${escapeHtml(err.message)}</td></tr>`;
+  }
+}
+
+function renderTrendSources(rows) {
+  const tbody = document.getElementById('trend-sources-table-body');
+  const statEl = document.getElementById('trend-stat-sources');
+  if (!tbody) return;
+  if (statEl) statEl.textContent = rows.filter((r) => r.is_active).length;
+
+  if (rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" style="padding: 16px; color: var(--muted);">Belum ada sumber trending terdaftar.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map((row) => {
+    const kind = TREND_SOURCE_KIND_META[row.kind] || { label: row.kind, cls: 'news' };
+    const lastScan = row.last_scanned_at ? formatTimeAgo(row.last_scanned_at) : 'belum pernah';
+    const errorNote = row.last_error
+      ? `<div style="font-size: 11px; color: var(--down); margin-top: 3px;" title="${escapeHtml(row.last_error)}">⚠ ${escapeHtml(String(row.last_error).slice(0, 48))}…</div>`
+      : '';
+    return `
+      <tr>
+        <td style="padding: 12px 14px;"><span class="trend-platform-badge ${kind.cls}">${escapeHtml(kind.label)}</span></td>
+        <td style="padding: 12px 14px; font-family: monospace; font-size: 12px; color: #fff;">${escapeHtml(row.value)}</td>
+        <td style="padding: 12px 14px; color: var(--text-dim);">${escapeHtml(row.label || '—')}${errorNote}</td>
+        <td style="padding: 12px 14px; color: var(--muted); font-size: 12px;">${escapeHtml(row.category || 'trending')}</td>
+        <td style="padding: 12px 14px; text-align: center;">${row.weight ?? 10}</td>
+        <td style="padding: 12px 14px; text-align: center; color: var(--muted); font-size: 12px;">${escapeHtml(lastScan)}</td>
+        <td style="padding: 12px 14px; text-align: center;">
+          <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; color: ${row.is_active ? 'var(--lime)' : 'var(--muted)'};">
+            <input type="checkbox" class="trend-source-toggle" data-source-id="${row.id}" ${row.is_active ? 'checked' : ''} style="accent-color: var(--lime);">
+            ${row.is_active ? 'Aktif' : 'Nonaktif'}
+          </label>
+        </td>
+        <td style="padding: 12px 14px; text-align: right; white-space: nowrap;">
+          <button type="button" class="btn-mini-ghost btn-trend-source-edit" data-source-id="${row.id}">✏️ Edit</button>
+          <button type="button" class="btn-mini-ghost btn-trend-source-delete" data-source-id="${row.id}" style="color: var(--down);">🗑️</button>
+        </td>
+      </tr>`;
+  }).join('');
+
+  const sourceCache = rows;
+
+  tbody.querySelectorAll('.btn-trend-source-edit').forEach((btn) => {
+    btn.onclick = () => editTrendSource(parseInt(btn.dataset.sourceId, 10), sourceCache);
+  });
+  tbody.querySelectorAll('.btn-trend-source-delete').forEach((btn) => {
+    btn.onclick = () => deleteTrendSource(parseInt(btn.dataset.sourceId, 10));
+  });
+  tbody.querySelectorAll('.trend-source-toggle').forEach((chk) => {
+    chk.onchange = () => toggleTrendSource(parseInt(chk.dataset.sourceId, 10), chk.checked, sourceCache);
+  });
+}
+
+function resetTrendSourceForm() {
+  editingTrendSourceId = null;
+  const fields = {
+    'trend-source-value': '',
+    'trend-source-label': '',
+    'trend-source-weight': '12',
+  };
+  Object.entries(fields).forEach(([id, val]) => {
+    const el = document.getElementById(id);
+    if (el) el.value = val;
+  });
+  const kindEl = document.getElementById('trend-source-kind');
+  if (kindEl) kindEl.value = 'x_account';
+  const catEl = document.getElementById('trend-source-category');
+  if (catEl) catEl.value = 'trending';
+  const activeEl = document.getElementById('trend-source-active');
+  if (activeEl) activeEl.checked = true;
+  const saveBtn = document.getElementById('btn-save-trend-source');
+  if (saveBtn) saveBtn.innerHTML = '<span>➕</span> <span>Tambah / Perbarui Sumber</span>';
+}
+
+function editTrendSource(sourceId, rows) {
+  const row = rows.find((r) => Number(r.id) === Number(sourceId));
+  if (!row) return;
+  editingTrendSourceId = sourceId;
+  const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+  setVal('trend-source-kind', row.kind);
+  setVal('trend-source-value', row.value);
+  setVal('trend-source-label', row.label || '');
+  setVal('trend-source-category', row.category || 'trending');
+  setVal('trend-source-weight', row.weight ?? 12);
+  const activeEl = document.getElementById('trend-source-active');
+  if (activeEl) activeEl.checked = row.is_active !== false;
+  const saveBtn = document.getElementById('btn-save-trend-source');
+  if (saveBtn) saveBtn.innerHTML = '<span>💾</span> <span>Simpan Perubahan Sumber</span>';
+  document.getElementById('trend-source-value')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function saveTrendSource() {
+  const kind = document.getElementById('trend-source-kind')?.value || 'x_account';
+  const value = (document.getElementById('trend-source-value')?.value || '').trim();
+  const label = (document.getElementById('trend-source-label')?.value || '').trim();
+  const category = document.getElementById('trend-source-category')?.value || 'trending';
+  const weight = parseInt(document.getElementById('trend-source-weight')?.value || '12', 10);
+  const is_active = document.getElementById('trend-source-active')?.checked !== false;
+
+  if (!value) {
+    showToast('Nilai sumber wajib diisi (handle, query, atau kode geo).');
+    return;
+  }
+
+  const payload = { kind, value, label: label || null, category, weight, is_active };
+  const isEdit = Boolean(editingTrendSourceId);
+  const url = isEdit ? `/api/trend-sources/${editingTrendSourceId}` : '/api/trend-sources';
+  const method = isEdit ? 'PUT' : 'POST';
+
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    showToast(isEdit ? '✅ Sumber trending diperbarui.' : '✅ Sumber trending ditambahkan.');
+    resetTrendSourceForm();
+    await loadTrendSources();
+  } catch (err) {
+    console.error('Error saveTrendSource:', err);
+    reportClientLog('error', 'saveTrendSource', err, { isEdit });
+    showToast(`Gagal menyimpan sumber trending: ${err.message}`);
+  }
+}
+
+async function toggleTrendSource(sourceId, isActive, rows) {
+  const row = rows.find((r) => Number(r.id) === Number(sourceId));
+  if (!row) return;
+  try {
+    const res = await fetch(`/api/trend-sources/${sourceId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: row.kind,
+        value: row.value,
+        label: row.label,
+        category: row.category,
+        weight: row.weight,
+        is_active: isActive,
+      }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
+    showToast(isActive ? 'Sumber diaktifkan.' : 'Sumber dinonaktifkan.');
+    await loadTrendSources();
+  } catch (err) {
+    console.error('Error toggleTrendSource:', err);
+    reportClientLog('error', 'toggleTrendSource', err, { sourceId, isActive });
+    showToast(`Gagal mengubah status sumber: ${err.message}`);
+    await loadTrendSources();
+  }
+}
+
+async function deleteTrendSource(sourceId) {
+  if (!sourceId) return;
+  if (!window.confirm('Hapus sumber trending ini? Item historis yang sudah tersimpan tetap ada.')) return;
+  try {
+    const res = await fetch(`/api/trend-sources/${sourceId}`, { method: 'DELETE' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    showToast('Sumber trending dihapus.');
+    if (Number(editingTrendSourceId) === Number(sourceId)) resetTrendSourceForm();
+    await loadTrendSources();
+  } catch (err) {
+    console.error('Error deleteTrendSource:', err);
+    reportClientLog('error', 'deleteTrendSource', err, { sourceId });
+    showToast(`Gagal menghapus sumber: ${err.message}`);
+  }
+}
+
+// ==============================================================================
+// 14. Agen Verifikator — Laporan Verifikasi
+// ==============================================================================
+let activeVerifStatus = '';
+
+const VERIF_STATUS_META = {
+  verified: { label: 'TERVERIFIKASI', cls: 'verified' },
+  mostly_verified: { label: 'SEBAGIAN BESAR TERVERIFIKASI', cls: 'mostly' },
+  needs_context: { label: 'PERLU KONTEKS', cls: 'context' },
+  unverified: { label: 'BELUM TERVERIFIKASI', cls: 'unverified' },
+  opinion: { label: 'OPINI', cls: 'opinion' },
+  speculation: { label: 'SPEKULASI', cls: 'speculation' },
+  misleading: { label: 'MENYESATKAN', cls: 'misleading' },
+  hoax_detected: { label: 'HOAKS TERDETEKSI', cls: 'hoax' },
+};
+
+async function loadVerifications() {
+  const container = document.getElementById('verification-list-container');
+  if (!container) return;
+  container.innerHTML = '<div class="empty-state-mini">Memuat laporan verifikasi…</div>';
+
+  try {
+    const params = new URLSearchParams({ limit: '60' });
+    if (activeVerifStatus) params.set('status', activeVerifStatus);
+    const res = await fetch(`/api/verifications?${params.toString()}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const rows = await res.json();
+    renderVerificationList(Array.isArray(rows) ? rows : []);
+  } catch (err) {
+    console.error('Error loadVerifications:', err);
+    reportClientLog('error', 'loadVerifications', err);
+    container.innerHTML = `<div class="empty-state-mini" style="color: var(--down);">Gagal memuat laporan: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function renderVerificationList(rows) {
+  const container = document.getElementById('verification-list-container');
+  const meta = document.getElementById('verif-list-meta');
+  if (!container) return;
+
+  if (meta) meta.textContent = `${rows.length} laporan`;
+
+  const totalEl = document.getElementById('verif-stat-total');
+  const verifiedEl = document.getElementById('verif-stat-verified');
+  const contextEl = document.getElementById('verif-stat-context');
+  const hoaxEl = document.getElementById('verif-stat-hoax');
+  if (totalEl) totalEl.textContent = rows.length;
+  if (verifiedEl) verifiedEl.textContent = rows.filter((r) => ['verified', 'mostly_verified'].includes(r.status)).length;
+  if (contextEl) contextEl.textContent = rows.filter((r) => ['needs_context', 'opinion', 'speculation', 'unverified'].includes(r.status)).length;
+  if (hoaxEl) hoaxEl.textContent = rows.filter((r) => ['misleading', 'hoax_detected'].includes(r.status)).length;
+
+  if (rows.length === 0) {
+    container.innerHTML = '<div class="empty-state-mini">Belum ada laporan verifikasi. Buka topik di <strong>Radar Topik</strong> lalu jalankan verifikasi.</div>';
+    return;
+  }
+
+  container.innerHTML = rows.map((row) => {
+    const metaStatus = VERIF_STATUS_META[row.status] || { label: String(row.status || '').toUpperCase(), cls: 'unverified' };
+    const confidence = Number(row.confidence) || 0;
+    const claims = Array.isArray(row.claims) ? row.claims : [];
+    const misconceptions = Array.isArray(row.misconceptions) ? row.misconceptions : [];
+    const redFlags = Array.isArray(row.red_flags) ? row.red_flags : [];
+    const sources = row.corroboration && Array.isArray(row.corroboration.sources)
+      ? row.corroboration.sources
+      : (row.corroboration && Array.isArray(row.corroboration.items) ? row.corroboration.items : []);
+    const tie = row.corroboration && row.corroboration.tier_label ? row.corroboration.tier_label : null;
+
+    const claimsHtml = claims.length
+      ? `<div class="verif-subblock"><span class="verif-subblock-title">Klaim yang diuji</span><ul class="verif-list">${claims.map((c) => {
+          const assess = c.assessment || c.status || 'unclear';
+          const icon = assess === 'supported' ? '✅' : assess === 'unsupported' ? '❌' : '❔';
+          return `<li>${icon} <strong>${escapeHtml(c.claim || '')}</strong>${c.note ? ` — ${escapeHtml(c.note)}` : ''}</li>`;
+        }).join('')}</ul></div>`
+      : '';
+
+    const misconceptionsHtml = misconceptions.length
+      ? `<div class="verif-subblock"><span class="verif-subblock-title">Miskonsepsi yang perlu diluruskan</span><ul class="verif-list">${misconceptions.map((m) => `<li>${escapeHtml(typeof m === 'string' ? m : JSON.stringify(m))}</li>`).join('')}</ul></div>`
+      : '';
+
+    const redFlagsHtml = redFlags.length
+      ? `<div class="verif-subblock"><span class="verif-subblock-title">Sinyal risiko</span><div class="verif-flag-row">${redFlags.map((f) => `<span class="verif-flag">${escapeHtml(typeof f === 'string' ? f : JSON.stringify(f))}</span>`).join('')}</div></div>`
+      : '';
+
+    const sourcesHtml = sources.length
+      ? `<div class="verif-subblock"><span class="verif-subblock-title">Rujukan korroborasi (${sources.length})</span><ul class="verif-list">${sources.slice(0, 6).map((s) => {
+          const name = s.domain || s.title || s.source || 'rujukan';
+          return s.url
+            ? `<li><a href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(name)}</a></li>`
+            : `<li>${escapeHtml(name)}</li>`;
+        }).join('')}</ul></div>`
+      : '';
+
+    return `
+      <div class="verif-card">
+        <div class="verif-head">
+          <span class="verif-badge ${metaStatus.cls}">${escapeHtml(metaStatus.label)}</span>
+          <span class="verif-confidence">Keyakinan ${confidence}%</span>
+          ${tie ? `<span class="verif-tier">${escapeHtml(tie)}</span>` : ''}
+          <span class="verif-time">${formatTimeAgo(row.created_at)}</span>
+        </div>
+        <div class="verif-title">${escapeHtml(row.title || `Topik #${row.topic_id}`)}</div>
+        ${row.summary ? `<p class="verif-summary">${escapeHtml(row.summary)}</p>` : ''}
+        <details class="verif-details">
+          <summary>Lihat penjelasan mendalam & bukti</summary>
+          ${row.deep_explanation ? `<p class="verif-deep">${escapeHtml(row.deep_explanation)}</p>` : ''}
+          ${claimsHtml}
+          ${misconceptionsHtml}
+          ${redFlagsHtml}
+          ${sourcesHtml}
+          ${row.reader_takeaway ? `<div class="verif-subblock"><span class="verif-subblock-title">Yang perlu diingat pembaca</span><p class="verif-takeaway">${escapeHtml(row.reader_takeaway)}</p></div>` : ''}
+          ${row.disclaimer ? `<p class="verif-disclaimer">${escapeHtml(row.disclaimer)}</p>` : ''}
+        </details>
+        <div class="verif-footer">
+          <span class="verif-meta-line">
+            ${row.primary_source ? `Sumber awal: ${escapeHtml(row.primary_source)}` : 'Sumber awal tidak tercatat'}
+            ${row.model ? ` · model: ${escapeHtml(row.model)}` : ''}
+          </span>
+          <button type="button" class="btn-mini-ghost btn-verify-topic" data-topic-id="${row.topic_id}">🔄 Verifikasi Ulang</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  container.querySelectorAll('.btn-verify-topic').forEach((btn) => {
+    btn.onclick = () => verifyTopicNow(parseInt(btn.dataset.topicId, 10), btn);
+  });
+}
+
+async function verifyTopicNow(topicId, btn) {
+  if (!topicId) return;
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Memverifikasi…';
+  try {
+    const res = await fetch(`/api/topics/${topicId}/verify`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    const status = data.report?.status || 'selesai';
+    showToast(`✅ Verifikasi topik #${topicId} selesai: ${status}.`);
+    await loadVerifications();
+    refreshSeoVerifBadges();
+  } catch (err) {
+    console.error('Error verifyTopicNow:', err);
+    reportClientLog('error', 'verifyTopicNow', err, { topicId });
+    showToast(`Gagal memverifikasi topik: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = original;
   }
 }
 

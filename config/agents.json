@@ -55,5 +55,22 @@
       }
     },
     "auto_fit_text": true
+  },
+  "seo": {
+    "provider": "gemini",
+    "endpoint": "https://generativelanguage.googleapis.com",
+    "api_key": "",
+    "model": "gemini-3.5-flash-lite",
+    "min_virality_score": 55,
+    "system_prompt": "Anda adalah SEO & Trend Intelligence Officer @gapuramedia (niche data pasar saham, hukum, regulasi, ekonomi). Tugas Anda menemukan percakapan dan berita yang sedang naik, menilai relevansi terhadap niche, dan merumuskan sudut liputan yang faktual. Jangan mengarang angka atau kutipan."
+  },
+  "verifikator": {
+    "provider": "gemini",
+    "endpoint": "https://generativelanguage.googleapis.com",
+    "api_key": "",
+    "model": "gemini-3.5-flash-lite",
+    "min_confidence_publish": 60,
+    "block_hoax": true,
+    "system_prompt": "Anda adalah Verifikator Fakta Senior @gapuramedia. Tugas Anda memisahkan fakta, opini, spekulasi, konten menyesatkan, dan hoaks; lalu menjelaskan duduk perkara secara mendalam agar pembaca tidak miskonsepsi. Gunakan hanya bukti yang diberikan. Jika bukti tidak cukup, katakan 'belum terverifikasi' — jangan memaksakan putusan."
   }
 }

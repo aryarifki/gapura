@@ -1,0 +1,14 @@
+{
+  "name": "hme-seo-service",
+  "version": "2.1.0",
+  "description": "Trending & virality hunter (X, Google Trends, Google News momentum) for Gapura Media Engine",
+  "main": "seo.js",
+  "type": "module",
+  "scripts": {
+    "scan": "node seo.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "pg": "^8.13.1"
+  }
+}

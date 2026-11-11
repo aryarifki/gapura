@@ -1,0 +1,14 @@
+{
+  "name": "hme-verifikator-service",
+  "version": "2.1.0",
+  "description": "Fact-check and anti-misconception agent for Gapura Media Engine",
+  "main": "verificator.js",
+  "type": "module",
+  "scripts": {
+    "verify": "node verificator.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "pg": "^8.13.1"
+  }
+}

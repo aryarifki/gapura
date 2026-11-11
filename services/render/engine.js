@@ -10,6 +10,91 @@ import yaml from 'js-yaml';
 import satori from 'satori';
 import sharp from 'sharp';
 
+// ------------------------------------------------------------------------------
+// Auto-fit typography helpers.
+// Satori tidak melakukan auto-shrink: ukuran font harus dihitung manual agar
+// tidak ada teks yang terpotong/overflow keluar kanvas 1080x1350.
+// ------------------------------------------------------------------------------
+const CONTENT_WIDTH = 936; // 1080 - (2 x margin 72)
+const CHAR_RATIO = { display: 0.63, body: 0.52 };
+
+function estimateLineCount(text, fontSize, widthPx, ratio = CHAR_RATIO.display) {
+  const clean = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!clean) return 1;
+  const maxChars = Math.max(1, Math.floor(widthPx / (fontSize * ratio)));
+  let lines = 1;
+  let cursor = 0;
+  for (const word of clean.split(' ')) {
+    let len = word.length;
+    if (cursor > 0) {
+      if (cursor + 1 + len <= maxChars) {
+        cursor += 1 + len;
+        continue;
+      }
+      lines += 1;
+      cursor = 0;
+    }
+    while (len > maxChars) {
+      lines += 1;
+      len -= maxChars;
+    }
+    cursor = len;
+  }
+  return lines;
+}
+
+function fitFontSize(text, { max = 72, min = 22, width = CONTENT_WIDTH, ratio = CHAR_RATIO.display, maxLines = 4, step = 2 } = {}) {
+  for (let size = max; size > min; size -= step) {
+    if (estimateLineCount(text, size, width, ratio) <= maxLines) return size;
+  }
+  return min;
+}
+
+// Pemenggalan baris berimbang (dynamic programming) untuk headline cover.
+// Tujuan: hindari baris terakhir yang hanya berisi satu kata (widow), yang
+// membuat cover terlihat tidak rapi. Mengembalikan null bila tidak feasible.
+function balanceLines(text, { fontSize, width = CONTENT_WIDTH, ratio = CHAR_RATIO.display, maxLines = 4 } = {}) {
+  const words = String(text || '').replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
+  const n = words.length;
+  if (n < 2) return null;
+
+  const maxChars = Math.max(1, Math.floor(width / (fontSize * ratio)));
+  const total = words.reduce((a, w) => a + w.length, 0) + (n - 1);
+  const lines = Math.min(maxLines, Math.ceil(total / maxChars));
+  if (lines < 2) return null;
+
+  const prefix = [0];
+  words.forEach((w) => prefix.push(prefix[prefix.length - 1] + w.length));
+  const lenOf = (i, j) => prefix[j] - prefix[i] + (j - i - 1);
+  const avg = total / lines;
+
+  const dp = Array.from({ length: lines + 1 }, () => new Array(n + 1).fill(Infinity));
+  const cut = Array.from({ length: lines + 1 }, () => new Array(n + 1).fill(-1));
+  dp[0][0] = 0;
+  for (let k = 1; k <= lines; k += 1) {
+    for (let j = k; j <= n; j += 1) {
+      for (let i = k - 1; i < j; i += 1) {
+        if (dp[k - 1][i] === Infinity) continue;
+        const len = lenOf(i, j);
+        if (len > maxChars) continue;
+        const slack = len - avg;
+        const cost = dp[k - 1][i] + slack * slack;
+        if (cost < dp[k][j]) { dp[k][j] = cost; cut[k][j] = i; }
+      }
+    }
+  }
+  if (dp[lines][n] === Infinity) return null;
+
+  const out = [];
+  let j = n;
+  for (let k = lines; k >= 1; k -= 1) {
+    const i = cut[k][j];
+    out.unshift(words.slice(i, j).join(' '));
+    j = i;
+  }
+  return out.join('\n');
+}
+
 export class RenderEngine {
   constructor(designSystemPath) {
     this.designSystemPath = designSystemPath || '/root/gapura/design-system';
@@ -66,26 +151,101 @@ export class RenderEngine {
     }
   }
 
-  // Base Slide Shell (Consistent Header & Footer for all slides)
-  wrapSlide(contentNode, { slideNo, totalSlides, source, category, showSource = true }) {
+  // Base Slide Shell — dua varian:
+  //  - "cover" : murni masthead + konten utama (tanpa kategori, counter, sumber, CTA)
+  //  - "body"  : header/footer minimalis untuk slide isi
+  wrapSlide(contentNode, { slideNo, totalSlides, source, showSource = true, variant = 'body' }) {
     const { brand, palette, grid } = this.tokens;
+    const margin = grid.margin || 72;
+
+    const shell = {
+      width: '1080px',
+      height: '1350px',
+      backgroundColor: palette.bg || '#F8F6F0',
+      fontFamily: 'Inter',
+      color: palette.ink || '#102B45',
+    };
+
+    const wordmark = {
+      type: 'div',
+      props: {
+        style: { display: 'flex', alignItems: 'center', gap: '8px' },
+        children: [
+          {
+            type: 'div',
+            props: {
+              style: { fontFamily: 'Archivo Black', fontSize: '22px', letterSpacing: '1.5px', color: palette.ink || '#102B45' },
+              children: 'GAPURA',
+            },
+          },
+          {
+            type: 'div',
+            props: {
+              style: {
+                fontFamily: 'Inter',
+                fontWeight: 700,
+                fontSize: '17px',
+                letterSpacing: '4px',
+                color: palette.accent || '#1F7E81',
+                paddingTop: '3px',
+              },
+              children: 'MEDIA',
+            },
+          },
+        ],
+      },
+    };
+
+    if (variant === 'cover') {
+      return {
+        type: 'div',
+        props: {
+          style: { ...shell, display: 'flex', flexDirection: 'column', padding: `${margin}px` },
+          children: [
+            {
+              type: 'div',
+              props: {
+                style: {
+                  display: 'flex',
+                  alignItems: 'center',
+                  width: '100%',
+                  paddingBottom: '26px',
+                  borderBottom: `1px solid ${palette.border || '#DED9CC'}`,
+                },
+                children: [wordmark],
+              },
+            },
+            {
+              type: 'div',
+              props: {
+                style: {
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'flex-end',
+                  flex: 1,
+                  width: '100%',
+                  paddingBottom: '24px',
+                },
+                children: [contentNode],
+              },
+            },
+          ],
+        },
+      };
+    }
 
     return {
       type: 'div',
       props: {
         style: {
+          ...shell,
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'space-between',
-          width: '1080px',
-          height: '1350px',
-          backgroundColor: palette.bg || '#F8F6F0',
-          padding: `${grid.margin || 72}px`,
-          fontFamily: 'Inter',
-          color: palette.ink || '#102B45',
+          padding: `${margin}px`,
         },
         children: [
-          // Header Bar
+          // Header minimalis: wordmark + nomor halaman. Tanpa pill kategori.
           {
             type: 'div',
             props: {
@@ -94,93 +254,19 @@ export class RenderEngine {
                 justifyContent: 'space-between',
                 alignItems: 'center',
                 width: '100%',
-                borderBottom: `1.5px solid ${palette.border || '#DED9CC'}`,
-                paddingBottom: '22px',
+                paddingBottom: '18px',
+                borderBottom: `1px solid ${palette.border || '#DED9CC'}`,
               },
               children: [
+                wordmark,
                 {
                   type: 'div',
                   props: {
                     style: {
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                    },
-                    children: [
-                      {
-                        type: 'div',
-                        props: {
-                          style: {
-                            fontFamily: 'Archivo Black',
-                            fontSize: '22px',
-                            color: palette.ink || '#102B45',
-                            letterSpacing: '1px',
-                          },
-                          children: 'GAPURA',
-                        },
-                      },
-                      {
-                        type: 'div',
-                        props: {
-                          style: {
-                            fontFamily: 'Inter',
-                            fontWeight: 700,
-                            fontSize: '20px',
-                            color: palette.accent || '#1F7E81',
-                            letterSpacing: '2px',
-                          },
-                          children: 'MEDIA',
-                        },
-                      },
-                      {
-                        type: 'div',
-                        props: {
-                          style: {
-                            width: '6px',
-                            height: '6px',
-                            borderRadius: '50%',
-                            backgroundColor: palette.highlight || '#D79344',
-                            marginLeft: '2px',
-                          },
-                        },
-                      },
-                      category
-                        ? {
-                            type: 'div',
-                            props: {
-                              style: {
-                                backgroundColor: palette.accent || '#1F7E81',
-                                color: '#ffffff',
-                                fontSize: '13px',
-                                fontFamily: 'Inter',
-                                fontWeight: 700,
-                                padding: '5px 14px',
-                                borderRadius: '16px',
-                                letterSpacing: '0.8px',
-                                marginLeft: '12px',
-                              },
-                              children: category.toUpperCase(),
-                            },
-                          }
-                        : null,
-                    ].filter(Boolean),
-                  },
-                },
-                {
-                  type: 'div',
-                  props: {
-                    style: {
-                      display: 'flex',
-                      alignItems: 'center',
-                      backgroundColor: '#ede7db',
-                      border: `1px solid ${palette.border || '#DED9CC'}`,
-                      borderRadius: '20px',
-                      padding: '5px 16px',
-                      fontSize: '14px',
-                      fontFamily: 'Inter',
+                      fontSize: '13px',
                       fontWeight: 700,
-                      color: palette.ink || '#102B45',
-                      letterSpacing: '0.5px',
+                      letterSpacing: '2px',
+                      color: palette.muted || '#5A6B7C',
                     },
                     children: totalSlides
                       ? `${String(slideNo).padStart(2, '0')} / ${String(totalSlides).padStart(2, '0')}`
@@ -199,15 +285,15 @@ export class RenderEngine {
                 display: 'flex',
                 flexDirection: 'column',
                 flex: 1,
-                justifyContent: 'center',
-                paddingTop: '36px',
-                paddingBottom: '36px',
+                justifyContent: 'flex-start',
+                paddingTop: '40px',
+                paddingBottom: '32px',
               },
               children: [contentNode],
             },
           },
 
-          // Footer Bar
+          // Footer minimalis: sumber sebagai teks biasa (tanpa label) + handle.
           {
             type: 'div',
             props: {
@@ -216,66 +302,25 @@ export class RenderEngine {
                 justifyContent: 'space-between',
                 alignItems: 'center',
                 width: '100%',
-                borderTop: `1.5px solid ${palette.border || '#DED9CC'}`,
-                paddingTop: '20px',
-                fontSize: '14px',
+                gap: '24px',
+                paddingTop: '16px',
+                borderTop: `1px solid ${palette.border || '#DED9CC'}`,
+                fontSize: '12px',
                 color: palette.muted || '#5A6B7C',
               },
               children: [
                 {
                   type: 'div',
                   props: {
-                    style: { display: 'flex', alignItems: 'center', gap: '8px' },
-                    children: [
-                      {
-                        type: 'span',
-                        props: {
-                          style: {
-                            fontWeight: 700,
-                            color: palette.ink || '#102B45',
-                            fontSize: '12px',
-                            letterSpacing: '0.5px',
-                          },
-                          children: 'SUMBER DATA:',
-                        },
-                      },
-                      {
-                        type: 'span',
-                        props: {
-                          style: { color: palette.muted || '#5A6B7C', fontSize: '13px' },
-                          children: showSource && source ? source : brand.tagline || 'Data, Hukum & Ekonomi Bursa',
-                        },
-                      },
-                    ],
+                    style: { display: 'flex', flex: 1, maxWidth: '640px', lineHeight: '1.35' },
+                    children: showSource && source ? source : brand.tagline || '',
                   },
                 },
                 {
                   type: 'div',
                   props: {
-                    style: {
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      fontWeight: 700,
-                      color: palette.accent || '#1F7E81',
-                      fontSize: '14px',
-                      letterSpacing: '0.5px',
-                    },
-                    children: [
-                      {
-                        type: 'span',
-                        props: {
-                          style: { color: palette.highlight || '#D79344' },
-                          children: '●',
-                        },
-                      },
-                      {
-                        type: 'span',
-                        props: {
-                          children: brand.handle || '@gapuramedia',
-                        },
-                      },
-                    ],
+                    style: { fontWeight: 700, color: palette.accent || '#1F7E81', letterSpacing: '0.5px' },
+                    children: brand.handle || '@gapuramedia',
                   },
                 },
               ],
@@ -286,12 +331,345 @@ export class RenderEngine {
     };
   }
 
+  // Cover murni: masthead kecil + (opsional) angka utama + headline auto-fit.
+  renderCover(slide, slideIndex, totalSlides) {
+    const { palette } = this.tokens;
+    const data = slide.data || {};
+    const headline = String(data.title || data.headline || slide.teks || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const rawStat = data.value || data.stat ? String(data.value || data.stat).trim() : '';
+    // Label generik ("DATA UTAMA", "PASAR MODAL") bukan informasi: jangan tampil di cover.
+    const statVal = /\d/.test(rawStat) ? rawStat : '';
+    const statLabel = String(data.subtext || data.unit || data.label || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const hasStat = Boolean(statVal);
+
+    const headlineSize = fitFontSize(headline, {
+      max: hasStat ? 48 : 104,
+      min: hasStat ? 34 : 40,
+      width: CONTENT_WIDTH,
+      ratio: CHAR_RATIO.display,
+      maxLines: hasStat ? 4 : 6,
+      step: 2,
+    });
+    const balancedHeadline = balanceLines(headline, {
+      fontSize: headlineSize,
+      width: CONTENT_WIDTH,
+      ratio: CHAR_RATIO.display,
+      maxLines: hasStat ? 4 : 6,
+    });
+    const headlineLines = balancedHeadline ? balancedHeadline.split('\n') : [headline];
+
+    return this.wrapSlide(
+      {
+        type: 'div',
+        props: {
+          style: { display: 'flex', flexDirection: 'column', gap: hasStat ? '40px' : '34px', width: '100%' },
+          children: [
+            {
+              type: 'div',
+              props: {
+                style: {
+                  width: '72px',
+                  height: '8px',
+                  backgroundColor: palette.highlight || '#D79344',
+                  borderRadius: '4px',
+                },
+              },
+            },
+            headline
+              ? {
+                  type: 'div',
+                  props: {
+                    style: {
+                      display: 'flex',
+                      flexDirection: 'column',
+                      fontFamily: 'Archivo Black',
+                      fontSize: `${headlineSize}px`,
+                      lineHeight: '1.14',
+                      letterSpacing: '-1px',
+                      color: palette.ink || '#102B45',
+                    },
+                      children: headlineLines.map((line, index) => ({
+                        type: 'div',
+                        props: {
+                          style: { display: 'flex' },
+                          children: line,
+                        },
+                      })),
+                  },
+                }
+              : null,
+            hasStat
+              ? {
+                  type: 'div',
+                  props: {
+                    style: { display: 'flex', alignItems: 'flex-end', gap: '18px', marginTop: '4px' },
+                    children: [
+                      {
+                        type: 'div',
+                        props: {
+                          style: {
+                            fontFamily: 'Archivo Black',
+                            fontSize: statVal.length > 12 ? '62px' : '82px',
+                            lineHeight: '1',
+                            color: palette.accent || '#1F7E81',
+                          },
+                          children: statVal,
+                        },
+                      },
+                      statLabel
+                        ? {
+                            type: 'div',
+                            props: {
+                              style: {
+                                fontSize: '19px',
+                                fontWeight: 700,
+                                letterSpacing: '0.8px',
+                                color: palette.muted || '#5A6B7C',
+                                paddingBottom: '10px',
+                                maxWidth: '380px',
+                                lineHeight: '1.3',
+                              },
+                              children: statLabel,
+                            },
+                          }
+                        : null,
+                    ].filter(Boolean),
+                  },
+                }
+              : null,
+          ].filter(Boolean),
+        },
+      },
+      { slideNo: slideIndex, totalSlides, source: slide.source, variant: 'cover' }
+    );
+  }
+
   // 9 Layout Resolvers
   resolveLayout(slide, slideIndex, totalSlides) {
     const layout = slide.layout || 'cover-stat';
     const { palette, typography } = this.tokens;
 
+    // Slide pertama — atau layout apa pun yang menyebut "cover" — selalu cover murni.
+    if (slideIndex === 1 || /cover/i.test(layout)) {
+      return this.renderCover(slide, slideIndex, totalSlides);
+    }
+
     switch (layout) {
+      case 'verifikasi': {
+        const d = slide.data || {};
+        const verdictRaw = String(d.status || d.verdict || 'unverified').toLowerCase();
+        const verdictMap = {
+          verified: { label: 'TERVERIFIKASI', bg: palette.up || '#1a7a4f' },
+          valid: { label: 'TERVERIFIKASI', bg: palette.up || '#1a7a4f' },
+          terverifikasi: { label: 'TERVERIFIKASI', bg: palette.up || '#1a7a4f' },
+          mostly_verified: { label: 'SEBAGIAN BESAR TERVERIFIKASI', bg: palette.up || '#1a7a4f' },
+          opinion: { label: 'OPINI / PENDAPAT', bg: palette.highlight || '#d79344' },
+          opini: { label: 'OPINI / PENDAPAT', bg: palette.highlight || '#d79344' },
+          speculation: { label: 'SPEKULASI', bg: palette.highlight || '#d79344' },
+          needs_context: { label: 'PERLU KONTEKS', bg: palette.highlight || '#d79344' },
+          konteks: { label: 'PERLU KONTEKS', bg: palette.highlight || '#d79344' },
+          caution: { label: 'PERLU KONTEKS', bg: palette.highlight || '#d79344' },
+          misleading: { label: 'BERPOTENSI MENYESATKAN', bg: palette.down || '#b23a48' },
+          hoax: { label: 'HOAKS / TIDAK VALID', bg: palette.down || '#b23a48' },
+          hoax_detected: { label: 'HOAKS / TIDAK VALID', bg: palette.down || '#b23a48' },
+          unverified: { label: 'BELUM TERVERIFIKASI', bg: palette.muted || '#5a6b7c' },
+        };
+        const verdict = verdictMap[verdictRaw] || verdictMap.unverified;
+        const claim = String(d.claim || slide.teks || '').replace(/\s+/g, ' ').trim();
+        const explanation = String(d.explanation || d.finding || d.fakta || '').replace(/\s+/g, ' ').trim();
+        const misconception = String(d.misconception || d.miskonsepsi || '').replace(/\s+/g, ' ').trim();
+        const sources = Array.isArray(d.sources)
+          ? d.sources.filter(Boolean).slice(0, 3)
+          : d.source_note
+          ? [String(d.source_note)]
+          : [];
+
+        const claimSize = fitFontSize(claim, {
+          max: 32,
+          min: 22,
+          width: CONTENT_WIDTH - 88,
+          ratio: CHAR_RATIO.display,
+          maxLines: 4,
+        });
+        const bodySize = fitFontSize(explanation, {
+          max: 21,
+          min: 16,
+          width: CONTENT_WIDTH - 88,
+          ratio: CHAR_RATIO.body,
+          maxLines: 9,
+          step: 1,
+        });
+
+        return this.wrapSlide(
+          {
+            type: 'div',
+            props: {
+              style: { display: 'flex', flexDirection: 'column', gap: '22px', width: '100%' },
+              children: [
+                // Status verifikasi
+                {
+                  type: 'div',
+                  props: {
+                    style: { display: 'flex', alignItems: 'center', gap: '14px' },
+                    children: [
+                      {
+                        type: 'div',
+                        props: {
+                          style: {
+                            backgroundColor: verdict.bg,
+                            color: '#ffffff',
+                            fontFamily: 'Inter',
+                            fontWeight: 700,
+                            fontSize: '15px',
+                            letterSpacing: '1.2px',
+                            padding: '8px 18px',
+                            borderRadius: '20px',
+                          },
+                          children: verdict.label,
+                        },
+                      },
+                      d.credibility
+                        ? {
+                            type: 'div',
+                            props: {
+                              style: { fontSize: '14px', fontWeight: 700, color: palette.muted || '#5A6B7C', letterSpacing: '0.8px' },
+                              children: `Kredibilitas: ${d.credibility}`,
+                            },
+                          }
+                        : null,
+                    ].filter(Boolean),
+                  },
+                },
+                // Klaim yang diuji
+                {
+                  type: 'div',
+                  props: {
+                    style: {
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '10px',
+                      backgroundColor: '#ffffff',
+                      border: `1px solid ${palette.border || '#DED9CC'}`,
+                      borderLeft: `6px solid ${palette.highlight || '#D79344'}`,
+                      borderRadius: '10px',
+                      padding: '22px 26px',
+                    },
+                    children: [
+                      {
+                        type: 'div',
+                        props: {
+                          style: { fontSize: '13px', fontWeight: 700, letterSpacing: '1.5px', color: palette.muted || '#5A6B7C' },
+                          children: 'KLAIM YANG DIUJI',
+                        },
+                      },
+                      {
+                        type: 'div',
+                        props: {
+                          style: {
+                            fontFamily: 'Archivo Black',
+                            fontSize: `${claimSize}px`,
+                            lineHeight: '1.32',
+                            color: palette.ink || '#102B45',
+                          },
+                          children: claim || '(klaim tidak tersedia)',
+                        },
+                      },
+                    ],
+                  },
+                },
+                // Fakta & penjelasan
+                {
+                  type: 'div',
+                  props: {
+                    style: { display: 'flex', flexDirection: 'column', gap: '10px' },
+                    children: [
+                      {
+                        type: 'div',
+                        props: {
+                          style: { fontSize: '13px', fontWeight: 700, letterSpacing: '1.5px', color: palette.accent || '#1F7E81' },
+                          children: 'FAKTA & PENJELASAN',
+                        },
+                      },
+                      {
+                        type: 'div',
+                        props: {
+                          style: { fontSize: `${bodySize}px`, lineHeight: '1.55', color: palette.ink || '#102B45' },
+                          children: explanation || 'Belum ada penjelasan tambahan.',
+                        },
+                      },
+                    ],
+                  },
+                },
+                // Miskonsepsi umum
+                misconception
+                  ? {
+                      type: 'div',
+                      props: {
+                        style: {
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '8px',
+                          backgroundColor: '#ffffff',
+                          border: `1.5px solid ${palette.highlight || '#D79344'}`,
+                          borderRadius: '10px',
+                          padding: '18px 22px',
+                        },
+                        children: [
+                          {
+                            type: 'div',
+                            props: {
+                              style: { fontSize: '13px', fontWeight: 700, letterSpacing: '1.2px', color: palette.highlight || '#D79344' },
+                              children: 'YANG SERING DISALAHPAHAMI',
+                            },
+                          },
+                          {
+                            type: 'div',
+                            props: {
+                              style: { fontSize: '18px', lineHeight: '1.5', color: palette.ink || '#102B45', fontWeight: 500 },
+                              children: misconception,
+                            },
+                          },
+                        ],
+                      },
+                    }
+                  : null,
+                // Sumber rujukan
+                sources.length > 0
+                  ? {
+                      type: 'div',
+                      props: {
+                        style: { display: 'flex', flexDirection: 'column', gap: '6px' },
+                        children: [
+                          {
+                            type: 'div',
+                            props: {
+                              style: { fontSize: '12px', fontWeight: 700, letterSpacing: '1.2px', color: palette.muted || '#5A6B7C' },
+                              children: 'RUJUKAN',
+                            },
+                          },
+                          ...sources.map((src) => ({
+                            type: 'div',
+                            props: {
+                              style: { fontSize: '13px', lineHeight: '1.4', color: palette.muted || '#5A6B7C' },
+                              children: `• ${src}`,
+                            },
+                          })),
+                        ],
+                      },
+                    }
+                  : null,
+              ].filter(Boolean),
+            },
+          },
+          { slideNo: slideIndex, totalSlides, source: slide.source, category: 'VERIFIKASI' }
+        );
+      }
+
+
       case 'cover-stat': {
         const hasStat = Boolean(slide.data?.value || slide.data?.stat);
         const statVal = hasStat ? String(slide.data?.value || slide.data?.stat) : '';
@@ -492,6 +870,14 @@ export class RenderEngine {
       }
 
       case 'big-statement': {
+        const statementSize = fitFontSize(slide.teks, {
+          max: 44,
+          min: 22,
+          width: CONTENT_WIDTH - 80,
+          ratio: CHAR_RATIO.body,
+          maxLines: 7,
+          step: 1,
+        });
         return this.wrapSlide(
           {
             type: 'div',
@@ -552,7 +938,7 @@ export class RenderEngine {
                   props: {
                     style: {
                       fontFamily: 'Inter',
-                      fontSize: '32px',
+                      fontSize: `${statementSize}px`,
                       lineHeight: '1.45',
                       fontWeight: 700,
                       color: palette.ink || '#102B45',
@@ -582,6 +968,13 @@ export class RenderEngine {
       }
 
       case 'stat-grid': {
+        const gridTitleSize = fitFontSize(slide.teks, {
+          max: 38,
+          min: 22,
+          width: CONTENT_WIDTH,
+          ratio: CHAR_RATIO.display,
+          maxLines: 4,
+        });
         const items = slide.data?.items || [
           { label: 'Data 1', value: '10%' },
           { label: 'Data 2', value: '25%' },
@@ -597,7 +990,7 @@ export class RenderEngine {
                   props: {
                     style: {
                       fontFamily: 'Archivo Black',
-                      fontSize: '36px',
+                      fontSize: `${gridTitleSize}px`,
                       lineHeight: '1.3',
                       color: palette.ink || '#102B45',
                     },
@@ -664,6 +1057,7 @@ export class RenderEngine {
       }
 
       case 'chart-bar': {
+        const barTitleSize = fitFontSize(slide.teks, { max: 36, min: 22, maxLines: 3 });
         const labels = slide.data?.labels || ['A', 'B', 'C'];
         const values = slide.data?.values || [10, 20, 30];
         const maxVal = Math.max(...values, 1);
@@ -679,7 +1073,7 @@ export class RenderEngine {
                   props: {
                     style: {
                       fontFamily: 'Archivo Black',
-                      fontSize: '34px',
+                      fontSize: `${barTitleSize}px`,
                       color: palette.ink,
                     },
                     children: slide.teks,
@@ -746,6 +1140,7 @@ export class RenderEngine {
       }
 
       case 'chart-line': {
+        const lineTitleSize = fitFontSize(slide.teks, { max: 36, min: 22, maxLines: 3 });
         const labels = slide.data?.labels || ['Bln 1', 'Bln 2', 'Bln 3'];
         const values = slide.data?.values || [10, 15, 12];
         const minVal = Math.min(...values);
@@ -763,7 +1158,7 @@ export class RenderEngine {
                   props: {
                     style: {
                       fontFamily: 'Archivo Black',
-                      fontSize: '34px',
+                      fontSize: `${lineTitleSize}px`,
                       color: palette.ink,
                     },
                     children: slide.teks,
@@ -840,6 +1235,14 @@ export class RenderEngine {
 
       case 'regulasi': {
         const title = slide.data?.title || 'REGULASI / PASAL HUKUM';
+        const clauseSize = fitFontSize(slide.teks, {
+          max: 27,
+          min: 17,
+          width: CONTENT_WIDTH - 76,
+          ratio: CHAR_RATIO.body,
+          maxLines: 10,
+          step: 1,
+        });
         return this.wrapSlide(
           {
             type: 'div',
@@ -876,7 +1279,7 @@ export class RenderEngine {
                         type: 'div',
                         props: {
                           style: {
-                            fontSize: '26px',
+                            fontSize: `${clauseSize}px`,
                             lineHeight: '1.6',
                             fontWeight: 500,
                             color: palette.ink,
@@ -895,6 +1298,7 @@ export class RenderEngine {
       }
 
       case 'timeline': {
+        const timelineTitleSize = fitFontSize(slide.teks, { max: 36, min: 22, maxLines: 3 });
         const events = slide.data?.events || [
           { date: 'Tahap 1', text: 'Peristiwa awal' },
           { date: 'Tahap 2', text: 'Perkembangan selanjutnya' },
@@ -908,7 +1312,7 @@ export class RenderEngine {
                 {
                   type: 'div',
                   props: {
-                    style: { fontFamily: 'Archivo Black', fontSize: '34px', color: palette.ink },
+                    style: { fontFamily: 'Archivo Black', fontSize: `${timelineTitleSize}px`, color: palette.ink },
                     children: slide.teks,
                   },
                 },
@@ -954,6 +1358,7 @@ export class RenderEngine {
       }
 
       case 'comparison': {
+        const compareTitleSize = fitFontSize(slide.teks, { max: 36, min: 22, maxLines: 3 });
         const left = slide.data?.left || { title: 'Sebelum', text: 'Kondisi lama' };
         const right = slide.data?.right || { title: 'Sesudah', text: 'Kondisi baru' };
 
@@ -966,7 +1371,7 @@ export class RenderEngine {
                 {
                   type: 'div',
                   props: {
-                    style: { fontFamily: 'Archivo Black', fontSize: '34px', color: palette.ink },
+                    style: { fontFamily: 'Archivo Black', fontSize: `${compareTitleSize}px`, color: palette.ink },
                     children: slide.teks,
                   },
                 },
@@ -990,7 +1395,7 @@ export class RenderEngine {
                           },
                           children: [
                             { type: 'div', props: { style: { fontWeight: 700, fontSize: '20px', color: palette.muted }, children: left.title } },
-                            { type: 'div', props: { style: { fontSize: '20px', lineHeight: '1.5', color: palette.ink }, children: left.text } },
+                            { type: 'div', props: { style: { fontSize: `${fitFontSize(left.text, { max: 20, min: 14, width: 372, ratio: CHAR_RATIO.body, maxLines: 11, step: 1 })}px`, lineHeight: '1.5', color: palette.ink }, children: left.text } },
                           ],
                         },
                       },
@@ -1009,7 +1414,7 @@ export class RenderEngine {
                           },
                           children: [
                             { type: 'div', props: { style: { fontWeight: 700, fontSize: '20px', color: palette.accent }, children: right.title } },
-                            { type: 'div', props: { style: { fontSize: '20px', lineHeight: '1.5', color: palette.ink }, children: right.text } },
+                            { type: 'div', props: { style: { fontSize: `${fitFontSize(right.text, { max: 20, min: 14, width: 372, ratio: CHAR_RATIO.body, maxLines: 11, step: 1 })}px`, lineHeight: '1.5', color: palette.ink }, children: right.text } },
                           ],
                         },
                       },
@@ -1025,6 +1430,7 @@ export class RenderEngine {
 
       case 'cta-close': {
         const headline = slide.teks || 'SIMPAN DATA INI UNTUK REFERENSI';
+        const ctaHeadlineSize = fitFontSize(headline, { max: 56, min: 24, maxLines: 4 });
         const ctaText = slide.data?.cta || `Ikuti ${this.tokens.brand?.handle || '@gapuramedia'} untuk data bursa & regulasi harian.`;
         const disclaimer = slide.data?.disclaimer || 'Informasi disajikan untuk tujuan edukasi data publik dan bukan merupakan rekomendasi transaksi saham maupun nasihat hukum resmi.';
 
@@ -1035,7 +1441,7 @@ export class RenderEngine {
               style: {
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '28px',
+                gap: '34px',
                 width: '100%',
               },
               children: [
@@ -1044,7 +1450,7 @@ export class RenderEngine {
                   props: {
                     style: {
                       fontFamily: 'Archivo Black',
-                      fontSize: '44px',
+                      fontSize: `${ctaHeadlineSize}px`,
                       color: palette.ink || '#102B45',
                       lineHeight: '1.25',
                     },
@@ -1055,9 +1461,9 @@ export class RenderEngine {
                   type: 'div',
                   props: {
                     style: {
-                      fontSize: '22px',
+                      fontSize: '24px',
                       color: palette.accent || '#1F7E81',
-                      lineHeight: '1.4',
+                      lineHeight: '1.45',
                       fontWeight: 600,
                     },
                     children: ctaText,
@@ -1102,7 +1508,7 @@ export class RenderEngine {
                                 children: 'SIMPAN',
                               },
                             },
-                            { type: 'span', props: { style: { fontSize: '17px', fontWeight: 600, color: palette.ink || '#102B45' }, children: 'Simpan postingan ini untuk rujukan data bursa & regulasi.' } },
+                            { type: 'span', props: { style: { fontSize: '19px', fontWeight: 600, color: palette.ink || '#102B45' }, children: 'Arsipkan untuk referensi cepat kapan pun dibutuhkan.' } },
                           ],
                         },
                       },
@@ -1134,7 +1540,7 @@ export class RenderEngine {
                                 children: 'BAGIKAN',
                               },
                             },
-                            { type: 'span', props: { style: { fontSize: '17px', fontWeight: 600, color: palette.ink || '#102B45' }, children: 'Bagikan ke rekan atau tim investor Anda untuk diskusi.' } },
+                            { type: 'span', props: { style: { fontSize: '19px', fontWeight: 600, color: palette.ink || '#102B45' }, children: 'Bagikan ke rekan atau tim investor Anda untuk diskusi.' } },
                           ],
                         },
                       },
@@ -1166,7 +1572,7 @@ export class RenderEngine {
                                 children: 'DISKUSI',
                               },
                             },
-                            { type: 'span', props: { style: { fontSize: '17px', fontWeight: 600, color: palette.ink || '#102B45' }, children: 'Tulis pandangan atau pertanyaan di kolom komentar.' } },
+                            { type: 'span', props: { style: { fontSize: '19px', fontWeight: 600, color: palette.ink || '#102B45' }, children: 'Tulis pandangan atau pertanyaan di kolom komentar.' } },
                           ],
                         },
                       },
@@ -1186,7 +1592,7 @@ export class RenderEngine {
                       lineHeight: '1.45',
                       color: palette.muted || '#5A6B7C',
                     },
-                    children: `DISCLAIMER RESMI: ${disclaimer}`,
+                    children: `DISCLAIMER RESMI: ${String(disclaimer).replace(/^disclaimer\s*(resmi)?\s*:\s*/i, '')}`,
                   },
                 },
               ],
@@ -1209,6 +1615,28 @@ export class RenderEngine {
     const title = data.title || data.headline || (data.value || data.stat || data.items || data.quote ? text : '');
     const subtitle = data.subtitle || data.subtext || '';
     const category = data.category || (slideIndex === 1 ? 'LAPORAN UTAMA' : 'ANALISIS EDITORIAL');
+
+    // Derifasi awal agar kepadatan konten bisa dihitung sebelum menyusun node.
+    const items = data.items || data.cards || data.metrics || (Array.isArray(data.list) && typeof data.list[0] === 'object' ? data.list : null);
+    const bullets = data.bullets || data.points || (Array.isArray(data.list) && typeof data.list[0] === 'string' ? data.list : null);
+
+    // Kepadatan konten → skala tipografi.
+    // Slide ringkas dinaikkan skalanya supaya kanvas tidak menyisakan rongga
+    // besar; slide padat tetap 1.0 seperti sebelumnya (aman dari overflow).
+    const density = [
+      title,
+      subtitle,
+      data.quote,
+      data.author,
+      data.callout || data.regulasi || data.note,
+      Array.isArray(bullets) ? bullets.join(' ') : '',
+      Array.isArray(items) ? items.map((i) => `${i.value || ''} ${i.label || i.text || ''}`).join(' ') : '',
+      text !== title ? text : '',
+    ].filter(Boolean).join(' ').replace(/\s+/g, ' ').length;
+    const blockCount = [subtitle, title, data.value || data.stat, items?.length, data.left, data.quote, data.callout, text !== title ? text : ''].filter(Boolean).length;
+    const score = density + blockCount * 55;
+    const scale = score < 200 ? 1.45 : score < 330 ? 1.28 : score < 480 ? 1.12 : 1.0;
+    const px = (v) => `${Math.round(v * scale)}px`;
 
     const children = [];
 
@@ -1238,7 +1666,7 @@ export class RenderEngine {
                 type: 'div',
                 props: {
                   style: {
-                    fontSize: '20px',
+                    fontSize: px(20),
                     fontWeight: 700,
                     color: palette.accent,
                     letterSpacing: '1px',
@@ -1254,7 +1682,7 @@ export class RenderEngine {
 
     // 2. Title / Main Statement
     if (title) {
-      const fontSize = title.length > 90 ? '34px' : title.length > 50 ? '42px' : '50px';
+      const fontSize = `${fitFontSize(title, { max: Math.round(50 * scale), min: 26, maxLines: 4 })}px`;
       children.push({
         type: 'div',
         props: {
@@ -1283,8 +1711,8 @@ export class RenderEngine {
             backgroundColor: '#ffffff',
             border: `1.5px solid ${palette.border || '#DED9CC'}`,
             borderRadius: '16px',
-            padding: '24px 32px',
-            gap: '24px',
+            padding: `${px(24)} ${px(32)}`,
+            gap: px(24),
           },
           children: [
             {
@@ -1292,7 +1720,7 @@ export class RenderEngine {
               props: {
                 style: {
                   width: '8px',
-                  height: '76px',
+                  height: px(76),
                   backgroundColor: palette.highlight || '#D79344',
                   borderRadius: '4px',
                 },
@@ -1308,7 +1736,7 @@ export class RenderEngine {
                     props: {
                       style: {
                         fontFamily: 'Archivo Black',
-                        fontSize: val.length > 12 ? '48px' : '62px',
+                        fontSize: px(val.length > 12 ? 48 : 62),
                         color: palette.ink || '#102B45',
                         lineHeight: '1.1',
                       },
@@ -1320,7 +1748,7 @@ export class RenderEngine {
                         type: 'div',
                         props: {
                           style: {
-                            fontSize: '18px',
+                            fontSize: px(18),
                             fontWeight: 700,
                             color: palette.accent || '#1F7E81',
                             textTransform: 'uppercase',
@@ -1339,7 +1767,6 @@ export class RenderEngine {
     }
 
     // 4. Metric Items / Cards Grid (if present)
-    const items = data.items || data.cards || data.metrics || (Array.isArray(data.list) && typeof data.list[0] === 'object' ? data.list : null);
     if (Array.isArray(items) && items.length > 0) {
       children.push({
         type: 'div',
@@ -1347,7 +1774,7 @@ export class RenderEngine {
           style: {
             display: 'flex',
             flexWrap: 'wrap',
-            gap: '18px',
+            gap: px(18),
             width: '100%',
           },
           children: items.slice(0, 4).map((it) => ({
@@ -1359,9 +1786,9 @@ export class RenderEngine {
                 backgroundColor: palette.card_bg,
                 border: `1px solid ${palette.border}`,
                 borderRadius: '10px',
-                padding: '22px',
+                padding: px(22),
                 width: items.length === 1 ? '100%' : '440px',
-                gap: '8px',
+                gap: px(8),
               },
               children: [
                 {
@@ -1369,7 +1796,7 @@ export class RenderEngine {
                   props: {
                     style: {
                       fontFamily: 'Archivo Black',
-                      fontSize: '38px',
+                      fontSize: px(38),
                       color: palette.accent,
                       lineHeight: '1.1',
                     },
@@ -1380,7 +1807,7 @@ export class RenderEngine {
                   type: 'div',
                   props: {
                     style: {
-                      fontSize: '18px',
+                      fontSize: px(18),
                       color: palette.muted,
                       lineHeight: '1.4',
                       fontWeight: 600,
@@ -1492,7 +1919,6 @@ export class RenderEngine {
     }
 
     // 6. Bullets / Key Points (if present)
-    const bullets = data.bullets || data.points || (Array.isArray(data.list) && typeof data.list[0] === 'string' ? data.list : null);
     if (Array.isArray(bullets) && bullets.length > 0) {
       children.push({
         type: 'div',
@@ -1500,7 +1926,7 @@ export class RenderEngine {
           style: {
             display: 'flex',
             flexDirection: 'column',
-            gap: '12px',
+            gap: px(12),
             width: '100%',
           },
           children: bullets.slice(0, 5).map((pt, idx) => ({
@@ -1512,8 +1938,8 @@ export class RenderEngine {
                 backgroundColor: palette.card_bg,
                 border: `1px solid ${palette.border}`,
                 borderRadius: '8px',
-                padding: '16px 20px',
-                gap: '16px',
+                padding: `${px(16)} ${px(20)}`,
+                gap: px(16),
               },
               children: [
                 {
@@ -1523,10 +1949,10 @@ export class RenderEngine {
                       backgroundColor: palette.accent,
                       color: '#ffffff',
                       fontFamily: 'Archivo Black',
-                      fontSize: '16px',
+                      fontSize: px(16),
                       borderRadius: '50%',
-                      width: '32px',
-                      height: '32px',
+                      width: px(32),
+                      height: px(32),
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -1539,7 +1965,7 @@ export class RenderEngine {
                   type: 'div',
                   props: {
                     style: {
-                      fontSize: '19px',
+                      fontSize: px(19),
                       lineHeight: '1.45',
                       color: palette.ink,
                       fontWeight: 500,
@@ -1572,7 +1998,7 @@ export class RenderEngine {
               type: 'div',
               props: {
                 style: {
-                  fontSize: '26px',
+                  fontSize: px(26),
                   lineHeight: '1.45',
                   fontWeight: 700,
                   color: palette.ink,
@@ -1586,7 +2012,7 @@ export class RenderEngine {
                   type: 'div',
                   props: {
                     style: {
-                      fontSize: '19px',
+                      fontSize: px(19),
                       color: palette.muted,
                       fontWeight: 600,
                     },
@@ -1610,8 +2036,8 @@ export class RenderEngine {
             border: `2px solid ${palette.border}`,
             borderTop: `6px solid ${palette.highlight}`,
             borderRadius: '10px',
-            padding: '22px 26px',
-            fontSize: '19px',
+            padding: `${px(22)} ${px(26)}`,
+            fontSize: px(19),
             lineHeight: '1.5',
             color: palette.ink,
             fontWeight: 500,
@@ -1627,40 +2053,15 @@ export class RenderEngine {
         type: 'div',
         props: {
           style: {
-            fontSize: '22px',
+            fontSize: px(22),
             lineHeight: '1.55',
             color: palette.ink,
             backgroundColor: palette.card_bg,
             border: `1px solid ${palette.border}`,
             borderRadius: '10px',
-            padding: '22px 26px',
+            padding: `${px(22)} ${px(26)}`,
           },
           children: text,
-        },
-      });
-    }
-
-    // Slide 1 Swipe Indicator
-    if (slideIndex === 1 && totalSlides > 1) {
-      children.push({
-        type: 'div',
-        props: {
-          style: {
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            backgroundColor: palette.accent || '#1F7E81',
-            color: '#ffffff',
-            fontSize: '15px',
-            fontFamily: 'Inter',
-            fontWeight: 700,
-            padding: '12px 28px',
-            borderRadius: '30px',
-            letterSpacing: '0.5px',
-            alignSelf: 'flex-start',
-            marginTop: '8px',
-          },
-          children: 'GESER KE KIRI UNTUK ANALISIS ➔',
         },
       });
     }
@@ -1761,7 +2162,7 @@ export class RenderEngine {
           style: {
             display: 'flex',
             flexDirection: 'column',
-            gap: '22px',
+            gap: px(22),
             width: '100%',
           },
           children,
