@@ -165,6 +165,14 @@ export async function executeJob(jobId, { autoPublish = false } = {}) {
 
   try {
     const plan = job.plan || (await createPlan(job));
+    if (!job.plan) {
+      // Rencana baru selesai -> berhenti untuk ACC admin (kecuali auto_publish).
+      if (!autoPublish) {
+        await pool.query("UPDATE prompt_jobs SET status = 'plan_review', progress = 25, updated_at = NOW() WHERE id = $1", [jobId]);
+        await logStep(jobId, 'planning', 'Rencana menunggu ACC admin (edit / generate ulang / produksi).');
+        return { awaiting_plan_review: true, plan };
+      }
+    }
 
     // 1. Topik
     let topicId = job.topic_id;

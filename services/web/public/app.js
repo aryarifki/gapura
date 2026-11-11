@@ -3044,12 +3044,12 @@ async function submitStudioPrompt() {
   if (!input || !btn) return;
   const prompt = (input.value || '').trim();
   if (prompt.length < 10) {
-    showToast('Prompt minimal 10 karakter.');
+    showToast('⚠️ Prompt minimal 10 karakter.');
     return;
   }
   const original = btn.innerHTML;
   btn.disabled = true;
-  btn.innerHTML = '<span>⏳</span> <span>Menyusun rencana…</span>';
+  btn.innerHTML = '<span>⏳</span> <span>Mengirim prompt…</span>';
   try {
     const res = await fetch('/api/studio/jobs', {
       method: 'POST',
@@ -3058,13 +3058,13 @@ async function submitStudioPrompt() {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    showToast(`✅ Job #${data.job.id} dibuat. AI sedang menyusun rencana.`);
+    showToast(`✅ Job #${data.job.id} dibuat. AI menyusun rencana — pantau kartu di bawah.`);
     input.value = '';
     await loadStudioJobs(data.job.id);
   } catch (err) {
     console.error('Error submitStudioPrompt:', err);
     reportClientLog('error', 'submitStudioPrompt', err);
-    showToast(`Gagal membuat job: ${err.message}`);
+    showToast(`❌ Gagal membuat job: ${err.message}`);
   } finally {
     btn.disabled = false;
     btn.innerHTML = original;
@@ -3088,6 +3088,7 @@ const STUDIO_STATUS_META = {
 async function loadStudioJobs(focusJobId = null) {
   const container = document.getElementById('studio-jobs-container');
   if (!container) return;
+  if (!focusJobId) container.innerHTML = '<div class="empty-state-mini">Memuat antrian produksi…</div>';
   try {
     const res = await fetch('/api/studio/jobs');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -3182,7 +3183,22 @@ function streamStudioJob(jobId) {
       updateStudioJobLive(jobId, data);
     } catch { /* abaikan chunk rusak */ }
   };
-  es.onerror = () => { es.close(); studioJobStream = null; };
+  es.onerror = () => {
+    es.close();
+    studioJobStream = null;
+    // Fallback: polling ringan sampai job selesai (mis. SSE diblokir proxy).
+    const poll = setInterval(async () => {
+      const { rows } = await fetch(`/api/studio/jobs/${jobId}`).then((r) => r.json()).catch(() => ({}));
+      const job = rows || {};
+      updateStudioJobLive(jobId, { status: job.status, progress: job.progress });
+      if (['review','scheduled','published','failed','cancelled'].includes(job.status)) {
+        clearInterval(poll);
+        if (job.status === 'failed') showToast(`❌ Job #${jobId} gagal: ${job.error || 'lihat log'}`);
+        else showToast(`✅ Job #${jobId} selesai (${job.status}).`);
+        loadStudioJobs();
+      }
+    }, 3000);
+  };
 }
 
 function updateStudioJobLive(jobId, data) {
@@ -3193,6 +3209,17 @@ function updateStudioJobLive(jobId, data) {
   if (badge) {
     badge.textContent = `${meta.label} · ${data.progress ?? 0}%`;
     badge.className = `verif-badge ${meta.cls}`;
+  }
+  // Baris log terakhir: pengguna selalu tahu AI sedang apa.
+  if (data.message) {
+    let live = card.querySelector('.studio-live-log');
+    if (!live) {
+      live = document.createElement('p');
+      live.className = 'studio-live-log';
+      live.style.cssText = 'font-size: 12px; color: var(--lime); margin-top: 8px;';
+      card.insertBefore(live, card.querySelector('.verif-footer'));
+    }
+    live.textContent = `⚡ ${data.message}`;
   }
 }
 
