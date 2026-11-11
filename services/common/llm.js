@@ -112,9 +112,29 @@ export async function callAgentLLM(agentKey, promptText, systemPrompt = '', json
       body: JSON.stringify(bodyPayload),
     });
 
+    if (!resp.ok && [429, 500, 502, 503].includes(resp.status)) {
+      // Model utama kelebihan beban → coba model flash-latest sekali.
+      const retryUrl = `${cleanEndpoint}/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`;
+      const retryResp = await fetch(retryUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bodyPayload),
+      });
+      if (retryResp.ok) {
+        const retryData = await retryResp.json();
+        const retryText = retryData.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (retryText) {
+          console.warn(`[LLM Client] Model ${model} ${resp.status}; sukses via fallback gemini-flash-latest.`);
+          return retryText;
+        }
+      }
+      const errText = await resp.text();
+      throw new Error(`Gemini API Error (${resp.status}): ${errText.slice(0, 300)}`);
+    }
+
     if (!resp.ok) {
       const errText = await resp.text();
-      throw new Error(`Gemini API Error (${resp.status}): ${errText}`);
+      throw new Error(`Gemini API Error (${resp.status}): ${errText.slice(0, 300)}`);
     }
 
     const data = await resp.json();

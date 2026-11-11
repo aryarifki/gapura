@@ -59,6 +59,9 @@
             <div class="nav-item-left"><span>🛡️</span> <span>Verifikasi Berita</span></div>
             <span class="nav-badge" id="sidebar-verif-badge">0</span>
           </div>
+          <div class="nav-item" data-view="view-studio-prompt">
+            <div class="nav-item-left"><span>🎬</span> <span>Studio Prompt</span></div>
+          </div>
 
           <div class="nav-section-label">Sistem & Studio</div>
           <div class="nav-item" data-view="view-agents">
@@ -1580,6 +1583,43 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
         </section>
 
       </div>
+    
+        <!-- ================================================================== -->
+        <!-- VIEW: STUDIO PROMPT (Prompt-driven production) -->
+        <!-- ================================================================== -->
+        <section id="view-studio-prompt" class="view-pane">
+          <div style="margin-bottom: 20px;">
+            <span class="redaksi-greeting">Meja Naskah</span>
+            <h2 style="font-family: 'Archivo Black', sans-serif; font-size: 28px; color: #fff; margin-bottom: 6px;">STUDIO PROMPT</h2>
+            <p style="font-size: 13px; color: var(--muted);">Tulis permintaan Anda; AI menyusun rencana, memverifikasi, memproduksi draft, dan mengirim ke review. Anda tetap memegang kendali akhir sebelum tayang.</p>
+          </div>
+
+          <div class="trend-panel" style="margin-bottom: 24px;">
+            <div class="trend-panel-head">
+              <span class="trend-panel-title">📝 Prompt Produksi</span>
+              <select id="studio-mode" class="form-input-dark form-select-dark" style="width: auto; min-width: 200px;">
+                <option value="review">Review dulu (rekomendasi)</option>
+                <option value="auto_publish">Auto publish (+3 jam)</option>
+              </select>
+            </div>
+            <textarea id="studio-prompt-input" class="form-input-dark" rows="5" style="width: 100%; margin: 14px 0; resize: vertical; font-family: inherit;" placeholder="Contoh: Buat carousel analisis mendalam tentang kenaikan inflasi Sumut triwulan III 2026 — jelaskan penyebab, dampaknya ke daya beli, dan perspektif alternatifnya. Verifikasi kebenaran angkanya."></textarea>
+            <div style="display: flex; gap: 12px; align-items: center;">
+              <button type="button" class="btn btn-lime" id="btn-studio-submit"><span>🚀</span> <span>Buat Rencana</span></button>
+              <span style="font-size: 12px; color: var(--muted);" id="studio-submit-hint">Rencana bisa Anda edit / generate ulang sebelum diproduksi.</span>
+            </div>
+          </div>
+
+          <div class="trend-panel">
+            <div class="trend-panel-head">
+              <span class="trend-panel-title">Antrian Produksi</span>
+              <button type="button" class="btn btn-outline" id="btn-studio-refresh"><span>🔄</span> <span>Refresh</span></button>
+            </div>
+            <div id="studio-jobs-container" class="activity-list" style="display: flex; flex-direction: column; gap: 14px;">
+              <!-- Rendered by JS -->
+            </div>
+          </div>
+        </section>
+
     </main>
   </div>
 

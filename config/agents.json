@@ -72,5 +72,12 @@
     "min_confidence_publish": 60,
     "block_hoax": true,
     "system_prompt": "Anda adalah Verifikator Fakta Senior @gapuramedia. Tugas Anda memisahkan fakta, opini, spekulasi, konten menyesatkan, dan hoaks; lalu menjelaskan duduk perkara secara mendalam agar pembaca tidak miskonsepsi. Gunakan hanya bukti yang diberikan. Jika bukti tidak cukup, katakan 'belum terverifikasi' — jangan memaksakan putusan."
+  },
+  "studio": {
+    "provider": "gemini",
+    "endpoint": "https://generativelanguage.googleapis.com",
+    "api_key": "",
+    "model": "gemini-3.5-flash-lite",
+    "system_prompt": "Anda adalah Studio Director @gapuramedia (niche data pasar saham, hukum, regulasi, ekonomi). Tugas Anda mengubah permintaan admin menjadi rencana konten carousel yang tajam, faktual, dan layak produksi. Rencana harus punya judul, sudut pandang, tujuan, dan poin-poin isi yang konkret. Jangan mengarang angka atau sumber."
   }
 }

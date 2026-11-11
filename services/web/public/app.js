@@ -124,6 +124,8 @@ function setupNavigation() {
         loadTrendSources();
       } else if (viewId === 'view-verifications') {
         loadVerifications();
+      } else if (viewId === 'view-studio-prompt') {
+        loadStudioJobs();
       } else if (viewId === 'view-agents') {
         loadAgentsConfigUI();
       } else if (viewId === 'view-n8n') {
@@ -297,6 +299,10 @@ function setupNavigation() {
 
   // Agen Verifikator Controls
   bindClick('btn-refresh-verifications', loadVerifications);
+
+  // Studio Prompt Controls
+  bindClick('btn-studio-submit', submitStudioPrompt);
+  bindClick('btn-studio-refresh', loadStudioJobs);
   document.querySelectorAll('.btn-verif-filter').forEach((btn) => {
     btn.onclick = () => {
       document.querySelectorAll('.btn-verif-filter').forEach((b) => b.classList.remove('active'));
@@ -2201,6 +2207,8 @@ function switchToView(viewId) {
     loadTrendSources();
   } else if (viewId === 'view-verifications') {
     loadVerifications();
+  } else if (viewId === 'view-studio-prompt') {
+    loadStudioJobs();
   } else if (viewId === 'view-agents') {
     loadAgentsConfigUI();
   } else if (viewId === 'view-n8n') {
@@ -3022,4 +3030,266 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+// ==============================================================================
+// 15. Studio Prompt — prompt-driven production
+// ==============================================================================
+let studioJobStream = null;
+
+async function submitStudioPrompt() {
+  const input = document.getElementById('studio-prompt-input');
+  const modeEl = document.getElementById('studio-mode');
+  const btn = document.getElementById('btn-studio-submit');
+  if (!input || !btn) return;
+  const prompt = (input.value || '').trim();
+  if (prompt.length < 10) {
+    showToast('Prompt minimal 10 karakter.');
+    return;
+  }
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span>⏳</span> <span>Menyusun rencana…</span>';
+  try {
+    const res = await fetch('/api/studio/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, mode: modeEl?.value || 'review' }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    showToast(`✅ Job #${data.job.id} dibuat. AI sedang menyusun rencana.`);
+    input.value = '';
+    await loadStudioJobs(data.job.id);
+  } catch (err) {
+    console.error('Error submitStudioPrompt:', err);
+    reportClientLog('error', 'submitStudioPrompt', err);
+    showToast(`Gagal membuat job: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = original;
+  }
+}
+
+const STUDIO_STATUS_META = {
+  queued: { label: 'MENUNGGU', cls: 'unverified' },
+  planning: { label: 'MENYUSUN RENCANA', cls: 'context' },
+  plan_review: { label: 'RENCANA MENUNGGU ACC', cls: 'context' },
+  verifying: { label: 'MEMVERIFIKASI', cls: 'context' },
+  drafting: { label: 'MEMPRODUKSI DRAFT', cls: 'context' },
+  dispatching: { label: 'MENGIRIM KE REVIEW', cls: 'context' },
+  review: { label: 'MENUNGGU REVIEW', cls: 'mostly' },
+  scheduled: { label: 'TERJADWAL', cls: 'verified' },
+  published: { label: 'TAYANG', cls: 'verified' },
+  failed: { label: 'GAGAL', cls: 'hoax' },
+  cancelled: { label: 'DIBATALKAN', cls: 'unverified' },
+};
+
+async function loadStudioJobs(focusJobId = null) {
+  const container = document.getElementById('studio-jobs-container');
+  if (!container) return;
+  try {
+    const res = await fetch('/api/studio/jobs');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const jobs = await res.json();
+    renderStudioJobs(Array.isArray(jobs) ? jobs : [], focusJobId);
+  } catch (err) {
+    console.error('Error loadStudioJobs:', err);
+    reportClientLog('error', 'loadStudioJobs', err);
+    container.innerHTML = `<div class="empty-state-mini" style="color: var(--down);">Gagal memuat antrian: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function renderStudioJobs(jobs, focusJobId) {
+  const container = document.getElementById('studio-jobs-container');
+  if (!container) return;
+  if (jobs.length === 0) {
+    container.innerHTML = '<div class="empty-state-mini">Belum ada job. Tulis prompt di atas untuk memulai.</div>';
+    return;
+  }
+  container.innerHTML = jobs.map((job) => {
+    const meta = STUDIO_STATUS_META[job.status] || { label: String(job.status).toUpperCase(), cls: 'unverified' };
+    const plan = job.plan || null;
+    const planHtml = plan
+      ? `<details class="verif-details" ${String(job.id) === String(focusJobId) ? 'open' : ''}>
+           <summary>Lihat rencana konten</summary>
+           <div class="verif-subblock"><span class="verif-subblock-title">Judul</span><p class="verif-takeaway">${escapeHtml(plan.title || '')}</p></div>
+           ${plan.angle ? `<div class="verif-subblock"><span class="verif-subblock-title">Sudut pandang</span><p class="verif-takeaway">${escapeHtml(plan.angle)}</p></div>` : ''}
+           ${plan.goal ? `<div class="verif-subblock"><span class="verif-subblock-title">Tujuan</span><p class="verif-takeaway">${escapeHtml(plan.goal)}</p></div>` : ''}
+           <div class="verif-subblock"><span class="verif-subblock-title">Poin isi</span><ul class="verif-list">${(plan.sections || []).map((p) => `<li>${escapeHtml(p)}</li>`).join('')}</ul></div>
+           <textarea id="plan-edit-${job.id}" class="form-input-dark" rows="6" style="width: 100%; margin-top: 10px; font-family: monospace; font-size: 12px;">${escapeHtml(JSON.stringify(plan, null, 2))}</textarea>
+         </details>`
+      : '';
+    return `
+      <div class="verif-card" id="studio-job-${job.id}">
+        <div class="verif-head">
+          <span class="verif-badge ${meta.cls}">${escapeHtml(meta.label)}</span>
+          <span class="verif-time">${escapeHtml(job.mode === 'auto_publish' ? 'auto publish' : 'review dulu')}</span>
+          <span class="verif-time">${formatTimeAgo(job.created_at)}</span>
+        </div>
+        <div class="verif-title">${escapeHtml((job.prompt || '').slice(0, 140))}${(job.prompt || '').length > 140 ? '…' : ''}</div>
+        ${job.error ? `<p class="verif-summary" style="color: var(--down);">${escapeHtml(job.error)}</p>` : ''}
+        ${planHtml}
+        <div class="verif-footer" style="gap: 8px; flex-wrap: wrap;">
+          ${plan && ['plan_review', 'failed'].includes(job.status) ? `<button type="button" class="btn-mini-ghost btn-studio-run" data-job-id="${job.id}">▶️ Produksi Sesuai Rencana</button>` : ''}
+          ${plan && ['plan_review', 'failed'].includes(job.status) ? `<button type="button" class="btn-mini-ghost btn-studio-save-plan" data-job-id="${job.id}">💾 Simpan Edit Rencana</button>` : ''}
+          ${plan && ['plan_review', 'failed'].includes(job.status) ? `<button type="button" class="btn-mini-ghost btn-studio-regen" data-job-id="${job.id}">♻️ Generate Ulang Rencana</button>` : ''}
+          ${['queued', 'plan_review'].includes(job.status) ? `<button type="button" class="btn-mini-ghost btn-studio-cancel" data-job-id="${job.id}" style="color: var(--down);">✕ Batalkan</button>` : ''}
+          ${job.draft_id ? `<button type="button" class="btn-mini-ghost btn-studio-open-draft" data-draft-id="${job.draft_id}">📂 Buka Draft #${job.draft_id}</button>` : ''}
+          ${job.topic_id ? `<span class="verif-meta-line">Topik #${job.topic_id}</span>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+
+  container.querySelectorAll('.btn-studio-run').forEach((btn) => {
+    btn.onclick = () => runStudioJob(parseInt(btn.dataset.jobId, 10), btn);
+  });
+  container.querySelectorAll('.btn-studio-save-plan').forEach((btn) => {
+    btn.onclick = () => saveStudioPlan(parseInt(btn.dataset.jobId, 10), btn);
+  });
+  container.querySelectorAll('.btn-studio-regen').forEach((btn) => {
+    btn.onclick = () => regenerateStudioPlan(parseInt(btn.dataset.jobId, 10), btn);
+  });
+  container.querySelectorAll('.btn-studio-cancel').forEach((btn) => {
+    btn.onclick = () => cancelStudioJob(parseInt(btn.dataset.jobId, 10), btn);
+  });
+  container.querySelectorAll('.btn-studio-open-draft').forEach((btn) => {
+    btn.onclick = () => openStudioDraft(parseInt(btn.dataset.draftId, 10));
+  });
+
+  if (focusJobId) streamStudioJob(focusJobId);
+}
+
+function streamStudioJob(jobId) {
+  if (studioJobStream) { studioJobStream.close(); studioJobStream = null; }
+  const es = new EventSource(`/api/studio/jobs/${jobId}/stream`);
+  studioJobStream = es;
+  es.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      if (data.done) {
+        es.close();
+        studioJobStream = null;
+        if (data.status === 'failed') {
+          showToast(`❌ Job #${jobId} gagal: ${data.error || 'lihat log'}`);
+        } else {
+          showToast(`✅ Job #${jobId} selesai (${data.status}).`);
+        }
+        loadStudioJobs();
+        refreshSeoVerifBadges();
+        return;
+      }
+      updateStudioJobLive(jobId, data);
+    } catch { /* abaikan chunk rusak */ }
+  };
+  es.onerror = () => { es.close(); studioJobStream = null; };
+}
+
+function updateStudioJobLive(jobId, data) {
+  const card = document.getElementById(`studio-job-${jobId}`);
+  if (!card) return;
+  const badge = card.querySelector('.verif-badge');
+  const meta = STUDIO_STATUS_META[data.status] || { label: data.status, cls: 'unverified' };
+  if (badge) {
+    badge.textContent = `${meta.label} · ${data.progress ?? 0}%`;
+    badge.className = `verif-badge ${meta.cls}`;
+  }
+}
+
+async function runStudioJob(jobId, btn) {
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Menjalankan…';
+  try {
+    const res = await fetch(`/api/studio/jobs/${jobId}/run`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    showToast(`🚀 Job #${jobId} berjalan. Pantau progres di kartu ini.`);
+    streamStudioJob(jobId);
+  } catch (err) {
+    console.error('Error runStudioJob:', err);
+    reportClientLog('error', 'runStudioJob', err, { jobId });
+    showToast(`Gagal menjalankan job: ${err.message}`);
+    btn.disabled = false;
+    btn.innerHTML = original;
+  }
+}
+
+async function saveStudioPlan(jobId, btn) {
+  const textarea = document.getElementById(`plan-edit-${jobId}`);
+  if (!textarea) return;
+  let plan;
+  try {
+    plan = JSON.parse(textarea.value);
+  } catch (err) {
+    showToast('Rencana bukan JSON valid. Perbaiki formatnya.');
+    return;
+  }
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Menyimpan…';
+  try {
+    const res = await fetch(`/api/studio/jobs/${jobId}/plan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    showToast('✅ Rencana tersimpan.');
+    await loadStudioJobs(jobId);
+  } catch (err) {
+    console.error('Error saveStudioPlan:', err);
+    reportClientLog('error', 'saveStudioPlan', err, { jobId });
+    showToast(`Gagal menyimpan rencana: ${err.message}`);
+    btn.disabled = false;
+    btn.innerHTML = original;
+  }
+}
+
+async function regenerateStudioPlan(jobId, btn) {
+  const instruction = window.prompt('Instruksi revisi untuk generate ulang rencana (boleh kosong):') || '';
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Generate…';
+  try {
+    const res = await fetch(`/api/studio/jobs/${jobId}/regenerate-plan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instruction }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    showToast('♻️ Rencana di-generate ulang.');
+    await loadStudioJobs(jobId);
+  } catch (err) {
+    console.error('Error regenerateStudioPlan:', err);
+    reportClientLog('error', 'regenerateStudioPlan', err, { jobId });
+    showToast(`Gagal generate ulang: ${err.message}`);
+    btn.disabled = false;
+    btn.innerHTML = original;
+  }
+}
+
+async function cancelStudioJob(jobId, btn) {
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  try {
+    const res = await fetch(`/api/studio/jobs/${jobId}/cancel`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    showToast('Job dibatalkan.');
+    await loadStudioJobs();
+  } catch (err) {
+    console.error('Error cancelStudioJob:', err);
+    reportClientLog('error', 'cancelStudioJob', err, { jobId });
+    showToast(`Gagal membatalkan: ${err.message}`);
+    btn.disabled = false;
+    btn.innerHTML = original;
+  }
+}
+
+async function openStudioDraft(draftId) {
+  switchToView('view-review');
+  setTimeout(() => openDraftEditor(draftId), 400);
 }

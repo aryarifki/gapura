@@ -19,6 +19,7 @@ import { loadAgentsConfig, loadAgentSkills, saveAgentSkills } from '../common/ll
 import { runScout } from '../scout/scout.js';
 import { runSeoScan, listTrends, promoteTrendToTopic } from '../seo/seo.js';
 import { verifyTopic, getLatestVerification, listVerifications } from '../verificator/verificator.js';
+import { createPlan, regeneratePlan, updatePlan, executeJob, processQueuedJobs, listJobs, getJob } from '../studio/studio.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1349,6 +1350,150 @@ app.get('/api/verifications', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+
+// ==============================================================================
+// 14. Studio Prompt — prompt-driven production (plan -> draft -> publish)
+// ==============================================================================
+app.post('/api/studio/jobs', async (req, res) => {
+  const prompt = String(req.body?.prompt || '').trim();
+  const mode = req.body?.mode === 'auto_publish' ? 'auto_publish' : 'review';
+  if (prompt.length < 10) {
+    return res.status(400).json({ error: 'Prompt minimal 10 karakter.' });
+  }
+  if (prompt.length > 4000) {
+    return res.status(400).json({ error: 'Prompt maksimal 4000 karakter.' });
+  }
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO prompt_jobs (prompt, mode, actor) VALUES ($1, $2, 'admin') RETURNING *`,
+      [prompt, mode]
+    );
+    await writeAudit('prompt_job', rows[0].id, 'created', 'admin', { mode, prompt_len: prompt.length });
+    res.json({ status: 'success', job: rows[0] });
+  } catch (err) {
+    await writeAudit('prompt_job', 0, 'error_create', 'admin', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/studio/jobs', async (req, res) => {
+  try {
+    res.json(await listJobs({ limit: parseInt(req.query.limit) || 30 }));
+  } catch (err) {
+    await writeAudit('prompt_job', 0, 'error_list', 'admin', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/studio/jobs/:id', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  try {
+    const job = await getJob(id);
+    if (!job) return res.status(404).json({ error: 'Job tidak ditemukan' });
+    res.json(job);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// SSE progress stream per job
+app.get('/api/studio/jobs/:id/stream', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-store',
+    Connection: 'keep-alive',
+  });
+  res.write(': connected\n\n');
+  let lastLogId = 0;
+  const started = Date.now();
+  const timer = setInterval(async () => {
+    try {
+      const { rows: jobRows } = await pool.query('SELECT * FROM prompt_jobs WHERE id = $1', [id]);
+      if (jobRows.length === 0) { clearInterval(timer); return res.end(); }
+      const job = jobRows[0];
+      const { rows: logs } = await pool.query(
+        'SELECT * FROM job_logs WHERE job_id = $1 AND id > $2 ORDER BY id ASC', [id, lastLogId]);
+      for (const log of logs) {
+        lastLogId = log.id;
+        res.write(`data: ${JSON.stringify({ step: log.step, level: log.level, message: log.message, status: job.status, progress: job.progress })}\n\n`);
+      }
+      res.write(`: ping ${Date.now()}\n\n`);
+      const done = ['review', 'scheduled', 'published', 'failed', 'cancelled'].includes(job.status);
+      if (done || Date.now() - started > 15 * 60 * 1000) {
+        res.write(`data: ${JSON.stringify({ done: true, status: job.status, error: job.error })}\n\n`);
+        clearInterval(timer);
+        res.end();
+      }
+    } catch (err) {
+      clearInterval(timer);
+      res.end();
+    }
+  }, 1500);
+  req.on('close', () => clearInterval(timer));
+});
+
+// Generate ulang rencana
+app.post('/api/studio/jobs/:id/regenerate-plan', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  try {
+    const plan = await regeneratePlan(id, String(req.body?.instruction || '').slice(0, 1000));
+    res.json({ status: 'success', plan });
+  } catch (err) {
+    await writeAudit('prompt_job', id, 'error_regenerate_plan', 'admin', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Edit rencana manual
+app.post('/api/studio/jobs/:id/plan', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  try {
+    const plan = await updatePlan(id, req.body?.plan);
+    res.json({ status: 'success', plan });
+  } catch (err) {
+    await writeAudit('prompt_job', id, 'error_update_plan', 'admin', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Jalankan job (dari status queued/plan_review)
+app.post('/api/studio/jobs/:id/run', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  try {
+    const { rows } = await pool.query(
+      "UPDATE prompt_jobs SET status = 'planning', current_step = 'planning', error = NULL, updated_at = NOW() WHERE id = $1 AND status IN ('queued','plan_review','failed') RETURNING *",
+      [id]
+    );
+    if (rows.length === 0) return res.status(409).json({ error: 'Job tidak dalam status yang bisa dijalankan.' });
+    // Eksekusi async; progress via SSE
+    executeJob(id, { autoPublish: rows[0].mode === 'auto_publish' }).catch(() => {});
+    res.json({ status: 'success', job: rows[0] });
+  } catch (err) {
+    await writeAudit('prompt_job', id, 'error_run', 'admin', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Batalkan job yang belum jalan
+app.post('/api/studio/jobs/:id/cancel', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  try {
+    const { rowCount } = await pool.query(
+      "UPDATE prompt_jobs SET status = 'cancelled', updated_at = NOW() WHERE id = $1 AND status IN ('queued','plan_review')",
+      [id]
+    );
+    if (rowCount === 0) return res.status(409).json({ error: 'Job tidak bisa dibatalkan pada status ini.' });
+    await writeAudit('prompt_job', id, 'cancelled', 'admin', {});
+    res.json({ status: 'success' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Worker loop: proses job queued tiap 20 detik
+setInterval(() => { processQueuedJobs().catch(() => {}); }, 20000);
 
 app.listen(PORT, HOST, () => {
   console.log(`[Gapura Web Dashboard] Running on http://${HOST}:${PORT}`);
