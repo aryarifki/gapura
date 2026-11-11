@@ -86,6 +86,13 @@ Platform ini menggabungkan **6 Agen AI otonom** dengan pengawasan manusia (*Huma
     - Setiap laporan memuat klaim yang diuji, penjelasan mendalam, miskonsepsi yang perlu diluruskan, sinyal risiko, rujukan, dan disclaimer redaksi.
     - Status `hoax_detected` memblokir produksi otomatis (HTTP 409) kecuali editor memaksa; slide verifikasi otomatis disisipkan ke carousel dan caption.
 
+12. **Studio Prompt (v2.2)** — produksi konten dari satu prompt admin:
+    - Admin menulis permintaan bebas (analisis mendalam, verifikasi fakta, perspektif alternatif, opini, dll).
+    - AI menyusun rencana terstruktur (judul, sudut pandang, tujuan, poin isi) yang bisa diedit manual, di-generate ulang dengan instruksi revisi, atau langsung diproduksi.
+    - Job queue berbasis Postgres (`prompt_jobs` + `job_logs` + `llm_usage`): topik -> verifikasi -> draft + render -> Telegram review.
+    - Mode `review` (rekomendasi) menunggu ACC admin; mode `auto_publish` menjadwalkan tayang +3 jam via publisher standar.
+    - Progres real-time per langkah lewat SSE di dashboard; `hoax_detected` memblokir produksi job.
+
 ---
 
 ## 🚀 Panduan Cepat Penggunaan Aplikasi
