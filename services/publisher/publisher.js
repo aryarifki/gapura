@@ -97,7 +97,7 @@ async function sendManualPublishReminder(draftId, caption, slideCount) {
   }
 
   try {
-    const text = `⏰ <b>JADWAL TAYANG TIBA (Jalur Manual)</b>\n\nDraf <b>#${draftId}</b> siap diposting ke Instagram @homelessmedia!\n\n📸 <b>Aset Slide:</b> ${slideCount} slide (1080x1350 PNG)\n🔗 <b>Buka Draf di Dashboard:</b> ${BASE_URL}\n\n📝 <b>Caption Siap Salin:</b>\n<pre>${caption.slice(
+    const text = `⏰ <b>JADWAL TAYANG TIBA (Jalur Manual)</b>\n\nDraf <b>#${draftId}</b> siap diposting ke Instagram @gapuramedia!\n\n📸 <b>Aset Slide:</b> ${slideCount} slide (1080x1350 PNG)\n🔗 <b>Buka Draf di Dashboard:</b> ${BASE_URL}\n\n📝 <b>Caption Siap Salin:</b>\n<pre>${caption.slice(
       0,
       1000
     )}...</pre>`;

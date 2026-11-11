@@ -31,7 +31,7 @@ export async function proposeDesignTokens(adminDirection = 'Nuansa lebih kontras
 
   if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.length > 10) {
     try {
-      const prompt = `Anda adalah AI Design Director untuk @homelessmedia (media editorial data pasar saham & hukum).
+      const prompt = `Anda adalah AI Design Director untuk @gapuramedia (media editorial data pasar saham & hukum).
 Aturan Anti-Slop ketat:
 1. Warna latar (bg) harus terang seperti kertas koran/financial times (#f7f5f0, #faf8f5, dsb).
 2. Teks (ink) harus gelap pekat (#14202e, #0f172a, dsb).

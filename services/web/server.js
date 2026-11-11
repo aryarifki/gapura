@@ -13,7 +13,8 @@ import pkg from 'pg';
 const { Pool } = pkg;
 import yaml from 'js-yaml';
 import { exec } from 'child_process';
-import { produceSingleTopicDraft } from '../copywriter/copywriter.js';
+import { produceSingleTopicDraft, buildCarouselSlides } from '../copywriter/copywriter.js';
+import { designCarouselSlides } from '../designer/designer.js';
 import { loadAgentsConfig, loadAgentSkills, saveAgentSkills } from '../common/llm.js';
 import { runScout } from '../scout/scout.js';
 
@@ -134,6 +135,239 @@ app.get('/api/drafts', async (req, res) => {
 
     res.json(drafts);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 2b. Single Draft Detail with Slides
+app.get('/api/drafts/:id', async (req, res) => {
+  const draftId = parseInt(req.params.id);
+  try {
+    const { rows: drafts } = await pool.query(`
+      SELECT d.*, t.id as topic_id, t.title as topic_title, t.summary as topic_summary, t.primary_source, t.url as source_url, ts.score_total, ts.reasoning as score_reason
+      FROM drafts d
+      JOIN topics t ON d.topic_id = t.id
+      LEFT JOIN topic_scores ts ON t.id = ts.topic_id
+      WHERE d.id = $1
+    `, [draftId]);
+
+    if (drafts.length === 0) {
+      return res.status(404).json({ error: 'Draf tidak ditemukan' });
+    }
+
+    const d = drafts[0];
+    const { rows: slides } = await pool.query(
+      'SELECT slide_no, layout, render_path, text_snapshot, data_snapshot FROM draft_slides WHERE draft_id = $1 ORDER BY slide_no ASC',
+      [d.id]
+    );
+
+    d.rendered_slides = slides.map((s) => ({
+      slide_no: s.slide_no,
+      layout: s.layout,
+      text: s.text_snapshot,
+      data: s.data_snapshot,
+      image_url: `/storage/drafts/${d.id}/slide_${s.slide_no}.png`,
+    }));
+
+    res.json(d);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 2c. Regenerate Draft Carousel via AI Designer
+app.post('/api/drafts/:id/regenerate-ai', async (req, res) => {
+  const draftId = parseInt(req.params.id);
+  try {
+    const { rows: drafts } = await pool.query(`
+      SELECT d.*, t.id as topic_id, t.title, t.summary, t.primary_source, t.url
+      FROM drafts d
+      JOIN topics t ON d.topic_id = t.id
+      WHERE d.id = $1
+    `, [draftId]);
+
+    if (drafts.length === 0) {
+      return res.status(404).json({ error: 'Draf tidak ditemukan' });
+    }
+
+    const d = drafts[0];
+    const topic = {
+      id: d.topic_id,
+      title: d.title,
+      summary: d.summary,
+      primary_source: d.primary_source,
+      url: d.url,
+    };
+
+    console.log(`[Web API] Regenerasi draf #${draftId} dengan AI Designer...`);
+    const carouselData = await buildCarouselSlides(topic);
+
+    // Call Render Service
+    const renderResp = await fetch(`${RENDER_SERVICE_URL}/render`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Render-Secret': RENDER_SECRET,
+      },
+      body: JSON.stringify({
+        draft_id: draftId,
+        slides: carouselData.slides,
+      }),
+    });
+
+    if (!renderResp.ok) {
+      const errText = await renderResp.text();
+      throw new Error(`Render Service error: HTTP ${renderResp.status} - ${errText}`);
+    }
+
+    const renderData = await renderResp.json();
+
+    // Update drafts table
+    await pool.query(
+      `UPDATE drafts SET slides = $1, caption = $2, hashtags = $3, status = 'draft', updated_at = NOW() WHERE id = $4`,
+      [JSON.stringify(carouselData.slides), carouselData.caption, carouselData.hashtags, draftId]
+    );
+
+    // Replace draft_slides records
+    await pool.query('DELETE FROM draft_slides WHERE draft_id = $1', [draftId]);
+    for (const slideRes of renderData.rendered_slides) {
+      await pool.query(
+        `INSERT INTO draft_slides (draft_id, slide_no, layout, render_path, text_snapshot, data_snapshot)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [
+          draftId,
+          slideRes.slide_no,
+          slideRes.layout,
+          slideRes.file_path,
+          carouselData.slides[slideRes.slide_no - 1]?.teks || '',
+          JSON.stringify(carouselData.slides[slideRes.slide_no - 1]?.data || {}),
+        ]
+      );
+    }
+
+    await pool.query(
+      `INSERT INTO audit_log (entity, entity_id, action, actor, payload) VALUES ('draft', $1, 'regenerated_ai', 'web_editor', $2)`,
+      [draftId, JSON.stringify({ slides_count: carouselData.slides.length })]
+    );
+
+    const updatedSlides = renderData.rendered_slides.map((s) => ({
+      slide_no: s.slide_no,
+      layout: s.layout,
+      text: carouselData.slides[s.slide_no - 1]?.teks || '',
+      data: carouselData.slides[s.slide_no - 1]?.data || {},
+      image_url: `/storage/drafts/${draftId}/slide_${s.slide_no}.png`,
+    }));
+
+    res.json({
+      status: 'success',
+      draft_id: draftId,
+      caption: carouselData.caption,
+      hashtags: carouselData.hashtags,
+      rendered_slides: updatedSlides,
+    });
+  } catch (err) {
+    console.error('[Web API] Error regenerating draft:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 2d. On-the-fly AI Slide Generator (Studio Desain & Playground)
+app.post('/api/designer/generate-slides', async (req, res) => {
+  const { title, summary, primary_source } = req.body;
+  if (!title || title.trim().length === 0) {
+    return res.status(400).json({ error: 'Judul / topik berita wajib diisi.' });
+  }
+  try {
+    const topic = {
+      id: 0,
+      title: title.trim(),
+      summary: (summary || '').trim(),
+      primary_source: (primary_source || '@gapuramedia').trim(),
+      url: '',
+    };
+    const slides = await designCarouselSlides(topic);
+    res.json({ status: 'success', slides });
+  } catch (err) {
+    console.error('[Web API] Error generating slides via AI Designer:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 2e. Create Draft & Slides from Custom Studio Design
+app.post('/api/drafts/create-from-custom', async (req, res) => {
+  const { title, summary, primary_source, slides, caption, hashtags } = req.body;
+  if (!title || !Array.isArray(slides) || slides.length === 0) {
+    return res.status(400).json({ error: 'Data draf tidak lengkap atau slide kosong.' });
+  }
+  try {
+    // 1. Simpan Topik
+    const { rows: topicRows } = await pool.query(
+      `INSERT INTO topics (title, summary, primary_source, url, status)
+       VALUES ($1, $2, $3, $4, 'produced') RETURNING id`,
+      [title, summary || '', primary_source || '@gapuramedia', 'custom-studio']
+    );
+    const topicId = topicRows[0].id;
+
+    // 2. Simpan Draft
+    const defaultCaption = caption || `${title}\n\n${summary || ''}\n\nSumber Data: ${primary_source || '@gapuramedia'}\n\n---\nDisclaimer: Informasi disajikan untuk tujuan edukasi publik dan bukan merupakan rekomendasi investasi beli/jual saham atau nasihat hukum resmi.`;
+    const defaultHashtags = Array.isArray(hashtags) && hashtags.length > 0 ? hashtags : ['#GapuraMedia', '#DataEkonomi', '#BursaSaham', '#IHSG'];
+
+    const { rows: draftRows } = await pool.query(
+      `INSERT INTO drafts (topic_id, slides, caption, hashtags, disclaimer_type, status, needs_review, tokens_version, copy_model)
+       VALUES ($1, $2, $3, $4, 'keuangan', 'draft', false, 'v1.0', 'studio-ai-designer') RETURNING id`,
+      [topicId, JSON.stringify(slides), defaultCaption, defaultHashtags]
+    );
+    const draftId = draftRows[0].id;
+
+    // 3. Render slides
+    const renderResp = await fetch(`${RENDER_SERVICE_URL}/render`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Render-Secret': RENDER_SECRET,
+      },
+      body: JSON.stringify({
+        draft_id: draftId,
+        slides,
+      }),
+    });
+
+    if (!renderResp.ok) {
+      const errText = await renderResp.text();
+      throw new Error(`Render Service error: HTTP ${renderResp.status} - ${errText}`);
+    }
+
+    const renderData = await renderResp.json();
+
+    // 4. Simpan ke draft_slides
+    for (const slideRes of renderData.rendered_slides) {
+      await pool.query(
+        `INSERT INTO draft_slides (draft_id, slide_no, layout, render_path, text_snapshot, data_snapshot)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [
+          draftId,
+          slideRes.slide_no,
+          slideRes.layout,
+          slideRes.file_path,
+          slides[slideRes.slide_no - 1]?.teks || '',
+          JSON.stringify(slides[slideRes.slide_no - 1]?.data || {}),
+        ]
+      );
+    }
+
+    // 5. Catat audit_log
+    await pool.query(
+      `INSERT INTO audit_log (entity, entity_id, action, actor, payload) VALUES ('draft', $1, 'created_custom_studio', 'studio_editor', $2)`,
+      [draftId, JSON.stringify({ topic_id: topicId, slides_count: slides.length })]
+    );
+
+    res.json({
+      status: 'success',
+      draft_id: draftId,
+      slides_count: slides.length,
+    });
+  } catch (err) {
+    console.error('[Web API] Error creating custom draft:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -263,7 +497,7 @@ app.post('/api/drafts/:id/add-slide', async (req, res) => {
       layout,
       teks,
       data,
-      source: '@homelessmedia',
+      source: '@gapuramedia',
     });
 
     // Re-render
@@ -412,10 +646,11 @@ app.post('/api/topics/:id/promote', async (req, res) => {
 // 7b. Auto Produce Topic directly to Draft & Slides
 app.post('/api/topics/:id/auto-produce', async (req, res) => {
   const topicId = parseInt(req.params.id);
+  const force = req.body?.force === true || req.query?.force === 'true';
   try {
     // Cek apakah sudah pernah diproduksi
     const { rows: existingDrafts } = await pool.query('SELECT id FROM drafts WHERE topic_id = $1 LIMIT 1', [topicId]);
-    if (existingDrafts.length > 0) {
+    if (existingDrafts.length > 0 && !force) {
       return res.json({ status: 'success', draft_id: existingDrafts[0].id, is_existing: true });
     }
 
@@ -426,6 +661,35 @@ app.post('/api/topics/:id/auto-produce', async (req, res) => {
     }
 
     const topic = topics[0];
+    if (existingDrafts.length > 0 && force) {
+      const draftId = existingDrafts[0].id;
+      const carouselData = await buildCarouselSlides(topic);
+      const renderResp = await fetch(`${RENDER_SERVICE_URL}/render`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Render-Secret': RENDER_SECRET },
+        body: JSON.stringify({ draft_id: draftId, slides: carouselData.slides }),
+      });
+      const renderData = await renderResp.json();
+      await pool.query('UPDATE drafts SET slides = $1, caption = $2, hashtags = $3, status = $4, updated_at = NOW() WHERE id = $5',
+        [JSON.stringify(carouselData.slides), carouselData.caption, carouselData.hashtags, 'draft', draftId]);
+      await pool.query('DELETE FROM draft_slides WHERE draft_id = $1', [draftId]);
+      for (const slideRes of renderData.rendered_slides) {
+        await pool.query(
+          `INSERT INTO draft_slides (draft_id, slide_no, layout, render_path, text_snapshot, data_snapshot)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [
+            draftId,
+            slideRes.slide_no,
+            slideRes.layout,
+            slideRes.file_path,
+            carouselData.slides[slideRes.slide_no - 1]?.teks || '',
+            JSON.stringify(carouselData.slides[slideRes.slide_no - 1]?.data || {}),
+          ]
+        );
+      }
+      return res.json({ status: 'success', draft_id: draftId, is_existing: false, slides_count: carouselData.slides.length });
+    }
+
     const result = await produceSingleTopicDraft(topic, pool);
     res.json({ status: 'success', draft_id: result.draft_id, is_existing: false, slides_count: result.slides_count });
   } catch (err) {
@@ -452,17 +716,6 @@ app.post('/api/pipeline/run', (req, res) => {
   });
 
   res.json({ status: 'started', message: 'Pipeline dijalankan di background.' });
-});
-
-// 9. Design Tokens API
-app.get('/api/tokens', (req, res) => {
-  try {
-    const raw = fs.readFileSync(TOKENS_PATH, 'utf8');
-    const parsed = yaml.load(raw);
-    res.json({ raw, parsed });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
 });
 
 // 9. Tokens API (Live Design Studio & Realtime Preview Support)

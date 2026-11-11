@@ -9,6 +9,12 @@ let currentTopicStatus = '';
 let activeDraft = null;
 let activeSlideIndex = 0;
 let currentWorkflowActive = false;
+let cachedTopics = [];
+let studioSlides = [];
+let activeStudioSlideIndex = 0;
+let editorLivePreviewDebounceTimer = null;
+let designStudioDebounceTimer = null;
+let designStudioInitialized = false;
 
 // 1. Inisialisasi & Navigasi
 document.addEventListener('DOMContentLoaded', () => {
@@ -164,15 +170,36 @@ function setupNavigation() {
   document.getElementById('btn-download-all-slides').onclick = downloadAllSlides;
   document.getElementById('btn-open-single-slide').onclick = openCurrentSlideFull;
 
+  const regenBtn = document.getElementById('btn-action-regenerate-ai');
+  if (regenBtn) regenBtn.onclick = regenerateActiveDraftAI;
+
+  const editorSlideText = document.getElementById('editor-input-slide-text');
+  if (editorSlideText) {
+    editorSlideText.addEventListener('input', triggerEditorLivePreview);
+  }
+
   // Slide Layout Selector & Slide Manager
   const layoutSelect = document.getElementById('editor-select-layout');
+  const customLayoutInput = document.getElementById('editor-custom-layout-input');
   if (layoutSelect) {
     layoutSelect.onchange = () => {
-      const l = layoutSelect.value;
+      const isCustom = layoutSelect.value === 'custom';
+      if (customLayoutInput) {
+        customLayoutInput.style.display = isCustom ? 'block' : 'none';
+        if (isCustom) customLayoutInput.focus();
+      }
+      const l = isCustom ? (customLayoutInput?.value?.trim() || 'cover-editorial') : layoutSelect.value;
       document.getElementById('editor-layout-name').textContent = l;
       const currentSlide = (activeDraft?.rendered_slides || [])[activeSlideIndex] || {};
       renderLayoutFields(l, currentSlide.data || {});
+      triggerEditorLivePreview();
     };
+  }
+  if (customLayoutInput) {
+    customLayoutInput.addEventListener('input', () => {
+      document.getElementById('editor-layout-name').textContent = customLayoutInput.value || 'custom';
+      triggerEditorLivePreview();
+    });
   }
   const addSlideBtn = document.getElementById('btn-add-slide-editor');
   if (addSlideBtn) addSlideBtn.onclick = addSlideToDraft;
@@ -383,6 +410,112 @@ function showGalleryView() {
   loadDrafts();
 }
 
+function triggerEditorLivePreview() {
+  clearTimeout(editorLivePreviewDebounceTimer);
+  editorLivePreviewDebounceTimer = setTimeout(() => {
+    updateEditorLivePreview();
+  }, 250);
+}
+
+async function updateEditorLivePreview() {
+  if (!activeDraft) return;
+  const currentSlide = (activeDraft.rendered_slides || [])[activeSlideIndex] || {};
+  const layoutSelect = document.getElementById('editor-select-layout');
+  const customLayoutInput = document.getElementById('editor-custom-layout-input');
+  const isCustom = layoutSelect?.value === 'custom';
+  const chosenLayout = isCustom ? (customLayoutInput?.value?.trim() || 'cover-editorial') : (layoutSelect?.value || currentSlide.layout || 'cover-stat');
+  const newText = document.getElementById('editor-input-slide-text')?.value || '';
+  const compiledData = getCompiledLayoutData(chosenLayout, currentSlide.data || {});
+
+  const indicator = document.getElementById('editor-render-indicator');
+  if (indicator) indicator.style.display = 'block';
+
+  try {
+    const slidePayload = {
+      no: activeSlideIndex + 1,
+      layout: chosenLayout,
+      teks: newText,
+      data: compiledData,
+      source: activeDraft.primary_source || '@gapuramedia',
+    };
+
+    const res = await fetch('/api/render/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        slide: slidePayload,
+        slide_no: activeSlideIndex + 1,
+        total_slides: (activeDraft.rendered_slides || []).length || 5,
+      }),
+    });
+
+    if (res.ok) {
+      const blob = await res.blob();
+      const mainImg = document.getElementById('editor-main-slide-img');
+      if (mainImg) {
+        if (mainImg.dataset.objectUrl) {
+          URL.revokeObjectURL(mainImg.dataset.objectUrl);
+        }
+        const objUrl = URL.createObjectURL(blob);
+        mainImg.src = objUrl;
+        mainImg.dataset.objectUrl = objUrl;
+      }
+    }
+  } catch (err) {
+    console.warn('Live preview render error:', err);
+  } finally {
+    if (indicator) indicator.style.display = 'none';
+  }
+}
+
+async function regenerateActiveDraftAI() {
+  if (!activeDraft) return;
+  const confirmRegen = confirm(`Rancang ulang draf #${activeDraft.id} ("${activeDraft.topic_title || ''}") menggunakan AI Designer? Seluruh slide akan dibuat baru secara adaptif.`);
+  if (!confirmRegen) return;
+
+  const btn = document.getElementById('btn-action-regenerate-ai');
+  const originalHtml = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '⚡ Merancang via AI Designer...';
+  }
+
+  try {
+    const res = await fetch(`/api/drafts/${activeDraft.id}/regenerate-ai`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    showToast(`✨ Sukses merancang ulang draf #${activeDraft.id} dengan ${data.rendered_slides.length} slide AI!`);
+
+    activeDraft.caption = data.caption;
+    activeDraft.hashtags = data.hashtags;
+    activeDraft.rendered_slides = data.rendered_slides;
+    activeSlideIndex = 0;
+
+    loadDrafts();
+
+    document.getElementById('editor-input-caption').value = activeDraft.caption || '';
+    document.getElementById('editor-input-hashtags').value = (activeDraft.hashtags || []).join(' ');
+    renderActiveSlide();
+    renderThumbnailsStrip();
+  } catch (err) {
+    console.error('Error regenerateActiveDraftAI:', err);
+    showToast(`Gagal merancang ulang: ${err.message}`);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+    }
+  }
+}
+
 function renderActiveSlide() {
   if (!activeDraft) return;
   const slides = activeDraft.rendered_slides || [];
@@ -390,6 +523,10 @@ function renderActiveSlide() {
 
   const mainImg = document.getElementById('editor-main-slide-img');
   if (mainImg) {
+    if (mainImg.dataset.objectUrl) {
+      URL.revokeObjectURL(mainImg.dataset.objectUrl);
+      mainImg.dataset.objectUrl = '';
+    }
     mainImg.src = `${currentSlide.image_url}?t=${Date.now()}`;
   }
 
@@ -398,8 +535,19 @@ function renderActiveSlide() {
   document.getElementById('editor-layout-name').textContent = layout;
 
   const layoutSelect = document.getElementById('editor-select-layout');
+  const customLayoutInput = document.getElementById('editor-custom-layout-input');
   if (layoutSelect) {
-    layoutSelect.value = layout;
+    const exists = Array.from(layoutSelect.options).some((o) => o.value === layout);
+    if (exists) {
+      layoutSelect.value = layout;
+      if (customLayoutInput) customLayoutInput.style.display = 'none';
+    } else {
+      layoutSelect.value = 'custom';
+      if (customLayoutInput) {
+        customLayoutInput.style.display = 'block';
+        customLayoutInput.value = layout;
+      }
+    }
   }
 
   document.getElementById('editor-input-slide-text').value = currentSlide.text || '';
@@ -561,7 +709,7 @@ function renderLayoutFields(layout, data) {
       </div>
       <div class="form-group-editor" style="margin-bottom: 8px;">
         <label class="form-label-editor">Teks Call to Action (CTA)</label>
-        <input type="text" id="lf-cta-text" class="form-input-dark" value="${escapeHtml(data.cta || 'Simpan postingan ini & ikuti @homelessmedia untuk data harian.')}">
+        <input type="text" id="lf-cta-text" class="form-input-dark" value="${escapeHtml(data.cta || 'Simpan postingan ini & ikuti @gapuramedia untuk data harian.')}">
       </div>
       <div class="form-group-editor" style="margin-bottom: 0;">
         <label class="form-label-editor">Teks Disclaimer Edukasi</label>
@@ -584,13 +732,58 @@ function renderLayoutFields(layout, data) {
         <input type="text" id="lf-chart-values" class="form-input-dark" value="${escapeHtml(values.join(', '))}">
       </div>
     `;
+  } else {
+    // Dynamic Fallback untuk Desain AI Bebas / Layout Kustom
+    html = `
+      <div style="font-size: 11px; font-weight: 700; color: var(--lime); margin-bottom: 10px; text-transform: uppercase;">
+        ⚙️ Parameter Layout Bebas AI: ${escapeHtml(layout)}
+      </div>
+      <div class="form-grid-2col">
+        <div class="form-group-editor" style="margin-bottom: 8px;">
+          <label class="form-label-editor">Judul / Sub-topik Slide</label>
+          <input type="text" id="lf-generic-title" class="form-input-dark" value="${escapeHtml(data.title || '')}" placeholder="Judul slide...">
+        </div>
+        <div class="form-group-editor" style="margin-bottom: 8px;">
+          <label class="form-label-editor">Kategori / Keterangan Tag</label>
+          <input type="text" id="lf-generic-category" class="form-input-dark" value="${escapeHtml(data.category || data.subtitle || '')}" placeholder="Kategori niche...">
+        </div>
+      </div>
+      <div class="form-grid-2col">
+        <div class="form-group-editor" style="margin-bottom: 8px;">
+          <label class="form-label-editor">Highlight Nilai / Angka Hero (Opsional)</label>
+          <input type="text" id="lf-generic-value" class="form-input-dark" value="${escapeHtml(data.value || '')}" placeholder="Contoh: +14.2% atau Rp 2 Triliun">
+        </div>
+        <div class="form-group-editor" style="margin-bottom: 8px;">
+          <label class="form-label-editor">Kutipan / Callout / Catatan (Opsional)</label>
+          <input type="text" id="lf-generic-quote" class="form-input-dark" value="${escapeHtml(data.quote || data.callout || data.author || '')}" placeholder="Kutipan atau poin regulasi...">
+        </div>
+      </div>
+    `;
   }
 
   container.innerHTML = html;
+  container.querySelectorAll('input, textarea').forEach((inputEl) => {
+    inputEl.addEventListener('input', triggerEditorLivePreview);
+  });
 }
 
 function getCompiledLayoutData(layout, existingData = {}) {
   const data = { ...existingData };
+
+  // Generic AI Layout Parameters
+  if (document.getElementById('lf-generic-title')) {
+    data.title = document.getElementById('lf-generic-title').value;
+  }
+  if (document.getElementById('lf-generic-category')) {
+    data.category = document.getElementById('lf-generic-category').value;
+  }
+  if (document.getElementById('lf-generic-value')) {
+    data.value = document.getElementById('lf-generic-value').value;
+  }
+  if (document.getElementById('lf-generic-quote')) {
+    data.quote = document.getElementById('lf-generic-quote').value;
+    data.callout = document.getElementById('lf-generic-quote').value;
+  }
 
   if (layout === 'cover-stat') {
     data.value = document.getElementById('lf-stat-value')?.value || data.value || '';
@@ -874,6 +1067,8 @@ async function loadTopics() {
     const res = await fetch(url);
     if (!res.ok) return;
     const topics = await res.json();
+    cachedTopics = topics;
+    populateStudioTopics();
 
     const container = document.getElementById('radar-list-container');
     if (!container) return;
@@ -987,13 +1182,252 @@ function copyWorkflowJson() {
 }
 
 // ==============================================================================
-// 9. Design Studio & Realtime Canvas Preview (User Request)
+// 9. Design Studio, AI Carousel Generator & Realtime Canvas Preview (User Request)
 // ==============================================================================
-let designStudioDebounceTimer = null;
-let designStudioInitialized = false;
+function getDefaultStudioSlides() {
+  return [
+    {
+      no: 1,
+      layout: 'cover-editorial',
+      teks: 'Cadangan devisa Indonesia melonjak ke level tertinggi 2026 didorong arus modal masuk dan penerbitan sukuk global.',
+      data: {
+        title: 'Lonjakan Cadangan Devisa RI',
+        subtitle: 'Rekor Tertinggi Sepanjang Kuartal I 2026',
+        category: 'MAKRO & MONETER',
+        value: 'USD 151,2 M',
+      },
+      source: 'Bank Indonesia',
+    },
+    {
+      no: 2,
+      layout: 'stat-grid',
+      teks: 'Indikator Kunci Pasar Saham dan Stabilitas Likuiditas Domestik',
+      data: {
+        title: 'Ringkasan Pasar',
+        category: 'PASAR SAHAM',
+        items: [
+          { label: 'IHSG Penutupan', value: '7.850,2' },
+          { label: 'Net Foreign Buy', value: '+Rp 1,4 T' },
+          { label: 'Volume Transaksi', value: 'Rp 14,8 T' },
+          { label: 'Kurs IDR/USD', value: 'Rp 15.650' },
+        ],
+      },
+      source: 'Bursa Efek Indonesia',
+    },
+    {
+      no: 3,
+      layout: 'comparison',
+      teks: 'Perbandingan Dampak Kebijakan Likuiditas Sebelum dan Sesudah Penerbitan Insentif',
+      data: {
+        category: 'ANALISIS KEBIJAKAN',
+        left: {
+          title: 'SEBELUMNYA (Q3 2025)',
+          text: 'Pertumbuhan kredit melambat ke 8,2% yoy akibat tingginya suku bunga dana perbankan.',
+        },
+        right: {
+          title: 'SAAT INI (Q1 2026)',
+          text: 'Insentif makroprudensial mendorong akselerasi penyaluran kredit produktif hingga 11,5% yoy.',
+        },
+      },
+      source: 'Kementerian Keuangan RI',
+    },
+    {
+      no: 4,
+      layout: 'regulatory-focus',
+      teks: 'Kewajiban Pengungkapan Transaksi Afiliasi dan Benturan Kepentingan Emiten Terbuka',
+      data: {
+        title: 'POJK NOMOR 12 TAHUN 2026',
+        subtitle: 'Penguatan Tata Kelola & Perlindungan Investor Ritel',
+        callout: 'Setiap emiten wajib mempublikasikan keterbukaan informasi transaksi material dalam jangka waktu paling lambat 2 hari kerja.',
+        category: 'HUKUM & REGULASI',
+      },
+      source: 'Otoritas Jasa Keuangan',
+    },
+    {
+      no: 5,
+      layout: 'cta-close',
+      teks: 'Bagaimana dampak regulasi likuiditas baru ini terhadap portofolio saham Anda?',
+      data: {
+        cta: 'Simpan postingan ini & ikuti @gapuramedia untuk analisis data bursa harian.',
+        disclaimer: 'Informasi disajikan untuk tujuan edukasi publik dan bukan merupakan rekomendasi investasi beli/jual saham atau nasihat hukum resmi.',
+      },
+      source: '@gapuramedia',
+    },
+  ];
+}
+
+function populateStudioTopics() {
+  const select = document.getElementById('studio-quick-topic-select');
+  if (!select || !cachedTopics || cachedTopics.length === 0) return;
+  const curVal = select.value;
+  select.innerHTML = '<option value="">-- Pilih Topik dari Radar --</option>';
+  cachedTopics.forEach((t) => {
+    const opt = document.createElement('option');
+    opt.value = t.id;
+    const snippet = t.title.length > 65 ? t.title.substring(0, 63) + '...' : t.title;
+    opt.textContent = `[#${t.id}] ${snippet} (${t.primary_source || 'Radar'})`;
+    select.appendChild(opt);
+  });
+  if (curVal) select.value = curVal;
+}
+
+function updateStudioSlideUI() {
+  if (!studioSlides || studioSlides.length === 0) {
+    studioSlides = getDefaultStudioSlides();
+  }
+
+  const total = studioSlides.length;
+  const curr = activeStudioSlideIndex + 1;
+
+  const indText = document.getElementById('studio-slide-indicator-text');
+  if (indText) indText.textContent = `${curr} / ${total}`;
+
+  const badge = document.getElementById('studio-preview-caption-badge');
+  if (badge) badge.textContent = `● Slide ${curr} dari ${total}`;
+
+  // Update Pills
+  const pillsContainer = document.getElementById('studio-slides-pills-container');
+  if (pillsContainer) {
+    pillsContainer.innerHTML = '';
+    studioSlides.forEach((s, idx) => {
+      const pill = document.createElement('button');
+      pill.className = `btn ${idx === activeStudioSlideIndex ? 'btn-lime' : 'btn-dark'}`;
+      pill.style.padding = '3px 8px';
+      pill.style.fontSize = '11px';
+      pill.style.minWidth = '28px';
+      pill.textContent = `${idx + 1}`;
+      pill.onclick = () => {
+        activeStudioSlideIndex = idx;
+        updateStudioSlideUI();
+        renderStudioPreview();
+      };
+      pillsContainer.appendChild(pill);
+    });
+  }
+
+  // Populate active slide edit inputs
+  const activeSlide = studioSlides[activeStudioSlideIndex] || {};
+  const textEl = document.getElementById('studio-edit-slide-text');
+  if (textEl) textEl.value = activeSlide.teks || '';
+  const layoutEl = document.getElementById('studio-edit-slide-layout');
+  if (layoutEl) layoutEl.value = activeSlide.layout || 'cover-stat';
+  const titleEl = document.getElementById('studio-edit-slide-title');
+  if (titleEl) titleEl.value = activeSlide.data?.title || activeSlide.data?.category || '';
+}
+
+async function generateStudioCarouselAI() {
+  const title = document.getElementById('studio-custom-topic-text')?.value?.trim();
+  const source = document.getElementById('studio-custom-source-text')?.value?.trim() || '@gapuramedia';
+  if (!title) {
+    showToast('Silakan masukkan judul atau pilih topik terlebih dahulu!');
+    return;
+  }
+
+  const btn = document.getElementById('btn-studio-generate-ai');
+  const origHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '⚡ Merancang Carousel via AI Designer...';
+
+  const spinner = document.getElementById('live-preview-spinner');
+  if (spinner) {
+    spinner.style.display = 'flex';
+    const spText = spinner.querySelector('span');
+    if (spText) spText.textContent = '⚡ AI Designer merancang arsitektur visual...';
+  }
+
+  try {
+    const res = await fetch('/api/designer/generate-slides', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, primary_source: source }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    if (!Array.isArray(data.slides) || data.slides.length === 0) {
+      throw new Error('AI tidak menghasilkan slide yang valid.');
+    }
+
+    studioSlides = data.slides;
+    activeStudioSlideIndex = 0;
+    showToast(`✨ AI Designer sukses merancang ${studioSlides.length} slide carousel!`);
+    updateStudioSlideUI();
+    await renderStudioPreview();
+  } catch (err) {
+    console.error('Error generating studio carousel:', err);
+    showToast(`Gagal merancang carousel: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origHtml;
+    if (spinner) spinner.style.display = 'none';
+  }
+}
+
+async function saveStudioToDrafts() {
+  if (!studioSlides || studioSlides.length === 0) {
+    showToast('Belum ada carousel yang dirancang!');
+    return;
+  }
+
+  const title = document.getElementById('studio-custom-topic-text')?.value?.trim() || studioSlides[0]?.data?.title || 'Carousel Studio Gapura';
+  const source = document.getElementById('studio-custom-source-text')?.value?.trim() || '@gapuramedia';
+
+  const btn = document.getElementById('btn-studio-save-to-drafts');
+  const origHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '💾 Menyimpan Draf ke Database...';
+
+  try {
+    const res = await fetch('/api/drafts/create-from-custom', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title,
+        summary: studioSlides[0]?.teks || '',
+        primary_source: source,
+        slides: studioSlides,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    showToast(`✨ Sukses membuat Draf Produksi #${data.draft_id}! Membuka meja review...`);
+
+    await loadDrafts();
+    switchToView('view-review');
+    openDraftEditor(data.draft_id);
+  } catch (err) {
+    console.error('Error saving studio draft:', err);
+    showToast(`Gagal menyimpan draf: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origHtml;
+  }
+}
 
 async function loadDesignStudio() {
   setupDesignStudioEvents();
+
+  if (cachedTopics.length === 0) {
+    loadTopics();
+  } else {
+    populateStudioTopics();
+  }
+
+  if (!studioSlides || studioSlides.length === 0) {
+    studioSlides = getDefaultStudioSlides();
+    activeStudioSlideIndex = 0;
+  }
+  updateStudioSlideUI();
+
   try {
     const res = await fetch('/api/tokens');
     if (!res.ok) return;
@@ -1073,14 +1507,72 @@ function setupDesignStudioEvents() {
     }
   });
 
-  const previewTypeSelect = document.getElementById('studio-preview-type');
-  if (previewTypeSelect) {
-    previewTypeSelect.addEventListener('change', renderStudioPreview);
+  // Topic select in Studio
+  const topicSelect = document.getElementById('studio-quick-topic-select');
+  if (topicSelect) {
+    topicSelect.addEventListener('change', () => {
+      const tid = parseInt(topicSelect.value);
+      const chosen = cachedTopics.find((t) => t.id === tid);
+      if (chosen) {
+        document.getElementById('studio-custom-topic-text').value = chosen.title;
+        document.getElementById('studio-custom-source-text').value = chosen.primary_source || '@gapuramedia';
+      }
+    });
   }
 
-  const refreshBtn = document.getElementById('btn-refresh-preview');
-  if (refreshBtn) {
-    refreshBtn.addEventListener('click', renderStudioPreview);
+  // Generate Carousel Button
+  const genBtn = document.getElementById('btn-studio-generate-ai');
+  if (genBtn) {
+    genBtn.addEventListener('click', generateStudioCarouselAI);
+  }
+
+  // Slide Nav Buttons
+  const prevBtn = document.getElementById('btn-studio-prev-slide');
+  if (prevBtn) {
+    prevBtn.addEventListener('click', () => {
+      if (activeStudioSlideIndex > 0) {
+        activeStudioSlideIndex--;
+        updateStudioSlideUI();
+        renderStudioPreview();
+      }
+    });
+  }
+  const nextBtn = document.getElementById('btn-studio-next-slide');
+  if (nextBtn) {
+    nextBtn.addEventListener('click', () => {
+      if (activeStudioSlideIndex < studioSlides.length - 1) {
+        activeStudioSlideIndex++;
+        updateStudioSlideUI();
+        renderStudioPreview();
+      }
+    });
+  }
+
+  // Live Slide Edit Fields in Studio
+  const updateStudioSlideContent = () => {
+    if (!studioSlides || !studioSlides[activeStudioSlideIndex]) return;
+    const txt = document.getElementById('studio-edit-slide-text')?.value;
+    const lyt = document.getElementById('studio-edit-slide-layout')?.value;
+    const ttl = document.getElementById('studio-edit-slide-title')?.value;
+
+    if (txt !== undefined) studioSlides[activeStudioSlideIndex].teks = txt;
+    if (lyt !== undefined) studioSlides[activeStudioSlideIndex].layout = lyt;
+    if (ttl !== undefined) {
+      if (!studioSlides[activeStudioSlideIndex].data) studioSlides[activeStudioSlideIndex].data = {};
+      studioSlides[activeStudioSlideIndex].data.title = ttl;
+    }
+    triggerStudioPreview();
+  };
+
+  ['studio-edit-slide-text', 'studio-edit-slide-layout', 'studio-edit-slide-title'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', updateStudioSlideContent);
+  });
+
+  // Save to Production Drafts Button
+  const saveDraftsBtn = document.getElementById('btn-studio-save-to-drafts');
+  if (saveDraftsBtn) {
+    saveDraftsBtn.addEventListener('click', saveStudioToDrafts);
   }
 
   const saveBtn = document.getElementById('btn-save-design-studio');
@@ -1105,7 +1597,11 @@ async function renderStudioPreview() {
   const spinner = document.getElementById('live-preview-spinner');
   if (spinner) spinner.style.display = 'flex';
 
-  const previewType = document.getElementById('studio-preview-type')?.value || 'cover';
+  if (!studioSlides || studioSlides.length === 0) {
+    studioSlides = getDefaultStudioSlides();
+  }
+
+  const currentSlide = studioSlides[activeStudioSlideIndex] || studioSlides[0] || {};
   const brandName = document.getElementById('studio-brand-name')?.value || 'Gapura Media';
   const brandHandle = document.getElementById('studio-brand-handle')?.value || '@gapuramedia';
   const brandTagline = document.getElementById('studio-brand-tagline')?.value || 'Data, Hukum & Ekonomi Bursa';
@@ -1130,79 +1626,13 @@ async function renderStudioPreview() {
     },
   };
 
-  // Mock slide data based on previewType
-  let slideData = {};
-  if (previewType === 'cover') {
-    slideData = {
-      no: 1,
-      layout: 'cover-stat',
-      teks: 'Cadangan devisa Indonesia melonjak ke level tertinggi 2026 didorong arus modal masuk dan penerbitan sukuk global.',
-      data: {
-        value: 'USD 151,2 M',
-        unit: 'POSISI REKOR TERTINGGI 2026',
-        title: 'Lonjakan Cadangan Devisa RI',
-        category: 'MAKRO & MONETER',
-      },
-      source: 'Bank Indonesia',
-    };
-  } else if (previewType === 'cards') {
-    slideData = {
-      no: 2,
-      layout: 'stat-grid',
-      teks: 'Indikator Utama Pasar Modal & Keuangan',
-      data: {
-        items: [
-          { label: 'IHSG Sesi II', value: '7.850,2' },
-          { label: 'Net Foreign Buy', value: '+Rp 1,4 T' },
-          { label: 'Volume Transaksi', value: 'Rp 14,8 T' },
-          { label: 'Kurs IDR/USD', value: 'Rp 15.650' },
-        ],
-        category: 'PASAR SAHAM',
-      },
-      source: 'Bursa Efek Indonesia',
-    };
-  } else if (previewType === 'compare') {
-    slideData = {
-      no: 3,
-      layout: 'comparison',
-      teks: 'Dampak Pengetatan Kebijakan Likuiditas Terhadap Sektor Perbankan',
-      data: {
-        left: {
-          title: 'SEBELUMNYA (Q3 2025)',
-          text: 'Pertumbuhan kredit melambat ke 8,2% yoy akibat kenaikan biaya dana perbankan.',
-        },
-        right: {
-          title: 'SAAT INI (Q1 2026)',
-          text: 'Pemberian insentif likuiditas makroprudensial mendorong penyaluran kredit hingga 11,5% yoy.',
-        },
-        category: 'KEBIJAKAN MONETER',
-      },
-      source: 'Kementerian Keuangan RI',
-    };
-  } else if (previewType === 'quote') {
-    slideData = {
-      no: 4,
-      layout: 'big-statement',
-      teks: 'Stabilitas sistem keuangan tetap terjaga solid di tengah dinamika pasar keuangan global yang belum menentu.',
-      data: {
-        author: 'Gubernur Bank Indonesia',
-        category: 'PERNYATAAN RESMI',
-      },
-      source: 'Siaran Pers BI',
-    };
-  } else if (previewType === 'regulasi') {
-    slideData = {
-      no: 5,
-      layout: 'regulasi',
-      teks: 'Kewajiban Pengungkapan Transaksi Afiliasi dan Benturan Kepentingan Emiten',
-      data: {
-        title: 'POJK NOMOR 12 TAHUN 2026 / PASAL 14',
-        callout: 'Setiap emiten wajib mempublikasikan keterbukaan informasi transaksi material dalam jangka waktu paling lambat 2 hari kerja.',
-        category: 'HUKUM & REGULASI',
-      },
-      source: 'Otoritas Jasa Keuangan',
-    };
-  }
+  const slideData = {
+    no: activeStudioSlideIndex + 1,
+    layout: currentSlide.layout || 'cover-stat',
+    teks: currentSlide.teks || '',
+    data: currentSlide.data || {},
+    source: currentSlide.source || brandHandle,
+  };
 
   try {
     const res = await fetch('/api/render/preview', {
@@ -1210,8 +1640,8 @@ async function renderStudioPreview() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         slide: slideData,
-        slide_no: slideData.no,
-        total_slides: 5,
+        slide_no: activeStudioSlideIndex + 1,
+        total_slides: studioSlides.length || 5,
         tokens: tokensOverride,
       }),
     });

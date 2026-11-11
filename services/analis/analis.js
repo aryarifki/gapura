@@ -155,7 +155,7 @@ export async function runAnalis() {
       const apiKey = analisCfg.api_key || process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY;
       if (apiKey && apiKey.length > 5) {
         try {
-          const promptText = `Evaluasi berita ini untuk akun Instagram @homelessmedia (niche data ekonomi, hukum, bursa saham):
+          const promptText = `Evaluasi berita ini untuk akun Instagram @gapuramedia (niche data ekonomi, hukum, bursa saham):
 Judul: ${topic.title}
 Ringkasan: ${topic.summary || ''}
 Sumber: ${topic.primary_source || ''}

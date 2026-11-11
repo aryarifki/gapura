@@ -212,6 +212,7 @@
 
               <div class="editor-actions-group">
                 <span class="editor-source-chip" id="editor-source-link">🔗 Link sumber</span>
+                <button class="btn btn-primary" id="btn-action-regenerate-ai" style="background: linear-gradient(135deg, #1f7e81 0%, #102b45 100%); border: 1px solid var(--lime); color: #fff;">✨ Regenerate AI (Desain Ulang)</button>
                 <button class="btn btn-lime" id="btn-action-post-now">📸 Posting sekarang</button>
                 <button class="btn btn-dark" id="btn-action-approve-auto">⏱️ Setujui (Auto)</button>
                 <button class="btn btn-dark" id="btn-action-approve-manual">✈️ Sudah diposting manual</button>
@@ -222,10 +223,13 @@
             <div class="editor-main-grid">
               <!-- Left Column: Carousel Preview -->
               <div class="editor-preview-column">
-                <div class="carousel-phone-frame">
+                <div class="carousel-phone-frame" style="position: relative;">
                   <img id="editor-main-slide-img" class="carousel-phone-img" src="" alt="Slide Preview">
                   <button class="carousel-nav-arrow left" id="btn-slide-prev">&#10094;</button>
                   <button class="carousel-nav-arrow right" id="btn-slide-next">&#10095;</button>
+                  <div id="editor-render-indicator" style="display: none; position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,0.75); border: 1px solid var(--lime); border-radius: 20px; padding: 4px 10px; font-size: 11px; color: var(--lime); z-index: 10;">
+                    ⚡ Merender Pratinjau...
+                  </div>
                 </div>
 
                 <div class="editor-thumbs-strip" id="editor-thumbs-strip">
@@ -243,9 +247,10 @@
               <div class="editor-form-column">
                 <div class="editor-form-card">
                   <div class="editor-form-card-title">
-                    <div>
+                    <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 6px;">
                       <span id="editor-slide-heading" style="font-weight: 800; color: #fff;">Slide 1 · Cover</span>
-                      <span style="font-size: 11px; color: var(--muted); margin-left: 8px;" id="editor-layout-name">cover-stat</span>
+                      <span style="font-size: 11px; color: var(--muted);" id="editor-layout-name">cover-stat</span>
+                      <span id="editor-live-status-pill" class="pill-status active" style="font-size: 10px; padding: 2px 8px;"><span class="dot"></span> Live Preview Aktif</span>
                     </div>
                     <div style="display: flex; gap: 6px;">
                       <button class="btn btn-dark" id="btn-add-slide-editor" title="Tambah slide baru" style="padding: 4px 10px; font-size: 11px;">➕ Tambah Slide</button>
@@ -253,23 +258,33 @@
                     </div>
                   </div>
 
-                  <!-- Layout Selector Dropdown -->
+                  <!-- Layout Selector Dropdown + Custom Input -->
                   <div class="form-group-editor">
-                    <label class="form-label-editor">Pilih Layout Tampilan Slide</label>
-                    <select class="form-input-dark form-select-dark" id="editor-select-layout">
-                      <option value="cover-stat">cover-stat (Cover - Stat Angka & Kategori)</option>
-                      <option value="big-statement">big-statement (Kutipan Besar / Fakta Kunci)</option>
-                      <option value="stat-grid">stat-grid (Grid 2-4 Kotak Indikator & Angka)</option>
-                      <option value="regulasi">regulasi (Klausul Pasal POJK / UU / Regulasi)</option>
-                      <option value="comparison">comparison (Perbandingan Sebelum vs Sesudah)</option>
-                      <option value="timeline">timeline (Kronologi Tahapan Peristiwa)</option>
-                      <option value="cta-close">cta-close (Slide Penutup, Pertanyaan & CTA)</option>
-                    </select>
+                    <label class="form-label-editor">Pilih / Ketik Layout Slide (Bebas & Dinamis AI)</label>
+                    <div style="display: flex; gap: 8px;">
+                      <select class="form-input-dark form-select-dark" id="editor-select-layout" style="flex: 1;">
+                        <option value="cover-stat">cover-stat (Cover Hook Stat)</option>
+                        <option value="cover-editorial">cover-editorial (Cover Editorial)</option>
+                        <option value="big-statement">big-statement (Pernyataan Kunci)</option>
+                        <option value="stat-grid">stat-grid (Grid Metrik)</option>
+                        <option value="stat-spotlight">stat-spotlight (Sorotan Angka)</option>
+                        <option value="regulasi">regulasi (Pasal / Kebijakan)</option>
+                        <option value="regulatory-focus">regulatory-focus (Fokus Regulasi)</option>
+                        <option value="comparison">comparison (Perbandingan)</option>
+                        <option value="dual-perspective">dual-perspective (Dua Sudut Pandang)</option>
+                        <option value="timeline">timeline (Kronologis)</option>
+                        <option value="deep-analysis">deep-analysis (Analisis Mendalam)</option>
+                        <option value="takeaway-points">takeaway-points (Poin Kesimpulan)</option>
+                        <option value="cta-close">cta-close (Slide Penutup & CTA)</option>
+                        <option value="custom">✏️ Layout Kustom Bebas...</option>
+                      </select>
+                      <input type="text" id="editor-custom-layout-input" class="form-input-dark" style="flex: 1; display: none;" placeholder="Nama layout kustom...">
+                    </div>
                   </div>
 
                   <!-- Main Narrative Text -->
                   <div class="form-group-editor">
-                    <label class="form-label-editor">Isi Narasi / Headline Teks di Slide</label>
+                    <label class="form-label-editor">Isi Narasi / Headline Teks di Slide (Update Realtime)</label>
                     <textarea class="form-input-dark" id="editor-input-slide-text" rows="3" placeholder="Teks narasi di slide..."></textarea>
                   </div>
 
@@ -474,37 +489,91 @@
 
             </div>
 
-            <!-- Right Column: Real-Time Live Preview Canvas -->
+            <!-- Right Column: Real-Time Live Preview Canvas & AI Carousel Studio -->
             <div class="design-preview-pane" style="position: sticky; top: 20px;">
-              <div class="agent-config-card" style="margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center;">
+              <!-- 1. AI Carousel Generator Box -->
+              <div class="agent-config-card" style="margin: 0; margin-bottom: 16px; padding: 16px; border: 1px solid var(--lime);">
+                <div class="agent-card-title-row" style="margin-bottom: 8px;">
+                  <h3 class="agent-card-title" style="color: #fff; font-size: 14px;">✨ Generate Carousel Baru (AI Creative Director)</h3>
+                  <span class="pill-status active"><span class="dot"></span> Full AI Dynamic</span>
+                </div>
+                <p style="font-size: 11px; color: var(--muted); margin-bottom: 10px;">
+                  AI Designer merancang jumlah slide, arsitektur visual, teks editorial, dan layout secara otonom tanpa batasan template kaku.
+                </p>
+
+                <div class="form-group-editor" style="margin-bottom: 8px;">
+                  <label class="form-label-editor">Pilih dari Topik Radar Terkini</label>
+                  <select id="studio-quick-topic-select" class="form-input-dark form-select-dark" style="font-size: 12px;">
+                    <option value="">-- Pilih Topik dari Radar --</option>
+                  </select>
+                </div>
+
+                <div class="form-group-editor" style="margin-bottom: 8px;">
+                  <label class="form-label-editor">Atau Masukkan Topik / Headline Kustom</label>
+                  <textarea id="studio-custom-topic-text" class="form-input-dark" rows="2" placeholder="Contoh: IHSG Tembus Rekor Baru Ditopang Net Buy Asing Rp 2 Triliun..." style="font-size: 12px;"></textarea>
+                </div>
+
+                <div class="form-group-editor" style="margin-bottom: 10px;">
+                  <label class="form-label-editor">Sumber Primer / Atribusi</label>
+                  <input type="text" id="studio-custom-source-text" class="form-input-dark" value="Bursa Efek Indonesia" placeholder="Nama instansi / sumber..." style="font-size: 12px;">
+                </div>
+
+                <button class="btn btn-lime" id="btn-studio-generate-ai" style="width: 100%; justify-content: center; font-weight: 700;">
+                  ✨ Rancang & Render Carousel (AI)
+                </button>
+              </div>
+
+              <!-- 2. Live Carousel Viewer & Controller -->
+              <div class="agent-config-card" style="margin: 0; padding: 18px; display: flex; flex-direction: column; align-items: center;">
                 <div style="width: 100%; display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                   <div>
                     <h4 style="font-size: 14px; font-weight: 700; color: #fff; margin: 0;">📱 Live Preview Realtime</h4>
-                    <span style="font-size: 11px; color: var(--lime);">● Render Engine Satori + Sharp (Port 3000)</span>
+                    <span style="font-size: 11px; color: var(--lime);" id="studio-preview-caption-badge">● Slide 1 dari 1</span>
                   </div>
-                  <div style="display: flex; gap: 8px;">
-                    <select id="studio-preview-type" class="form-input-dark form-select-dark" style="padding: 4px 10px; font-size: 12px; width: auto;">
-                      <option value="cover">Cover Stat Hook</option>
-                      <option value="cards">Metric Cards Grid</option>
-                      <option value="compare">Perbandingan Kolom</option>
-                      <option value="quote">Kutipan Pejabat</option>
-                      <option value="regulasi">Klausul Regulasi</option>
-                    </select>
-                    <button class="btn btn-outline" id="btn-refresh-preview" style="padding: 4px 10px; font-size: 12px;" title="Refresh Canvas">🔄</button>
+                  <div style="display: flex; gap: 6px; align-items: center;">
+                    <button class="btn btn-dark" id="btn-studio-prev-slide" style="padding: 4px 10px; font-size: 12px;" title="Slide Sebelumnya">◀</button>
+                    <span id="studio-slide-indicator-text" style="font-size: 11px; font-weight: 700; color: #fff; min-width: 45px; text-align: center;">1 / 1</span>
+                    <button class="btn btn-dark" id="btn-studio-next-slide" style="padding: 4px 10px; font-size: 12px;" title="Slide Selanjutnya">▶</button>
                   </div>
                 </div>
 
                 <!-- Preview Canvas Frame (1080x1350 scaled to fit) -->
                 <div class="live-preview-box" style="position: relative; width: 100%; max-width: 360px; aspect-ratio: 4/5; background: #000; border: 2px solid var(--border); border-radius: 12px; overflow: hidden; box-shadow: 0 16px 36px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;">
                   <img id="live-design-preview-img" alt="Live Preview Carousel" style="width: 100%; height: 100%; object-fit: contain; display: block;">
-                  <div id="live-preview-spinner" style="display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.4); align-items: center; justify-content: center;">
-                    <span style="color: var(--lime); font-size: 14px; font-weight: 600;">⚡ Merender...</span>
+                  <div id="live-preview-spinner" style="display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.6); align-items: center; justify-content: center;">
+                    <span style="color: var(--lime); font-size: 13px; font-weight: 700;">⚡ Merender Pratinjau...</span>
                   </div>
                 </div>
 
-                <div style="margin-top: 14px; font-size: 11px; color: var(--muted); text-align: center; line-height: 1.4;">
-                  Pratinjau langsung 1080×1350 px dengan rasio Instagram 4:5. Warna, nama brand, dan handle diperbarui secara instan.
+                <!-- Slide Pills Strip -->
+                <div id="studio-slides-pills-container" style="display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; justify-content: center; width: 100%;">
+                  <!-- Slide chips generated by JS -->
                 </div>
+
+                <!-- Live Content Editor for Active Studio Slide -->
+                <div style="width: 100%; margin-top: 14px; background: var(--card-subtle); border: 1px solid var(--border); border-radius: 8px; padding: 12px;">
+                  <div style="font-size: 11px; font-weight: 700; color: var(--lime); margin-bottom: 8px; text-transform: uppercase;">
+                    ✏️ Edit Konten Slide Ini (Pratinjau Instan)
+                  </div>
+                  <div class="form-group-editor" style="margin-bottom: 6px;">
+                    <label class="form-label-editor" style="font-size: 10px;">Narasi / Teks Utama Slide</label>
+                    <textarea id="studio-edit-slide-text" class="form-input-dark" rows="2" style="font-size: 12px;" placeholder="Teks narasi di slide..."></textarea>
+                  </div>
+                  <div class="form-grid-2col" style="gap: 8px;">
+                    <div class="form-group-editor" style="margin-bottom: 6px;">
+                      <label class="form-label-editor" style="font-size: 10px;">Layout Slide</label>
+                      <input type="text" id="studio-edit-slide-layout" class="form-input-dark" style="font-size: 11px;" placeholder="Nama layout...">
+                    </div>
+                    <div class="form-group-editor" style="margin-bottom: 6px;">
+                      <label class="form-label-editor" style="font-size: 10px;">Judul / Kategori Slide</label>
+                      <input type="text" id="studio-edit-slide-title" class="form-input-dark" style="font-size: 11px;" placeholder="Judul slide...">
+                    </div>
+                  </div>
+                </div>
+
+                <button class="btn btn-lime" id="btn-studio-save-to-drafts" style="width: 100%; justify-content: center; font-weight: 700; margin-top: 12px;">
+                  💾 Simpan sebagai Draf Produksi (Kirim ke Meja Review)
+                </button>
               </div>
             </div>
 

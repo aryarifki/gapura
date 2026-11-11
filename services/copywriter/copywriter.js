@@ -257,7 +257,7 @@ export async function buildCarouselSlides(topic) {
   // 2. Susun Caption Editorial & Hashtags oleh AGEN COPYWRITER
   const isRegulasi = /ojk|pojk|peraturan|uu|hukum|sanksi|denda|aturan/i.test(topic.title);
   let caption = `${topic.title}\n\n${topic.summary || ''}\n\nAnalisis Editorial:\nLangkah dan data yang dilaporkan oleh ${topic.primary_source || 'otoritas'} ini memperlihatkan perkembangan penting yang patut dicermati oleh pelaku pasar, investor, dan pengambil keputusan. Informasi faktual ini memberikan gambaran objektif mengenai arah kebijakan dan stabilitas fundamental ekonomi nasional.\n\nSumber Data: ${topic.primary_source} (${topic.url})\n\n---\nDisclaimer: Informasi disajikan untuk tujuan edukasi publik dan bukan merupakan rekomendasi investasi beli/jual saham atau nasihat hukum resmi.`;
-  let hashtags = ['#HomelessMedia', '#DataEkonomi', '#BursaSaham', '#IHSG', '#OJK', '#Regulasi', '#PasarModal', '#EkonomiIndonesia', '#KeterbukaanInformasi'];
+  let hashtags = ['#GapuraMedia', '#DataEkonomi', '#BursaSaham', '#IHSG', '#OJK', '#Regulasi', '#PasarModal', '#EkonomiIndonesia', '#KeterbukaanInformasi'];
 
   const apiKey = copyCfg.api_key || process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY || '';
   if (apiKey && apiKey.trim().length > 0) {
@@ -270,7 +270,7 @@ Sumber: ${topic.primary_source || ''}
 Kembalikan HANYA format JSON valid berikut tanpa markdown wrap:
 {
   "caption": "...",
-  "hashtags": ["#HomelessMedia", "#DataEkonomi", "#IHSG"]
+  "hashtags": ["#GapuraMedia", "#DataEkonomi", "#IHSG"]
 }`;
       const capResp = await callAgentLLM('copywriter', prompt, copyCfg.system_prompt || '', true);
       const capParsed = JSON.parse(capResp);
