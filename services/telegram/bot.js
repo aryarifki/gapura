@@ -1,292 +1,294 @@
-// ==============================================================================
-// Homeless Media Engine (HME) v2.0 - Telegram Approval Bot
-// File: /root/gapura/services/telegram/bot.js
-// One-Door Review & Approval State Machine
-// ==============================================================================
-
+// Telegram review delivery and operator-driven approval. Chat IDs identify the
+// destination; a separate, explicit user allowlist authorizes callback actors.
 import pkg from 'pg';
-const { Pool } = pkg;
 import dotenv from 'dotenv';
-import path from 'path';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
+import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { setTimeout as sleep } from 'node:timers/promises';
+import { validateDraftApproval } from '../common/editorial.js';
+import { draftContentHash } from '../common/draft-revision.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
-
-const pool = new Pool({
-  host: process.env.HME_DB_HOST || '127.0.0.1',
-  port: parseInt(process.env.HME_DB_PORT || '5432'),
-  user: process.env.HME_DB_USER || 'hme_user',
-  password: process.env.HME_DB_PASSWORD,
-  database: process.env.HME_DB_NAME || 'hme',
-});
-
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const ADMIN_CHAT_ID = process.env.TELEGRAM_ADMIN_CHAT_ID;
-const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
-
-// Helper pengiriman pesan teks
-async function sendMessage(chatId, text, replyMarkup = null) {
-  if (!BOT_TOKEN) return false;
-  try {
-    const body = {
-      chat_id: chatId,
-      text,
-      parse_mode: 'HTML',
-    };
-    if (replyMarkup) body.reply_markup = replyMarkup;
-
-    const resp = await fetch(`${TELEGRAM_API}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    return await resp.json();
-  } catch (err) {
-    console.error('[Telegram] Error sendMessage:', err.message);
-    return false;
-  }
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-// Helper pengiriman album foto (Media Group)
-async function sendMediaGroup(chatId, imagePaths) {
-  if (!BOT_TOKEN) return false;
-  try {
-    const formData = new FormData();
-    formData.append('chat_id', chatId);
-
-    const mediaList = [];
-    imagePaths.forEach((imgPath, idx) => {
-      const attachName = `photo_${idx}`;
-      mediaList.push({
-        type: 'photo',
-        media: `attach://${attachName}`,
-      });
-      const fileBuffer = fs.readFileSync(imgPath);
-      formData.append(attachName, new Blob([fileBuffer]), path.basename(imgPath));
-    });
-
-    formData.append('media', JSON.stringify(mediaList));
-
-    const resp = await fetch(`${TELEGRAM_API}/sendMediaGroup`, {
-      method: 'POST',
-      body: formData,
-    });
-    return await resp.json();
-  } catch (err) {
-    console.error('[Telegram] Error sendMediaGroup:', err.message);
-    return false;
-  }
+function numericId(value, allowNegative = false) {
+  const text = String(value ?? '');
+  return (allowNegative ? /^-?[1-9]\d*$/ : /^[1-9]\d*$/).test(text) && Number.isSafeInteger(Number(text)) ? text : null;
 }
 
-// 1. Dispatch Draf ke Telegram Admin
-export async function dispatchDraftToTelegram(draftId) {
-  const client = await pool.connect();
-  try {
-    const { rows: drafts } = await client.query(
-      `SELECT d.*, t.title, t.primary_source, ts.score_total, ts.reasoning
-       FROM drafts d
-       JOIN topics t ON d.topic_id = t.id
-       LEFT JOIN topic_scores ts ON t.id = ts.topic_id
-       WHERE d.id = $1`,
-      [draftId]
-    );
-
-    if (drafts.length === 0) {
-      console.warn(`[Telegram] Draf #${draftId} tidak ditemukan.`);
-      return false;
-    }
-
-    const d = drafts[0];
-    const { rows: slides } = await client.query(
-      'SELECT render_path, slide_no FROM draft_slides WHERE draft_id = $1 ORDER BY slide_no ASC',
-      [draftId]
-    );
-
-    const imagePaths = slides.map((s) => s.render_path).filter((p) => fs.existsSync(p));
-
-    console.log(`[Telegram] Menyiapkan dispatch draf #${draftId} (${imagePaths.length} gambar slide)...`);
-
-    if (!BOT_TOKEN || !ADMIN_CHAT_ID) {
-      console.log(`[Telegram SIMULASI] Token atau ADMIN_CHAT_ID belum diisi di .env.`);
-      console.log(`--- DETAIL DRAF #${d.id} ---`);
-      console.log(`📌 Judul: ${d.title}`);
-      console.log(`📊 Skor Analis: ${d.score_total}/100`);
-      console.log(`🏛️ Sumber: ${d.primary_source}`);
-      console.log(`📝 Caption:\n${d.caption.slice(0, 200)}...`);
-      console.log(`🖼️ File Slide:`);
-      imagePaths.forEach((p, idx) => console.log(`   Slide ${idx + 1}: ${p}`));
-      console.log(`-----------------------------`);
-      return true;
-    }
-
-    // Kirim Media Group (5 Slide)
-    if (imagePaths.length > 0) {
-      await sendMediaGroup(ADMIN_CHAT_ID, imagePaths);
-    }
-
-    // Kirim Pesan Deskripsi + Inline Keyboard
-    const messageText = `
-📌 <b>DRAF CAROUSEL BARU #${d.id}</b>
-───────────────────
-<b>Judul:</b> ${d.title}
-<b>Sumber:</b> ${d.primary_source}
-<b>Skor Analis:</b> ${d.score_total}/100
-<b>Alasan:</b> <i>${d.reasoning || '-'}</i>
-
-📝 <b>CAPTION:</b>
-${d.caption}
-
-🏷️ <b>HASHTAGS:</b>
-${(d.hashtags || []).join(' ')}
-    `.trim();
-
-    const inlineKeyboard = {
-      inline_keyboard: [
-        [
-          { text: '✅ Setujui (Auto)', callback_data: `approve_auto:${d.id}` },
-          { text: '📲 Setujui (Manual)', callback_data: `approve_manual:${d.id}` },
-        ],
-        [
-          { text: '❌ Tolak Draf', callback_data: `reject:${d.id}` },
-        ],
-      ],
-    };
-
-    await sendMessage(ADMIN_CHAT_ID, messageText, inlineKeyboard);
-    console.log(`[Telegram] Draf #${draftId} berhasil dikirim ke Telegram admin!`);
-    return true;
-  } finally {
-    client.release();
-  }
+function deliveredMessage(message) {
+  return Number.isSafeInteger(message?.message_id) && message.message_id > 0;
 }
 
-// 2. Eksekusi Transisi Status (Approval State Machine)
-export async function handleApprovalAction(action, draftId, actor = 'admin') {
-  const client = await pool.connect();
-  try {
-    if (action === 'approve_auto') {
-      // Setujui draf dan masukkan ke antrean jadwal optimal
-      await client.query("UPDATE drafts SET status = 'approved', updated_at = NOW() WHERE id = $1", [draftId]);
+export function createTelegramBot({ pool, fetchImpl = globalThis.fetch, config = {}, fsImpl = fs, logger = console }) {
+  const timeoutMs = Math.max(1, Math.min(Number(config.httpTimeoutMs) || 15000, 30000));
+  const adminChatId = numericId(config.adminChatId, true);
+  const adminUserIds = new Set((Array.isArray(config.adminUserIds) ? config.adminUserIds : []).map(id => numericId(id)).filter(Boolean));
 
-      // Tentukan jadwal tayang berikutnya (misal +3 jam dari sekarang)
-      const scheduledAt = new Date(Date.now() + 3 * 3600 * 1000);
-      await client.query(
-        `INSERT INTO scheduled_posts (draft_id, mode, scheduled_at, status)
-         VALUES ($1, 'auto', $2, 'pending')`,
-        [draftId, scheduledAt]
-      );
-
-      await client.query("UPDATE drafts SET status = 'scheduled', updated_at = NOW() WHERE id = $1", [draftId]);
-
-      await client.query(
-        `INSERT INTO audit_log (entity, entity_id, action, actor, payload)
-         VALUES ('draft', $1, 'approved_auto', $2, $3)`,
-        [draftId, actor, JSON.stringify({ scheduled_at: scheduledAt })]
-      );
-
-      console.log(`[State Machine] Draf #${draftId} DISETUJUI & DIJADWALKAN untuk ${scheduledAt.toISOString()}`);
-      return { status: 'scheduled', scheduled_at: scheduledAt };
-    } else if (action === 'approve_manual') {
-      await client.query("UPDATE drafts SET status = 'approved', updated_at = NOW() WHERE id = $1", [draftId]);
-
-      await client.query(
-        `INSERT INTO audit_log (entity, entity_id, action, actor, payload)
-         VALUES ('draft', $1, 'approved_manual', $2, '{}')`,
-        [draftId, actor]
-      );
-
-      console.log(`[State Machine] Draf #${draftId} DISETUJUI untuk penerbitan manual.`);
-      return { status: 'approved' };
-    } else if (action === 'reject') {
-      await client.query("UPDATE drafts SET status = 'rejected', updated_at = NOW() WHERE id = $1", [draftId]);
-
-      await client.query(
-        `INSERT INTO audit_log (entity, entity_id, action, actor, payload)
-         VALUES ('draft', $1, 'rejected', $2, '{}')`,
-        [draftId, actor]
-      );
-
-      console.log(`[State Machine] Draf #${draftId} DITOLAK oleh ${actor}.`);
-      return { status: 'rejected' };
-    }
-  } finally {
-    client.release();
-  }
-}
-
-// 3. Dispatch Semua Draf Menunggu
-export async function dispatchPendingDrafts() {
-  const client = await pool.connect();
-  try {
-    const { rows } = await client.query("SELECT id FROM drafts WHERE status = 'draft' ORDER BY id ASC");
-    console.log(`[Telegram Dispatcher] Ditemukan ${rows.length} draf siap review.`);
-    for (const r of rows) {
-      await dispatchDraftToTelegram(r.id);
-    }
-  } finally {
-    client.release();
-  }
-}
-
-// 4. Polling Callback dari Telegram
-export async function startBotPolling() {
-  if (!BOT_TOKEN) {
-    console.log('[Telegram Bot] BOT_TOKEN tidak diset. Polling dinonaktifkan.');
-    return;
+  function authorized(actor) {
+    return Boolean(adminChatId && actor && typeof actor === 'object' && actor.isBot !== true &&
+      numericId(actor.chatId, true) === adminChatId && adminUserIds.has(numericId(actor.userId)));
   }
 
-  console.log('[Telegram Bot] Memulai polling update dari Telegram...');
-  let offset = 0;
-
-  setInterval(async () => {
+  async function request(method, body, { multipart = false, polling = false } = {}) {
+    if (!config.botToken) return null;
     try {
-      const resp = await fetch(`${TELEGRAM_API}/getUpdates?offset=${offset}&timeout=10`);
-      if (!resp.ok) return;
-      const data = await resp.json();
-      if (!data.result || data.result.length === 0) return;
+      const response = await fetchImpl(`https://api.telegram.org/bot${config.botToken}/${method}`, {
+        method: 'POST', ...(multipart ? {} : { headers: { 'Content-Type': 'application/json' } }),
+        body: multipart ? body : JSON.stringify(body),
+        signal: AbortSignal.timeout(polling ? Math.max(timeoutMs, 15000) : timeoutMs),
+      });
+      const data = await response.json();
+      if (!response.ok || data?.ok !== true) return null;
+      return data;
+    } catch {
+      logger.warn(`[Telegram] ${method} delivery failed.`);
+      return null;
+    }
+  }
 
-      for (const update of data.result) {
-        offset = update.update_id + 1;
+  async function sendMessage(chatId, text, replyMarkup) {
+    const response = await request('sendMessage', {
+      chat_id: chatId, text, parse_mode: 'HTML', ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+    });
+    return deliveredMessage(response?.result);
+  }
 
-        // Callback Query dari Tombol Inline
-        if (update.callback_query) {
-          const cb = update.callback_query;
-          const fromId = String(cb.from.id);
+  async function sendPhotos(chatId, imagePaths) {
+    if (imagePaths.length < 1 || imagePaths.length > 10) return false;
+    const body = new FormData();
+    body.append('chat_id', chatId);
+    if (imagePaths.length === 1) {
+      body.append('photo', new Blob([fsImpl.readFileSync(imagePaths[0])]), path.basename(imagePaths[0]));
+      const response = await request('sendPhoto', body, { multipart: true });
+      return deliveredMessage(response?.result);
+    }
+    const media = imagePaths.map((imagePath, index) => {
+      const name = `photo_${index}`;
+      body.append(name, new Blob([fsImpl.readFileSync(imagePath)]), path.basename(imagePath));
+      return { type: 'photo', media: `attach://${name}` };
+    });
+    body.append('media', JSON.stringify(media));
+    const response = await request('sendMediaGroup', body, { multipart: true });
+    return Array.isArray(response?.result) && response.result.length === imagePaths.length &&
+      response.result.every(deliveredMessage);
+  }
 
-          // Cek Whitelist
-          if (ADMIN_CHAT_ID && fromId !== ADMIN_CHAT_ID) {
-            console.warn(`[Telegram Security] Akses ditolak dari chat_id: ${fromId}`);
-            continue;
-          }
+  async function handleApprovalAction(action, draftId, actor = null) {
+    if (!authorized(actor)) return { allowed: false, reason: 'unauthorized_actor' };
+    if (!['approve_auto', 'approve_manual', 'reject'].includes(action) || !numericId(draftId)) {
+      return { allowed: false, reason: 'invalid_action' };
+    }
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows } = await client.query(
+        'SELECT d.* FROM drafts d WHERE d.id = $1 FOR UPDATE OF d', [Number(draftId)],
+      );
+      const draft = rows[0];
+      if (!draft || draft.status !== 'draft') {
+        await client.query('ROLLBACK');
+        return { allowed: false, reason: draft ? 'draft_not_reviewable' : 'draft_not_found' };
+      }
+      const { rows: active } = await client.query(
+        `SELECT id FROM scheduled_posts WHERE draft_id = $1
+         AND (status IN ('pending', 'publishing', 'success') OR ig_creation_id IS NOT NULL
+              OR ig_media_id IS NOT NULL OR published_at IS NOT NULL) LIMIT 1`, [Number(draftId)],
+      );
+      if (active.length) {
+        await client.query('ROLLBACK');
+        return { allowed: false, reason: 'existing_schedule_requires_review' };
+      }
+      let status = 'rejected';
+      let scheduledAt;
+      if (action !== 'reject') {
+        const { rows: reports } = await client.query(
+          `SELECT status, confidence FROM verification_reports WHERE topic_id = $1
+           ORDER BY created_at DESC NULLS LAST, id DESC LIMIT 1`, [draft.topic_id],
+        );
+        const mode = action === 'approve_auto' ? 'auto' : 'manual';
+        const verification = reports[0] ?? null;
+        const gate = validateDraftApproval({ status: draft.status, needsReview: draft.needs_review !== false,
+          verification, mode, acknowledgeReview: false });
+        const confidence = Number(verification?.confidence);
+        if (!gate.allowed || (mode === 'auto' && (!Number.isFinite(confidence) || confidence > 100))) {
+          await client.query('ROLLBACK');
+          return { allowed: false, reason: gate.reason ?? 'invalid_confidence' };
+        }
+        status = mode === 'auto' ? 'scheduled' : 'approved';
+        if (mode === 'auto') {
+          scheduledAt = new Date(Date.now() + 3 * 3600 * 1000);
+          await client.query(
+            `INSERT INTO scheduled_posts (draft_id, mode, scheduled_at, status)
+             VALUES ($1, 'auto', $2, 'pending')`, [Number(draftId), scheduledAt],
+          );
+        }
+      }
+      // Status values are selected exclusively from the fixed transitions above.
+      const update = await client.query(
+        `UPDATE drafts SET status = '${status}', updated_at = NOW() WHERE id = $1 AND status = 'draft' RETURNING id`,
+        [Number(draftId)],
+      );
+      if (update.rowCount !== 1) throw new Error('Draft changed during approval.');
+      const auditAction = action === 'reject' ? 'rejected' : action === 'approve_auto' ? 'approved_auto' : 'approved_manual';
+      await client.query(
+        `INSERT INTO audit_log (entity, entity_id, action, actor, payload)
+         VALUES ('draft', $1, $2, $3, $4)`,
+        [Number(draftId), auditAction, `telegram:${numericId(actor.userId)}`,
+          JSON.stringify({ chat_id: adminChatId, ...(action !== 'reject' ? { content_hash: draftContentHash(draft) } : {}), ...(scheduledAt ? { scheduled_at: scheduledAt } : {}) })],
+      );
+      await client.query('COMMIT');
+      return { allowed: true, status, ...(scheduledAt ? { scheduled_at: scheduledAt } : {}) };
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
 
-          const [action, draftIdStr] = (cb.data || '').split(':');
-          const draftId = parseInt(draftIdStr);
+  async function processCallbackQuery(callback) {
+    const actor = { userId: callback?.from?.id, chatId: callback?.message?.chat?.id, isBot: callback?.from?.is_bot };
+    const parsed = /^(approve_auto|approve_manual|reject):([1-9]\d*)$/.exec(callback?.data ?? '');
+    if (!authorized(actor) || !parsed || !numericId(parsed[2])) return { allowed: false, reason: 'invalid_or_unauthorized_callback' };
+    const draftId = Number(parsed[2]);
+    const result = await handleApprovalAction(parsed[1], draftId, actor);
+    const text = result.allowed
+      ? result.status === 'scheduled' ? `✅ Draf #${draftId} disetujui dan dijadwalkan.`
+        : result.status === 'approved' ? `📲 Draf #${draftId} disetujui untuk publikasi manual. Konfirmasi operator diperlukan setelah posting.`
+          : `❌ Draf #${draftId} ditolak.`
+      : result.reason === 'human_review_required'
+        ? `⚠️ Draf #${draftId} memerlukan review. Buka editor di dashboard web dan konfirmasi review sebelum persetujuan Auto.`
+        : `⚠️ Draf #${draftId} belum diproses: ${escapeHtml(result.reason)}.`;
+    await sendMessage(adminChatId, text);
+    if (callback.id) await request('answerCallbackQuery', { callback_query_id: callback.id, text: result.allowed ? 'Keputusan disimpan.' : 'Keputusan diblokir.' });
+    return result;
+  }
 
-          if (draftId && (action === 'approve_auto' || action === 'approve_manual' || action === 'reject')) {
-            const res = await handleApprovalAction(action, draftId, `telegram:${fromId}`);
-            const replyText =
-              action === 'approve_auto'
-                ? `✅ Draf #${draftId} DISETUJUI & Masuk Antrean Auto-Publish!`
-                : action === 'approve_manual'
-                ? `📲 Draf #${draftId} DISETUJUI untuk Publikasi Manual!`
-                : `❌ Draf #${draftId} DITOLAK.`;
+  async function dispatchDraftToTelegram(draftId) {
+    if (!config.botToken || !adminChatId || !numericId(draftId)) return false;
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      // Hold the row until delivery acknowledgement to serialize dispatchers.
+      const { rows } = await client.query(
+        `SELECT d.*, t.title, t.primary_source, ts.score_total, ts.reasoning
+         FROM drafts d JOIN topics t ON t.id = d.topic_id
+         LEFT JOIN LATERAL (
+           SELECT score_total, reasoning FROM topic_scores WHERE topic_id = t.id
+           ORDER BY created_at DESC NULLS LAST, id DESC LIMIT 1
+         ) ts ON TRUE
+         WHERE d.id = $1 FOR UPDATE OF d SKIP LOCKED`, [Number(draftId)],
+      );
+      const draft = rows[0];
+      if (!draft || draft.status !== 'draft') { await client.query('ROLLBACK'); return false; }
+      if (draft.telegram_dispatched_at) { await client.query('COMMIT'); return true; }
+      const { rows: slides } = await client.query(
+        'SELECT render_path, slide_no FROM draft_slides WHERE draft_id = $1 ORDER BY slide_no ASC', [Number(draftId)],
+      );
+      const draftSlides = typeof draft.slides === 'string' ? JSON.parse(draft.slides) : draft.slides;
+      if (!Array.isArray(draftSlides) || draftSlides.length < 1 || draftSlides.length > 10 ||
+          slides.length !== draftSlides.length || slides.some((slide, index) =>
+            Number(slide.slide_no) !== index + 1 || !slide.render_path || !fsImpl.existsSync(slide.render_path))) {
+        throw new Error('Draft slide assets are incomplete.');
+      }
+      if (!await sendPhotos(adminChatId, slides.map(slide => slide.render_path))) {
+        throw new Error('Telegram media delivery was not acknowledged.');
+      }
+      // Bounds apply before escaping so long editorial text cannot exceed the
+      // Telegram message limit, even if every character becomes an HTML entity.
+      const text = `📌 <b>DRAF BARU #${Number(draftId)}</b>\n` +
+        `<b>Judul:</b> ${escapeHtml(String(draft.title ?? '').slice(0, 100))}\n` +
+        `<b>Sumber:</b> ${escapeHtml(String(draft.primary_source ?? '').slice(0, 60))}\n` +
+        `<b>Skor Analis:</b> ${escapeHtml(String(draft.score_total ?? '-').slice(0, 5))}/100\n` +
+        `<b>Alasan:</b> ${escapeHtml(String(draft.reasoning ?? '-').slice(0, 80))}\n\n` +
+        `<b>CAPTION (ringkasan):</b>\n${escapeHtml(String(draft.caption ?? '').slice(0, 300))}\n\n` +
+        `<b>HASHTAGS:</b> ${escapeHtml((Array.isArray(draft.hashtags) ? draft.hashtags.join(' ') : '').slice(0, 60))}`;
+      const keyboard = { inline_keyboard: [
+        [{ text: '✅ Setujui (Auto)', callback_data: `approve_auto:${draftId}` },
+          { text: '📲 Setujui (Manual)', callback_data: `approve_manual:${draftId}` }],
+        [{ text: '❌ Tolak Draf', callback_data: `reject:${draftId}` }],
+      ] };
+      if (!await sendMessage(adminChatId, text, keyboard)) throw new Error('Telegram review message was not acknowledged.');
+      await client.query(
+        `UPDATE drafts SET telegram_dispatched_at = NOW() WHERE id = $1 AND telegram_dispatched_at IS NULL`, [Number(draftId)],
+      );
+      await client.query('COMMIT');
+      return true;
+    } catch {
+      await client.query('ROLLBACK').catch(() => {});
+      logger.warn(`[Telegram] Dispatch draf #${draftId} belum dikonfirmasi.`);
+      return false;
+    } finally {
+      client.release();
+    }
+  }
 
-            await sendMessage(fromId, replyText);
+  async function dispatchPendingDrafts() {
+    if (!config.botToken || !adminChatId) return 0;
+    const client = await pool.connect();
+    let rows;
+    try {
+      ({ rows } = await client.query("SELECT id FROM drafts WHERE status = 'draft' AND telegram_dispatched_at IS NULL ORDER BY id ASC"));
+    } finally { client.release(); }
+    let delivered = 0;
+    for (const row of rows) if (await dispatchDraftToTelegram(row.id)) delivered++;
+    return delivered;
+  }
+
+  async function startBotPolling({ signal } = {}) {
+    if (!config.botToken || !adminChatId || !adminUserIds.size) {
+      logger.warn('[Telegram] Polling disabled: bot token, chat and user allowlist are required.');
+      return;
+    }
+    let offset = 0;
+    // A sequential long-poll loop avoids overlapping getUpdates consumers.
+    while (!signal?.aborted) {
+      const updates = await request('getUpdates', { offset, timeout: 10, allowed_updates: ['callback_query'] }, { polling: true });
+      if (Array.isArray(updates?.result)) {
+        for (const update of updates.result) {
+          if (!Number.isSafeInteger(update.update_id) || update.update_id < offset) continue;
+          try {
+            if (update.callback_query) await processCallbackQuery(update.callback_query);
+            offset = update.update_id + 1;
+          } catch {
+            logger.warn('[Telegram] Callback failed; waiting for a retry.');
+            break;
           }
         }
       }
-    } catch (pollErr) {
-      // Abaikan transient network error
+      try { await sleep(1000, undefined, { signal }); } catch { if (signal?.aborted) break; }
     }
-  }, 3000);
+  }
+
+  return { dispatchDraftToTelegram, dispatchPendingDrafts, handleApprovalAction, processCallbackQuery, startBotPolling };
 }
 
+let runtime;
+function defaultBot() {
+  if (!runtime) {
+    dotenv.config({ path: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../.env') });
+    const env = process.env;
+    runtime = createTelegramBot({
+      pool: new pkg.Pool({ host: env.HME_DB_HOST || '127.0.0.1', port: parseInt(env.HME_DB_PORT || '5432'),
+        user: env.HME_DB_USER || 'hme_user', password: env.HME_DB_PASSWORD, database: env.HME_DB_NAME || 'hme' }),
+      config: { botToken: env.TELEGRAM_BOT_TOKEN, adminChatId: env.TELEGRAM_ADMIN_CHAT_ID,
+        adminUserIds: (env.TELEGRAM_ADMIN_USER_IDS || '').split(',').map(id => id.trim()).filter(Boolean) },
+    });
+  }
+  return runtime;
+}
+
+export async function dispatchDraftToTelegram(draftId) { return defaultBot().dispatchDraftToTelegram(draftId); }
+export async function dispatchPendingDrafts() { return defaultBot().dispatchPendingDrafts(); }
+export async function handleApprovalAction(action, draftId, actor) { return defaultBot().handleApprovalAction(action, draftId, actor); }
+export async function startBotPolling(options) { return defaultBot().startBotPolling(options); }
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  dispatchPendingDrafts().then(() => {
-    startBotPolling();
+  dispatchPendingDrafts().then(() => startBotPolling()).catch(error => {
+    console.error('[Telegram] Runner failed:', error.message);
+    process.exitCode = 1;
   });
 }
