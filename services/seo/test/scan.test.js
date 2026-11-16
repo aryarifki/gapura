@@ -15,6 +15,7 @@ function database(sources = [source]) {
         && (params.length < 2 || row.id === params[1])) };
     }
     if (sql.includes('INSERT INTO trend_items')) return { rows: [{ id: 1, inserted: true }] };
+    if (sql.includes('INSERT INTO topic_materials')) return { rows: [{ id: 2, content_hash: 'a'.repeat(64), inserted: true }] };
     return { rows: [] };
   });
 }
@@ -146,4 +147,47 @@ test('manual source scan forces the selected source and promotion retains articl
   const inserted = db.calls.find((call) => call.sql.includes('INSERT INTO topics'));
   assert.equal(inserted.params[2], 'https://news.google.com/rss/articles/one');
   assert.ok(inserted.params.includes('https://www.kontan.co.id/'));
+});
+
+test('SEO promotion preserves material metadata and never turns search-volume labels into article prose', async () => {
+  const db = database();
+  const query = db.query.bind(db);
+  const body = 'Lembaga mengumumkan keputusan layanan publik. Tahap pelaksanaan berlaku mulai bulan depan. Evaluasi dijadwalkan setelah pelaksanaan selesai.';
+  const material = {
+    version: 1, raw_title: 'Berita layanan - Media Uji', headline: 'Berita layanan', provider: 'rss', publisher: 'Media Uji',
+    discovery_url: 'https://publisher.example.org/news', article_url: 'https://publisher.example.org/news',
+    published_at: '2026-11-16T08:00:00Z', updated_at: '2026-11-16T10:00:00Z', retrieved_at: '2026-11-17T00:00:00Z',
+    body, paragraphs: [{ id: 'p1', text: body, source_url: 'https://publisher.example.org/news', role: 'reporting' }], images: [],
+    extraction: { kind: 'rss_full', status: 'full', error_code: null },
+  };
+  db.query = async (sql, params) => {
+    if (sql.includes('SELECT * FROM trend_items')) return { rows: [{ id: 1, platform: 'google_trends', provider: 'google_trends', title: 'Berita layanan - Media Uji', snippet: 'Ringkasan berita.', author: 'Media Uji', url: material.discovery_url, virality_score: 55, published_at: material.published_at, engagement: { traffic_label: '200 ribu' }, source_material: material }] };
+    if (sql.includes('INSERT INTO topics')) { db.calls.push({ sql, params }); return { rows: [{ id: 17 }] }; }
+    if (sql.includes('INSERT INTO topic_materials')) { db.calls.push({ sql, params }); return { rows: [{ id: 2, content_hash: 'a'.repeat(64), inserted: true }] }; }
+    return query(sql, params);
+  };
+  const { promoteTrendToTopic } = await loadService('seo/seo.js', { client: db });
+  await promoteTrendToTopic(1, db);
+  const topic = db.calls.find((call) => call.sql.includes('INSERT INTO topics'));
+  assert.equal(topic.params[0], 'Berita layanan');
+  assert.equal(topic.params[1], 'Ringkasan berita.');
+  assert.equal(topic.params.some((value) => String(value).includes('Volume pencarian:')), false);
+  assert.ok(topic.params.includes(material.published_at));
+  assert.ok(db.calls.some((call) => call.sql.includes('INSERT INTO topic_materials')));
+});
+
+test('SEO promotion rolls back the topic creation if its material snapshot cannot be saved', async () => {
+  const db = database();
+  const query = db.query.bind(db);
+  db.query = async (sql, params) => {
+    if (sql.includes('SELECT * FROM trend_items')) return { rows: [{ id: 1, title: 'Kebijakan warga', snippet: 'Materi awal.', author: 'Media Uji', url: 'https://publisher.example.org/a', virality_score: 50 }] };
+    if (sql.includes('INSERT INTO topics')) { db.calls.push({ sql, params }); return { rows: [{ id: 17 }] }; }
+    if (sql.includes('INSERT INTO topic_materials')) throw new Error('fixture persistence failed');
+    return query(sql, params);
+  };
+  const { promoteTrendToTopic } = await loadService('seo/seo.js', { client: db });
+  await assert.rejects(() => promoteTrendToTopic(1, db), /fixture persistence failed/);
+  assert.ok(db.calls.some((call) => call.sql === 'BEGIN'));
+  assert.equal(db.calls.at(-1).sql, 'ROLLBACK');
+  assert.equal(db.calls.some((call) => call.sql.includes('UPDATE trend_items SET promoted_topic_id')), false);
 });

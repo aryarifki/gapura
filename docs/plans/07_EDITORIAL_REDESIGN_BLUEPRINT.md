@@ -1,12 +1,13 @@
 # Blueprint pembaruan editorial dan desain Gapura Media
 
-Versi 1.1 · 17 November 2026 · Status: R0 selesai, kontrak R1 tersedia offline.
+Versi 1.2 · 17 November 2026 · Status: R0 selesai, kontrak R1 dan reader/snapshot R2 tersedia.
 
 Dokumen ini menjadi acuan perubahan konten berikutnya. Persyaratan baru owner
 menggantikan ketentuan lama tentang niche finansial sempit, single otomatis,
 caption petikan verbatim, dan kewajiban melewati Agen Verifikator. Perubahan
-produksi belum diterapkan; kontrak dan fixture sintetis [R1](08_R1_EDITORIAL_CONTRACT.md)
-ditambahkan terpisah dari runtime. Pembersihan workspace dan penjedaan
+penulisan produksi belum diterapkan; kontrak dan fixture sintetis [R1](08_R1_EDITORIAL_CONTRACT.md)
+tersedia offline, sedangkan [R2](09_R2_ARTICLE_MATERIALS.md) menyediakan reader
+dan snapshot materi tanpa menghasilkan draf. Pembersihan workspace dan penjedaan
 otomatisasi sudah dilaksanakan; buktinya tercantum di
 [laporan reset](../EDITORIAL_WORKSPACE_RESET_20261116.md).
 
@@ -433,7 +434,7 @@ Semua perubahan kode dimulai dari tes merah yang mereproduksi masalah.
 | --- | --- | --- |
 | R0 — Workspace bersih | Backup/restore teruji, konten kosong, timer dan worker otomatis dijeda | **Selesai**, lihat laporan reset; koneksi Meta tetap connected |
 | R1 — Kontrak editorial | Taxonomy enam desk, material/media contract, kebijakan hak/credit minimum, aturan headline/caption/carousel, corpus fixture | **Tersedia offline**, lihat [kontrak R1](08_R1_EDITORIAL_CONTRACT.md); bukan acceptance foto berita live/visual owner |
-| R2 — Pengambilan materi | Feed body penuh yang tersedia, publisher article resolver, metadata, akses status, dedup peristiwa | Fixture artikel penuh/parsial/gagal dan tanggal benar; tidak mengarang body |
+| R2 — Pengambilan materi | Feed body penuh yang tersedia, publisher article resolver, metadata, akses status, snapshot hash idempotent | **Tersedia**, lihat [hasil R2](09_R2_ARTICLE_MATERIALS.md); validasi fixture dan migrasi tanpa rewrite. Clustering peristiwa lintas URL menyusul bersama kurasi sumber R4 |
 | R3 — Foto end-to-end | Asset ID lokal, host policy tunggal, rights/credit, hydration, fallback/photo layout | Foto nyata tampil pada normal/fallback/regenerasi; semua kegagalan terlihat |
 | R4 — Sources dan Analis | Katalog tervalidasi enam desk, scoring kepentingan publik, query aktual | Fixture tiap desk lolos/gugur sesuai materi dan konteks; endpoint gagal nonaktif |
 | R5 — Lepas Verifikator | Seluruh runtime/API/UI/config/SQL consumer report hilang | Produksi/review tanpa report berhasil; publish tanpa review tetap ditolak |
@@ -551,12 +552,13 @@ ditinjau tanpa mengklaim preferensi owner telah tervalidasi.
 
 ## 14. Langkah konkret berikutnya
 
-Kontrak dan corpus sintetis **R1** tersedia setelah mandat owner; lihat
-[hasil R1](08_R1_EDITORIAL_CONTRACT.md). Langkah berikutnya **R2** adalah
-pengayaan artikel dengan fixture RSS/HTML/JSON-LD yang diizinkan, metadata tanggal,
-URL kanonis, dan akses status; aset foto live diselesaikan R3. Mengubah prompt
-saja tidak menyelesaikan akar masalah summary pendek, pemotongan isi, dan
-hilangnya aset.
+Kontrak/corpus sintetis **R1** dan reader/snapshot **R2** tersedia setelah mandat
+owner; lihat [hasil R1](08_R1_EDITORIAL_CONTRACT.md) dan
+[hasil R2](09_R2_ARTICLE_MATERIALS.md). Langkah berikutnya **R3** adalah jalur
+aset foto nyata: pemilihan relevan berhak pakai, download lokal, credit,
+checksum, serta kontinuitas preview/render/fallback. Penulisan/carousel baru
+baru dihubungkan setelah materi dan aset memadai; ketersediaan parser bukan
+klaim bahwa semua sumber live sudah teruji.
 
 Otomatisasi produksi/publish tetap dijeda sampai owner menyetujui sampel. Lihat
 [laporan reset](../EDITORIAL_WORKSPACE_RESET_20261116.md) untuk backup, keadaan

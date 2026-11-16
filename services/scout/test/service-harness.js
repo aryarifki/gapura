@@ -10,7 +10,7 @@ const servicesRoot = fileURLToPath(new URL('../../', import.meta.url));
 // dotenv and the config/LLM client never read the workspace secrets in these tests.
 export async function loadService(relativePath, { client, config = {}, llm, fetchImpl } = {}) {
   const context = vm.createContext({
-    console, URL, AbortSignal, Response, Buffer,
+    console, URL, AbortSignal, Response, Buffer, structuredClone,
     process: { env: {}, argv: [] },
     fetch: fetchImpl || (async () => { throw new Error('Unexpected network request'); }),
   });
@@ -22,12 +22,12 @@ export async function loadService(relativePath, { client, config = {}, llm, fetc
   }
   async function load(filename) {
     if (cache.has(filename)) return cache.get(filename);
-    const module = new vm.SourceTextModule(await readFile(filename, 'utf8'), {
-      context, identifier: filename,
-      initializeImportMeta(meta) { meta.url = pathToFileURL(filename).href; },
-    });
-    cache.set(filename, module);
-    await module.link(async (specifier, parent) => {
+    const loading = (async () => {
+      const module = new vm.SourceTextModule(await readFile(filename, 'utf8'), {
+        context, identifier: filename,
+        initializeImportMeta(meta) { meta.url = pathToFileURL(filename).href; },
+      });
+      await module.link(async (specifier, parent) => {
       if (specifier === 'dotenv') return synthetic('dotenv', { default: { config() {} } });
       if (specifier === 'pg') return synthetic('pg', { default: { Pool: class {
         async connect() { if (!client) throw new Error('Unexpected database connection'); return client; }
@@ -42,8 +42,13 @@ export async function loadService(relativePath, { client, config = {}, llm, fetc
       if (specifier.startsWith('.')) return load(resolved);
       const imported = await import(isBuiltin(specifier) ? specifier : pathToFileURL(createRequire(parent.identifier).resolve(specifier)).href);
       return synthetic(specifier, Object.fromEntries(Object.keys(imported).map((key) => [key, imported[key]])));
-    });
-    return module;
+      });
+      return module;
+    })();
+    // Shared helper imports form a diamond. Reuse their completed link promise
+    // instead of returning a module whose dependency linkage is still pending.
+    cache.set(filename, loading);
+    return loading;
   }
   const module = await load(path.join(servicesRoot, relativePath));
   await module.evaluate();

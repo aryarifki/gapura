@@ -13,6 +13,7 @@ import pkg from 'pg';
 const { Pool } = pkg;
 import yaml from 'js-yaml';
 import { exec } from 'child_process';
+import { isIP } from 'node:net';
 import { createOriginGuard, mergeAgentConfig, redactAgentConfig } from './access.js';
 import { isValidSignedStorageRequest } from '../common/storage-signature.js';
 import { renderPayload } from '../common/images.js';
@@ -39,6 +40,8 @@ import { createPlan, regeneratePlan, updatePlan, executeJob, processQueuedJobs, 
 import { validateStudioTopic } from '../studio/validation.js';
 import { runtimeSecret } from '../common/runtime-secret.js';
 import { createMetaIntegration } from './meta-integration.js';
+import { createArticleReader } from '../scout/article-reader.js';
+import { createTopicMaterialService } from '../scout/enrichment.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -104,6 +107,9 @@ async function writeAudit(entity, entityId, action, actor = 'web_admin', payload
 }
 
 const scheduler = createScheduler();
+const topicMaterials = createTopicMaterialService({ pool, reader: createArticleReader() });
+const materialRequests = new Map();
+let activeMaterialRequests = 0;
 
 app.use('/integrations/meta', createMetaIntegration({ config: META_INTEGRATION_CONFIG }));
 
@@ -643,6 +649,49 @@ app.get('/api/topics', async (req, res) => {
 });
 
 // 7. Promote Topic to Copywriter Pipeline
+app.get('/api/topics/:id/material', async (req, res) => {
+  try {
+    const { rows: [topic] } = await pool.query('SELECT * FROM topics WHERE id=$1', [req.params.id]);
+    if (!topic) return res.status(404).json({ error: 'Topik tidak ditemukan.' });
+    const snapshot = await topicMaterials.latest(req.params.id);
+    const { rows: [score] } = await pool.query('SELECT verdict FROM topic_scores WHERE topic_id=$1 ORDER BY created_at DESC NULLS LAST,id DESC LIMIT 1', [req.params.id]);
+    const { rows: drafts } = await pool.query('SELECT id FROM drafts WHERE topic_id=$1 LIMIT 1', [req.params.id]);
+    const warnings = [];
+    if (!snapshot) warnings.push('Materi artikel belum diambil; ringkasan Radar tidak dianggap body lengkap.');
+    else if (snapshot.material.extraction.status !== 'full') warnings.push(`Status materi: ${snapshot.material.extraction.status}.`);
+    if (score?.verdict !== 'passed') warnings.push('Topik belum lolos Analis.');
+    if (!drafts.length) warnings.push('Copywriter belum memproduksi draf.');
+    return res.json({ topic, material: snapshot?.material || null, material_id: snapshot?.id || null, content_hash: snapshot?.content_hash || null, warnings });
+  } catch {
+    return res.status(500).json({ error: 'Materi topik tidak dapat dibaca.' });
+  }
+});
+
+app.post('/api/topics/:id/material/enrich', async (req, res) => {
+  const body = req.body || {};
+  if (Array.isArray(body) || typeof body !== 'object' || Object.keys(body).some((key) => key !== 'refresh') || (body.refresh !== undefined && typeof body.refresh !== 'boolean')) {
+    return res.status(400).json({ error: 'Hanya opsi refresh boolean yang diterima; URL mengikuti topik tersimpan.' });
+  }
+  const now = Date.now();
+  for (const [key, value] of materialRequests) if (value.expiresAt <= now) materialRequests.delete(key);
+  const source = req.socket.remoteAddress || 'unknown';
+  const forwardedAddress = req.get('cf-connecting-ip') || '';
+  const address = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(source) && isIP(forwardedAddress) ? forwardedAddress : source;
+  if (!materialRequests.has(address) && materialRequests.size >= 1000) return res.status(429).json({ error: 'Batas pengambilan materi tercapai. Coba lagi nanti.' });
+  const limit = materialRequests.get(address) || { count: 0, expiresAt: now + 10 * 60 * 1000 };
+  if (limit.count >= 10 || activeMaterialRequests >= 2) return res.status(429).json({ error: 'Batas pengambilan materi tercapai. Coba lagi setelah permintaan selesai.' });
+  limit.count++;
+  materialRequests.set(address, limit);
+  activeMaterialRequests++;
+  try {
+    const result = await topicMaterials.enrich(req.params.id, { refresh: body.refresh === true });
+    return res.json(result);
+  } catch (error) {
+    const reason = error.message === 'topic_not_found' ? 'Topik tidak ditemukan.' : 'Materi tidak dapat diproses; periksa URL sumber dan status akses.';
+    return res.status(error.message === 'topic_not_found' ? 404 : /material_.*invalid|topic_id_invalid/u.test(error.message) ? 409 : 500).json({ error: reason });
+  } finally { activeMaterialRequests--; }
+});
+
 app.post('/api/topics/:id/promote', async (req, res) => {
   const topicId = parseInt(req.params.id);
   try {

@@ -9,7 +9,10 @@ const { Pool } = pkg;
 import { XMLParser, XMLValidator } from 'fast-xml-parser';
 import { cleanText, fetchXAccount, fetchXQuery, normalizeArticleUrl, normalizeFeedItem, safeDate } from './sources.js';
 import { mapLimit } from '../common/concurrency.js';
+import { parseFeed } from '../common/rss.js';
 import { loadAgentsConfig } from '../common/llm.js';
+import { createMaterial } from './material.js';
+import { persistTopicMaterial } from './material-store.js';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -66,8 +69,8 @@ export async function runScout({ force = false, client: suppliedClient, config =
 
     const fetchedBySource = await mapLimit(sources, 4, async (src) => {
       try {
-        if (src.type === 'x_account') return { src, items: await fetchXAccount(src.url_or_query), error: null };
-        if (src.type === 'x_query') return { src, items: await fetchXQuery(src.url_or_query), error: null };
+        if (src.type === 'x_account') return { src, items: await fetchXAccount(src.url_or_query, { isolateErrors: true }), error: null };
+        if (src.type === 'x_query') return { src, items: await fetchXQuery(src.url_or_query, { isolateErrors: true }), error: null };
         if (src.type !== 'rss') throw new Error(`Tipe sumber ${src.type} belum didukung; gunakan rss, x_account, atau x_query.`);
         const response = await fetch(src.url_or_query, {
           headers: {
@@ -82,8 +85,7 @@ export async function runScout({ force = false, client: suppliedClient, config =
         if (XMLValidator.validate(xml) !== true) throw new Error('XML feed tidak valid.');
         const parsed = xmlParser.parse(xml);
         if (!parsed || (!Object.hasOwn(parsed, 'rss') && !Object.hasOwn(parsed, 'feed'))) throw new Error('Respons bukan RSS/Atom.');
-        const items = parsed?.rss?.channel?.item || parsed?.feed?.entry || [];
-        return { src, items: Array.isArray(items) ? items : [items], error: null };
+        return { src, items: parseFeed(xml, { isolateErrors: true }), error: null };
       } catch (error) {
         return { src, items: [], error };
       }
@@ -92,60 +94,90 @@ export async function runScout({ force = false, client: suppliedClient, config =
     for (const result of fetchedBySource) {
       const src = result.src;
       console.log(`[Scout] Polling: ${src.name} (${src.url_or_query})`);
-      const diagnostic = { source_id: src.id, status: 'success', seen: 0, inserted: 0, duplicates: 0, invalid: 0, providers: [], error: null };
+      const diagnostic = { source_id: src.id, status: 'success', seen: 0, inserted: 0, duplicates: 0, invalid: 0, errors: 0, providers: [], error: null };
+      const reportError = (error, invalid = false) => {
+        diagnostic[invalid ? 'invalid' : 'errors']++;
+        diagnostic.error = String(error?.message || error).slice(0, 500);
+        console.warn(`[Scout] Sumber ${src.name}: ${diagnostic.error}`);
+      };
+      const updateStatus = () => {
+        if (diagnostic.error) diagnostic.status = diagnostic.inserted || diagnostic.duplicates ? 'partial' : 'error';
+      };
       try {
         if (result.error) throw result.error;
         for (const rawItem of result.items.slice(0, maxItems)) {
           totalFetched++;
           diagnostic.seen++;
-          const item = src.type === 'rss' ? normalizeFeedItem(rawItem) : rawItem;
-          if (item?.type && !diagnostic.providers.includes(item.type)) diagnostic.providers.push(item.type);
-          const url = normalizeArticleUrl(item?.url);
-          const title = cleanText(item?.title);
-          if (!url || !title) { diagnostic.invalid++; continue; }
-          const hash = hashUrl(url);
-          const existing = await client.query('SELECT id FROM raw_items WHERE url_hash = $1', [hash]);
-          const similar = existing.rows.length ? existing : await client.query(
-            `SELECT id FROM raw_items WHERE fetched_at > NOW() - INTERVAL '7 days'
-               AND similarity(title, $1) > $2 LIMIT 1`, [title, dedupThreshold]
-          );
-          if (similar.rows.length) { totalDuplicates++; diagnostic.duplicates++; continue; }
-          const content = cleanText(item.content).slice(0, 1000);
-          const publisherUrl = normalizeArticleUrl(item.publisher_url);
-          await client.query('BEGIN');
+          if (rawItem?.error) { reportError(rawItem.error, true); continue; }
+          let item;
+          let material;
+          let url;
           try {
-            const raw = await client.query(
-              `INSERT INTO raw_items (source_id, url, url_hash, title, content_raw, published_at, image_url, publisher_url)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (url_hash) DO NOTHING RETURNING id`,
-              [src.id, url, hash, title, content, safeDate(item.published_at), item.image_url || null, publisherUrl]
+            item = src.type === 'rss' ? normalizeFeedItem(rawItem) : rawItem;
+            if (item?.type && !diagnostic.providers.includes(item.type)) diagnostic.providers.push(item.type);
+            url = normalizeArticleUrl(item?.url);
+            if (!url || !cleanText(item?.title)) { reportError(new Error('Feed item URL/title tidak valid; artikel harus HTTPS.'), true); continue; }
+            material = createMaterial({ ...item, url, source: cleanText(item.source || src.name) });
+          } catch (error) {
+            reportError(error, true);
+            continue;
+          }
+          try {
+            const title = material.headline;
+            const hash = hashUrl(url);
+            const existing = await client.query('SELECT id FROM raw_items WHERE url_hash = $1', [hash]);
+            const similar = existing.rows.length ? existing : await client.query(
+              `SELECT id FROM raw_items WHERE fetched_at > NOW() - INTERVAL '7 days'
+                 AND similarity(title, $1) > $2 LIMIT 1`, [title, dedupThreshold]
             );
-            if (raw.rows.length) {
-              await client.query(
-                `INSERT INTO topics (raw_item_id, title, summary, url, primary_source, status, source_kind, image_url, publisher_url)
-                 VALUES ($1,$2,$3,$4,$5,'new',$6,$7,$8)`,
-                [raw.rows[0].id, title, content, url, cleanText(item.source || src.name).slice(0, 100), item.type === 'x_api' ? 'x' : item.type || 'rss', item.image_url || null, publisherUrl]
+            if (similar.rows.length) { totalDuplicates++; diagnostic.duplicates++; continue; }
+            const content = material.body;
+            const summary = cleanText(item.summary || item.description || item.content).slice(0, 1000);
+            const publisherUrl = normalizeArticleUrl(item.publisher_url);
+            await client.query('BEGIN');
+            try {
+              const raw = await client.query(
+                `INSERT INTO raw_items (source_id, url, url_hash, title, content_raw, published_at, image_url, publisher_url, source_material)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb) ON CONFLICT (url_hash) DO NOTHING RETURNING id`,
+                [src.id, url, hash, material.raw_title, content, safeDate(item.published_at), item.image_url || null, publisherUrl, JSON.stringify(material)]
               );
+              if (raw.rows.length) {
+                const { rows: topicRows } = await client.query(
+                  `INSERT INTO topics (raw_item_id, title, summary, url, primary_source, status, source_kind, image_url, publisher_url,
+                     raw_title, normalized_title, source_published_at, source_updated_at, material_status)
+                   VALUES ($1,$2,$3,$4,$5,'new',$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
+                  [raw.rows[0].id, title, summary, url, material.publisher.slice(0, 100), item.type === 'x_api' ? 'x' : item.type || 'rss', item.image_url || null, publisherUrl,
+                    material.raw_title, material.headline, material.published_at, material.updated_at, material.extraction.status]
+                );
+                await persistTopicMaterial(client, topicRows[0].id, material);
+              }
+              await client.query('COMMIT');
+              if (raw.rows.length) { totalNew++; diagnostic.inserted++; }
+              else { totalDuplicates++; diagnostic.duplicates++; }
+            } catch (err) {
+              await client.query('ROLLBACK');
+              throw err;
             }
-            await client.query('COMMIT');
-            if (raw.rows.length) { totalNew++; diagnostic.inserted++; }
-            else { totalDuplicates++; diagnostic.duplicates++; }
-          } catch (err) {
-            await client.query('ROLLBACK');
-            throw err;
+          } catch (error) {
+            reportError(error);
           }
         }
       } catch (err) {
-        diagnostic.status = 'error';
-        diagnostic.error = String(err.message).slice(0, 500);
-        console.warn(`[Scout] Sumber ${src.name} gagal: ${diagnostic.error}`);
+        reportError(err);
       }
+      updateStatus();
       sourceResults.push(diagnostic);
-      await client.query(
-        `UPDATE sources SET last_scanned_at = NOW(), last_error = $2,
-           last_success_at = CASE WHEN $2::text IS NULL THEN NOW() ELSE last_success_at END,
-           last_scan_diagnostics = $3::jsonb, updated_at = NOW() WHERE id = $1`,
-        [src.id, diagnostic.error, JSON.stringify(diagnostic)]
-      );
+      try {
+        await client.query(
+          `UPDATE sources SET last_scanned_at = NOW(), last_error = $2,
+             last_success_at = CASE WHEN $2::text IS NULL THEN NOW() ELSE last_success_at END,
+             last_scan_diagnostics = $3::jsonb, updated_at = NOW() WHERE id = $1`,
+          [src.id, diagnostic.error, JSON.stringify(diagnostic)]
+        );
+      } catch (error) {
+        reportError(error);
+        updateStatus();
+      }
     }
 
     // Catat Telemetri Agen Scout
@@ -153,7 +185,7 @@ export async function runScout({ force = false, client: suppliedClient, config =
     await client.query(
       `INSERT INTO agent_runs (agent, started_at, completed_at, status, model, tokens_input, tokens_output, est_cost_idr)
        VALUES ('scout', NOW(), NOW(), $1, 'rss-poller-deterministic', 0, 0, 0.00)`,
-      [sourceResults.some((source) => source.status === 'error') ? 'error' : 'success']
+      [sourceResults.some((source) => source.status !== 'success') ? 'error' : 'success']
     );
 
     console.log(`\n[Scout] Selesai: ${totalFetched} item dipindai, ${totalDuplicates} duplikat diabaikan, ${totalNew} topik baru berhasil dimasukkan ke pipeline.`);

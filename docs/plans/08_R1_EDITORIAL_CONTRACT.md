@@ -213,11 +213,12 @@ Pemeriksaan read-only produksi menunjukkan `/api/drafts` dan
 `@gapuramedia` tetap `connected=true`. Tidak ada restart/deploy, perubahan
 data, panggilan model, atau publikasi yang diperlukan untuk menjalankan R1.
 
-R1 selesai pada kontrak yang dapat dieksekusi dan corpus sintetis. Belum selesai:
-pengayaan isi nyata (R2), pemilihan/download foto live (R3), sumber/Analis (R4),
+R1 selesai pada kontrak yang dapat dieksekusi dan corpus sintetis. Reader/snapshot
+materi R2 dilanjutkan dalam [hasil R2](09_R2_ARTICLE_MATERIALS.md). Tahap lanjutan:
+pemilihan/download foto live (R3), sumber/Analis (R4),
 penghapusan Verifikator runtime (R5), wiring produksi (R6), penerimaan visual
 owner (R7), dan batch/shadow/publish uji terkontrol (R8).
 
 Timer intake/publisher tetap disabled dan worker Studio background tetap
-dijeda. Langkah berikutnya R2 dimulai dari reader materi yang memisahkan body
-lengkap dari summary pendek, timestamp, URL artikel, dan metadata discovery.
+dijeda. Materi R2 memisahkan body lengkap dari summary pendek, timestamp,
+URL artikel, dan metadata discovery; foto siap pakai diselesaikan R3.

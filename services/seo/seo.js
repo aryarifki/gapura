@@ -19,7 +19,9 @@ import dotenv from 'dotenv';
 import { googleNewsRssUrl, domainOf } from '../common/rss.js';
 import { loadAgentsConfig } from '../common/llm.js';
 import { mapLimit } from '../common/concurrency.js';
-import { fetchSourceFeed as fetchFeed, fetchXAccount, fetchXQuery, normalizeArticleUrl } from '../scout/sources.js';
+import { fetchSourceFeed as fetchFeed, fetchXAccount, fetchXQuery, normalizeArticleUrl, safeDate } from '../scout/sources.js';
+import { createMaterial } from '../scout/material.js';
+import { persistTopicMaterial } from '../scout/material-store.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -61,9 +63,7 @@ function hashKey(input) {
 }
 
 function toDate(value) {
-  if (!value) return null;
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d;
+  return safeDate(value);
 }
 
 function hoursAgo(date) {
@@ -166,6 +166,8 @@ function xTrendItem(post) {
     provider: post.type, platform: post.type === 'google_news_proxy' ? 'news' : 'x',
     author: post.source || null, title: post.title, snippet: post.content, url: post.url,
     publisher_url: post.publisher_url || null, published_at: toDate(post.published_at), engagement,
+    raw_title: post.raw_title || post.title, content: post.content, content_html: post.content_html,
+    content_kind: post.content_kind, updated_at: post.updated_at, images: post.images, image_url: post.image_url,
   };
 }
 
@@ -183,6 +185,8 @@ async function fetchRsshubUser(handle) {
     url: it.link,
     published_at: toDate(it.pubDate),
     engagement: {},
+    raw_title: it.raw_title || it.title, content: it.content, content_html: it.content_html,
+    content_kind: it.content_kind, updated_at: it.updated_at, images: it.images, image_url: it.image_url,
   }));
 }
 
@@ -213,6 +217,8 @@ async function fetchGoogleNewsProxy(source) {
     publisher_url: normalizeArticleUrl(it.extra?.sourceUrl),
     published_at: toDate(it.pubDate),
     engagement: {},
+    raw_title: it.raw_title || it.title, content: it.content, content_html: it.content_html,
+    content_kind: it.content_kind, updated_at: it.updated_at, images: it.images, image_url: it.image_url,
   }));
 }
 
@@ -233,6 +239,8 @@ async function fetchGoogleTrends(source) {
       url: mainNews?.url || it.link || `https://trends.google.com/trends/explore?geo=${geo}&q=${encodeURIComponent(it.title)}`,
       published_at: toDate(it.pubDate),
       engagement: { approx_traffic: traffic, traffic_label: it.extra?.approxTraffic || '' },
+      raw_title: it.raw_title || it.title, content: mainNews?.title || it.description,
+      content_kind: 'feed_summary', images: it.images, image_url: it.image_url,
     };
   });
 }
@@ -281,6 +289,10 @@ async function saveTrendItem(client, source, item, keywords) {
 
   const canonicalUrl = normalizeArticleUrl(item.url);
   if (item.url && !canonicalUrl) return null;
+  const material = canonicalUrl ? createMaterial({
+    ...item, url: canonicalUrl, source: item.author || source.label || '', type: item.provider,
+    content: item.content || item.snippet || '', summary: item.snippet || '',
+  }) : null;
   const dedupSeed = canonicalUrl || `${item.platform}:${item.author || ''}:${title.toLowerCase()}`;
   const urlHash = hashKey(dedupSeed);
 
@@ -302,8 +314,8 @@ async function saveTrendItem(client, source, item, keywords) {
   const { rows } = await client.query(
     `INSERT INTO trend_items
        (trend_source_id, platform, provider, author, title, snippet, url, url_hash,
-         engagement, virality_score, score_breakdown, matched_keywords, published_at, publisher_url, fetched_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW())
+          engagement, virality_score, score_breakdown, matched_keywords, published_at, publisher_url, source_material, fetched_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,NOW())
      ON CONFLICT (url_hash) WHERE url_hash IS NOT NULL DO UPDATE SET
        virality_score = EXCLUDED.virality_score,
        engagement = EXCLUDED.engagement,
@@ -311,7 +323,8 @@ async function saveTrendItem(client, source, item, keywords) {
         matched_keywords = EXCLUDED.matched_keywords,
         published_at = LEAST(trend_items.published_at, EXCLUDED.published_at),
         first_seen_at = COALESCE(trend_items.first_seen_at, trend_items.fetched_at),
-        publisher_url = COALESCE(EXCLUDED.publisher_url, trend_items.publisher_url),
+         publisher_url = COALESCE(EXCLUDED.publisher_url, trend_items.publisher_url),
+         source_material = COALESCE(EXCLUDED.source_material, trend_items.source_material),
        fetched_at = NOW()
      RETURNING id, (xmax = 0) AS inserted`,
     [
@@ -329,6 +342,7 @@ async function saveTrendItem(client, source, item, keywords) {
       virality.matched,
       publishedAt,
       normalizeArticleUrl(item.publisher_url),
+      material ? JSON.stringify(material) : null,
     ]
   );
 
@@ -444,27 +458,39 @@ export async function listTrends({ limit = 50, platform = null, minScore = 0 } =
 export async function promoteTrendToTopic(trendId, client) {
   const db = client || (await pool.connect());
   const shouldRelease = !client;
+  let transaction = false;
   try {
-    const { rows } = await db.query('SELECT * FROM trend_items WHERE id = $1', [trendId]);
+    await db.query('BEGIN');
+    transaction = true;
+    const { rows } = await db.query('SELECT * FROM trend_items WHERE id = $1 FOR UPDATE', [trendId]);
     if (rows.length === 0) throw new Error('Trend tidak ditemukan');
     const trend = rows[0];
 
     if (trend.promoted_topic_id) {
+      await db.query('COMMIT');
+      transaction = false;
       return { topic_id: trend.promoted_topic_id, is_existing: true };
     }
 
     const sourceLabel = trend.author || (trend.platform === 'x' ? 'X/Twitter' : 'Trending');
-    const summaryParts = [trend.snippet, trend.engagement?.traffic_label ? `Volume pencarian: ${trend.engagement.traffic_label}` : '']
-      .filter(Boolean)
-      .join(' ');
+    const material = trend.source_material ? JSON.parse(JSON.stringify(trend.source_material)) : createMaterial({
+      title: trend.title, raw_title: trend.title, url: trend.url, source: sourceLabel,
+      type: trend.provider, content: trend.snippet || '', summary: trend.snippet || '',
+      published_at: trend.published_at?.toISOString?.() || trend.published_at || null,
+      content_kind: 'feed_summary',
+    });
+    const summary = normalizeText(trend.snippet || '').slice(0, 1000);
 
     const { rows: topicRows } = await db.query(
-      `INSERT INTO topics (title, summary, url, primary_source, status, source_kind, trend_score, publisher_url)
-       VALUES ($1, $2, $3, $4, 'new', 'trend', $5, $6)
+      `INSERT INTO topics (title, summary, url, primary_source, status, source_kind, trend_score, publisher_url,
+         raw_title,normalized_title,source_published_at,source_updated_at,material_status)
+       VALUES ($1, $2, $3, $4, 'new', 'trend', $5, $6, $7, $8, $9, $10, $11)
        RETURNING id`,
-      [trend.title, summaryParts || trend.title, trend.url, sourceLabel, trend.virality_score, normalizeArticleUrl(trend.publisher_url)]
+      [material.headline || trend.title, summary || trend.title, trend.url, material.publisher || sourceLabel, trend.virality_score, normalizeArticleUrl(trend.publisher_url),
+        material.raw_title, material.headline, material.published_at, material.updated_at, material.extraction.status]
     );
     const topicId = topicRows[0].id;
+    await persistTopicMaterial(db, topicId, material);
 
     await db.query('UPDATE trend_items SET promoted_topic_id = $2 WHERE id = $1', [trendId, topicId]);
     await db.query(
@@ -472,8 +498,12 @@ export async function promoteTrendToTopic(trendId, client) {
        VALUES ('topic', $1, 'promote_trend', 'seo-agent', $2)`,
       [topicId, JSON.stringify({ trend_id: trendId, platform: trend.platform, virality_score: trend.virality_score })]
     );
-
+    await db.query('COMMIT');
+    transaction = false;
     return { topic_id: topicId, is_existing: false };
+  } catch (error) {
+    if (transaction) await db.query('ROLLBACK');
+    throw error;
   } finally {
     if (shouldRelease) db.release();
   }

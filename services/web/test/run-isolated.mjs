@@ -34,7 +34,7 @@ try {
     STORAGE_PATH: path.join(temp, 'storage'), DESIGN_SYSTEM_PATH: path.join(temp, 'design-system'),
   };
   const migrations = ['database/schema.sql', 'database/migrations/20261111_seo_verifikator.sql', 'database/migrations/20261111_prompt_studio.sql',
-    ...(await fs.readdir(path.join(root, 'database/migrations'))).filter((file) => file.startsWith('20261116_')).sort().map((file) => `database/migrations/${file}`)];
+    ...(await fs.readdir(path.join(root, 'database/migrations'))).filter((file) => /^\d{8}_.*\.sql$/u.test(file) && file >= '20261116_').sort().map((file) => `database/migrations/${file}`)];
   for (const file of migrations) {
     const result = spawnSync('psql', ['-h', '127.0.0.1', '-U', name, '-d', name, '-v', 'ON_ERROR_STOP=1', '-q', '-f', path.join(root, file)], { env, encoding: 'utf8' });
     if (result.status) throw new Error(`${file}: ${result.stderr}`);

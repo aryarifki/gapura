@@ -9,9 +9,10 @@ publisher dijeda (`disabled`), worker Studio background dinonaktifkan, dashboard
 dan koneksi Instagram tetap tersedia. Perubahan desain/isi berikutnya mengikuti
 [blueprint editorial baru](docs/plans/07_EDITORIAL_REDESIGN_BLUEPRINT.md) dan
 [laporan reset](docs/EDITORIAL_WORKSPACE_RESET_20261116.md). Kontrak dan corpus
-sintetis [R1](docs/plans/08_R1_EDITORIAL_CONTRACT.md) sudah
-dibuat terpisah dari runtime produksi. Pengayaan artikel/foto, penulisan baru,
-dan penghapusan Verifikator masih tahap lanjutan; hasil baru belum diproduksi.
+sintetis [R1](docs/plans/08_R1_EDITORIAL_CONTRACT.md) tersedia offline.
+[R2](docs/plans/09_R2_ARTICLE_MATERIALS.md) menambahkan body feed, parser artikel,
+snapshot materi dan API pengayaan manual, tanpa backfill/draf baru. Foto siap
+pakai, penulisan baru dan penghapusan Verifikator masih tahap lanjutan.
 
 ---
 
@@ -160,6 +161,7 @@ Dokumen evaluasi teknis, daftar permasalahan yang telah diselesaikan, dan fitur 
 ### Ringkasan Status Fitur:
 - [x] Workspace desain/konten bersih dan backup teruji untuk evaluasi ulang
 - [x] Blueprint pembaruan editorial enam desk tersusun; kontrak dan corpus R1 tersedia offline
+- [x] R2 — body feed/artikel, metadata sumber dan snapshot versi terpisah dari ringkasan Radar; endpoint pengayaan manual tersedia tanpa produksi draf
 - [x] Web Review Dashboard Responsif (Desktop & Mobile)
 - [x] Microservice Render Satori + Sharp (1080x1350 px)
 - [x] Migrasi Identitas Penuh ke Brand Guidelines Gapura Media (`@gapuramedia`)
