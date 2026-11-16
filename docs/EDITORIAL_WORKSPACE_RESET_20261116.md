@@ -61,6 +61,10 @@ Tabel yang tetap utuh pada cutoff reset:
 Report verifikasi historis belum dihapus pada reset desain. Penghapusan seluruh
 fitur runtime/schema Verifikator masuk tahap R5 blueprint, setelah semua
 dependensinya dibersihkan; bukan menyamarkan report lama menjadi verified.
+Gate R5 juga wajib membuktikan bahwa agen tidak dapat dipilih/dipanggil lewat
+pipeline, Studio, API, Telegram, publisher, konfigurasi, prompt aktif, job atau
+polling; produksi tidak membuat report atau panggilan LLM verifier. Enum/report
+historis boleh diarsipkan selama tidak ikut query keputusan runtime.
 
 Checksum runtime env, file kredensial Meta Unified, admin/signature secret,
 provider keys, `config/`, dan `design-system/` cocok sebelum–sesudah reset.
@@ -91,9 +95,11 @@ diubah hanya untuk jeda evaluasi sementara.
 ## Pemulihan / aktivasi kembali
 
 Tidak mengaktifkan otomatisasi kembali sampai desain dan isi konten disetujui
-owner. Setelah R7/R8 blueprint lulus, operator menghapus **hanya** drop-in jeda,
-reload systemd, restart web, dan enable timer secara eksplisit. Jangan mengubah
-drop-in integrasi/secret atau mengaktifkan workflow otomatis n8n sebagai pengganti.
+owner. Urutan tunggalnya: **R7 sampel disetujui → R8 batch/shadow dijalankan
+manual → satu publish uji mendapat persetujuan terpisah → timer diaktifkan atas
+mandat eksplisit**. Operator kemudian menghapus **hanya** drop-in jeda, reload
+systemd, restart web, dan enable timer. Jangan mengubah drop-in integrasi/secret
+atau mengaktifkan workflow otomatis n8n sebagai pengganti.
 
 ```bash
 # Hanya sesudah owner menerima sampel dan memberi mandat aktivasi.

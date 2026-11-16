@@ -51,7 +51,9 @@ bukan preferensi visual owner yang sudah terbukti.
 
 Audit terdiri dari pemeriksaan source code, reproduksi offline, dan inventaris
 database sebelum reset. Endpoint feed baru serta izin lisensi setiap penerbit
-belum diuji; kandidat sumber dalam dokumen ini belum dinyatakan aktif.
+belum diuji; kandidat sumber dalam dokumen ini belum dinyatakan aktif. Bukti
+reproduksi sintetis tersimpan di [audit baseline](../EDITORIAL_BASELINE_AUDIT_20261116.md);
+jumlah produksi dan verifikasi backup mengikuti laporan reset, bukan fixture.
 
 | No. | Temuan owner | Penyebab yang teramati | Perubahan yang direncanakan |
 | --- | --- | --- | --- |
@@ -177,6 +179,16 @@ otomatis dalam alur baru. UI boleh menunjukkan status teknis seperti artikel
 belum terambil/foto gagal; status itu hanya di editor, tidak disisipkan ke
 headline/caption.
 
+**Definisi operasional materi cukup:** bahan yang tersedia mendukung minimal
+tiga kontribusi slide berbeda; pernyataan memiliki atribusi yang jelas, dan
+angka/kutipan yang dipakai mempunyai rujukan bagian sumber. Ini bukan syarat
+dua sumber, artikel penuh, konfirmasi resmi, atau keputusan LLM tentang
+kebenaran. Berita tentang suatu statement dapat bertumpu pada satu rekaman,
+rilis, atau artikel yang diatribusikan jelas. Jika bahan sudah cukup, produksi
+dapat berjalan tanpa menunggu sumber tambahan. Ketidakcukupan hanya menunjukkan
+bagian isi yang belum tersedia untuk produk carousel; redaktur dapat menambah
+materi atau menyunting rencana, tanpa membuat report verifikasi.
+
 ## 5. Kontrak materi berita
 
 Gunakan `topics` sebagai identitas berita agar tidak membangun sistem paralel.
@@ -251,12 +263,25 @@ ukuran/dimensi terbatas, timeout, serta tidak menerima SVG atau URL bebas dari
 model. Gambar disimpan lokal sebelum render, bukan diambil dari internet oleh
 engine render.
 
+Kebijakan minimum hak foto ditetapkan di R1, sebelum sampel dibuat: foto milik
+Gapura/unggahan yang dinyatakan berhak oleh redaktur, berlisensi yang sesuai
+penggunaan, atau materi resmi yang syarat penggunaannya secara eksplisit
+mengizinkan. Catat asal, pemilik/credit, dasar izin, dan batas penggunaan.
+Foto artikel milik media lain dengan hak yang belum diketahui tidak otomatis
+dipakai hanya karena URL dapat diunduh; redaktur memilih aset sah pengganti.
+Ketepatan crop dan penempatan credit disempurnakan melalui R7.
+
 Status aset harus terlihat: candidate/selected/downloaded/rejected/failed, dengan
 alasan seperti host tidak diizinkan, 403, terlalu kecil, bytes invalid,
 hak belum jelas, atau tidak relevan. Tidak ada kegagalan diam-diam yang berakhir
 sebagai desain sukses tanpa foto. Bila foto wajib belum tersedia, draf berstatus
 `needs_media` dan redaktur diminta memilih/unggah foto. Jangan mengambil foto
 acak hanya agar metrik gambar lulus.
+
+Draf `needs_media` tetap dapat dibuka, diedit, dan dipratinjau selama eksperimen;
+belum memenuhi acceptance produk berita siap unggah. Cover tanpa foto bukan
+pengecualian otomatis. Jika owner kemudian menginginkan produk infografik tanpa
+foto, tetapkan mode dan kriteria tersendiri secara eksplisit.
 
 Paling sedikit cover menggunakan foto nyata yang dipilih. Layout isi `photo`
 opsional dikembangkan untuk kronologi/lokasi/statement bergambar. Local asset
@@ -406,7 +431,7 @@ Semua perubahan kode dimulai dari tes merah yang mereproduksi masalah.
 | Tahap | Hasil | Gate sebelum lanjut |
 | --- | --- | --- |
 | R0 — Workspace bersih | Backup/restore teruji, konten kosong, timer dan worker otomatis dijeda | **Selesai**, lihat laporan reset; koneksi Meta tetap connected |
-| R1 — Kontrak editorial | Taxonomy enam desk, material/media contract, aturan headline/caption/carousel, corpus fixture | Semua delapan kebutuhan memiliki acceptance dan contoh buruk/baik |
+| R1 — Kontrak editorial | Taxonomy enam desk, material/media contract, kebijakan hak/credit minimum, aturan headline/caption/carousel, corpus fixture | Semua delapan kebutuhan memiliki acceptance dan contoh buruk/baik; fixture foto memiliki dasar penggunaan |
 | R2 — Pengambilan materi | Feed body penuh yang tersedia, publisher article resolver, metadata, akses status, dedup peristiwa | Fixture artikel penuh/parsial/gagal dan tanggal benar; tidak mengarang body |
 | R3 — Foto end-to-end | Asset ID lokal, host policy tunggal, rights/credit, hydration, fallback/photo layout | Foto nyata tampil pada normal/fallback/regenerasi; semua kegagalan terlihat |
 | R4 — Sources dan Analis | Katalog tervalidasi enam desk, scoring kepentingan publik, query aktual | Fixture tiap desk lolos/gugur sesuai materi dan konteks; endpoint gagal nonaktif |
@@ -418,6 +443,11 @@ Semua perubahan kode dimulai dari tes merah yang mereproduksi masalah.
 Jangan mengaktifkan kembali timer hanya karena test unit hijau. Keputusan style
 dan kedalaman isi harus lulus review owner pada R7. Sampel awal memakai materi
 yang diizinkan, tidak membutuhkan publikasi live.
+
+Urutan aktivasi yang dipakai semua runbook: R7 sampel disetujui → R8 batch dan
+shadow dijalankan manual → satu publish uji mendapat persetujuan tersendiri →
+otomatisasi diaktifkan atas mandat eksplisit owner. Lulus tes atau selesainya
+reset tidak otomatis memberikan mandat untuk menyalakan timer.
 
 ## 12. Matriks pengujian dan definisi selesai
 
@@ -436,6 +466,14 @@ yang diizinkan, tidak membutuhkan publikasi live.
 - Minimal satu carousel 3–9 slide untuk setiap berita siap review; 1/2/10 slide
   ditolak pada jalur berita, materi kurang tidak menjadi sukses single.
 - Enam desk memiliki fixture: politik, sosial, hukum, lingkungan, ekonomi, bursa.
+- Corpus mencakup minimal satu contoh lengkap berita statement dan satu berita
+  kronologi: headline → isi carousel → statement/urutan kejadian → caption
+  mendalam. Setiap bagian dapat ditelusuri ke materi fixture; struktur ini tidak
+  dipaksakan untuk semua jenis berita.
+- Fixture enam desk memakai adapter/query dari katalog sumber baru yang
+  diseleksi untuk desknya, bukan hanya mengganti kategori pada feed finansial
+  lama. Uji integrasi menegaskan source ID, desk, tanggal, URL artikel, dan aset
+  yang benar-benar dipakai.
 - Setiap slide menyumbang informasi berbeda; kutipan hanya bila ada speaker/
   kutipan persis; timeline hanya bila urutan/waktu tersedia.
 - Parafrasa yang setara boleh lolos; angka, unit, periode, nama atau negasi yang
@@ -457,6 +495,10 @@ yang diizinkan, tidak membutuhkan publikasi live.
 
 - Pencarian referensi aktif `verifyTopic`, `verification_reports`, confidence dan
   state `verifying` tidak menemukan consumer selain migrasi/audit historis.
+- Agen Verifikator tidak dapat dipilih/dipanggil lewat pipeline, Studio, API,
+  Telegram, publisher, konfigurasi maupun prompt aktif. Produksi tidak membuat
+  report atau panggilan LLM verifier; tidak ada polling/job background verifier.
+  Enum/report arsip tidak boleh ikut query keputusan runtime.
 - API lama 404, menu/tab/badge/tombol/polling hilang, navigasi/Back tetap berjalan.
 - Produksi materi cukup tanpa report berhasil. Human review tetap wajib;
   approve stale revision, edit saat publish, akun tidak cocok, jadwal belum tiba,
@@ -470,6 +512,11 @@ Batch 20 draf berturut-turut harus memenuhi kontrak: 100% carousel bermakna,
 0 quote/angka demonstrasi, 0 parsing error yang disamarkan menjadi konten tipis,
 0 posting tanpa review. Target 100% ini berlaku pada corpus yang memang punya
 materi/foto; kegagalan sumber luar harus terlihat dan menahan produksi.
+
+Denominator batch harus dilaporkan: jumlah kandidat dicoba, berhasil, tertahan
+karena materi/foto, gagal teknis, dan diterima/redaktur ditolak. Target 100%
+di atas hanya berlaku pada kandidat yang memiliki materi dan foto berhak pakai;
+persentase tidak boleh menyembunyikan kegagalan resolver sumber atau downloader.
 
 Owner menilai setiap sampel pada empat aspek 1–5: visual, kelengkapan berita,
 keterbacaan caption, dan relevansi isu. **Usulan gate:** tiap aspek minimal 4,
@@ -493,11 +540,13 @@ owner, bukan klaim penilaian yang sudah dilakukan.
   scraping berbayar, integrasi Threads baru, multi-user/RBAC, kalender drag-drop,
   penghapusan posting remote, atau aktivasi autopost massal.
 
-Keputusan terbuka untuk diselesaikan melalui R7: proporsi desk, contoh referensi
-visual owner, gaya foto penuh/kolase, batas panjang headline, kebijakan credit
-dan lisensi, kebutuhan caption Facebook/Threads, serta status produksi manual
-ketika foto belum tersedia. Default sementara tidak memaksa jawaban sebelum
-blueprint dapat ditinjau.
+Keputusan terbuka melalui R7: proporsi desk, contoh referensi visual owner, gaya
+foto penuh/kolase, batas panjang headline, tata letak credit, serta kebutuhan
+caption Facebook/Threads. Dasar hak penggunaan foto sudah wajib diputuskan
+lebih awal di R1–R3; foto belum tersedia tetap dapat diedit sebagai `needs_media`,
+bukan otomatis dianggap siap unggah. Mode produk tanpa foto, jika diinginkan,
+memerlukan keputusan eksplisit. Default sementara ini membantu blueprint
+ditinjau tanpa mengklaim preferensi owner telah tervalidasi.
 
 ## 14. Langkah konkret berikutnya
 
