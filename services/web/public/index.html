@@ -8,22 +8,35 @@
   <link rel="apple-touch-icon" href="/assets/logo.png">
   <meta name="theme-color" content="#0B0E14">
   <meta name="description" content="Studio Redaksi Otomasi Konten Niche Data, Hukum & Ekonomi Bursa (@gapuramedia)">
-  <link rel="stylesheet" href="/style.css?v=3.5.0">
+  <link rel="stylesheet" href="/style.css?v=3.7.0">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
 <body>
+  <section id="admin-access-gate" class="access-gate" hidden aria-labelledby="access-title">
+    <form id="admin-access-form" class="access-panel">
+      <img src="/assets/logo.png" alt="" width="42" height="42">
+      <p class="access-kicker">GAPURA MEDIA · RUANG REDAKSI</p>
+      <h1 id="access-title">Akses Admin</h1>
+      <p>Masukkan token admin untuk membuka ruang redaksi.</p>
+      <label for="admin-access-token">Token admin</label>
+      <input id="admin-access-token" type="password" autocomplete="current-password" required>
+      <p id="admin-access-message" role="status" aria-live="polite"></p>
+      <button class="btn btn-lime" type="submit">Masuk</button>
+    </form>
+  </section>
+  <script type="module" src="/icon-map.js?v=3.7.0"></script>
   <!-- Mobile Top Bar -->
   <div class="mobile-top-bar">
     <div class="mobile-brand">
       <img src="/assets/logo.png" alt="Gapura Logo" style="width: 28px !important; height: 28px !important; border-radius: 4px; object-fit: contain;">
       <span>GAPURA STUDIO</span>
     </div>
-    <button class="btn-mobile-menu" id="btn-toggle-sidebar" aria-label="Menu">☰</button>
+    <button class="btn-mobile-menu" id="btn-toggle-sidebar" type="button" aria-label="Buka atau tutup menu" title="Buka atau tutup menu"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#menu"></use></svg></button>
   </div>
 
-  <div class="app-container">
+  <div class="app-container" inert>
     <!-- Sidebar Navigation -->
     <aside class="sidebar" id="app-sidebar">
       <div>
@@ -35,47 +48,47 @@
           </div>
         </div>
 
-        <nav class="sidebar-nav">
+        <nav class="sidebar-nav" aria-label="Navigasi ruang redaksi">
           <div class="nav-section-label">Redaksi</div>
-          <div class="nav-item active" data-view="view-overview">
-            <div class="nav-item-left"><span>📊</span> <span>Overview</span></div>
-          </div>
-          <div class="nav-item" data-view="view-review">
-            <div class="nav-item-left"><span>📑</span> <span>Antrian Review</span></div>
+          <button type="button" class="nav-item active" data-view="view-overview">
+            <span class="nav-item-left"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#chart-no-axes-column"></use></svg> <span>Overview</span></span>
+          </button>
+          <button type="button" class="nav-item" data-view="view-review">
+            <span class="nav-item-left"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#files"></use></svg> <span>Antrian Review</span></span>
             <span class="nav-badge" id="sidebar-review-badge">0</span>
-          </div>
-          <div class="nav-item" data-view="view-topics">
-            <div class="nav-item-left"><span>🎯</span> <span>Radar Topik</span></div>
-          </div>
-          <div class="nav-item" data-view="view-sources">
-            <div class="nav-item-left"><span>📡</span> <span>Sumber Berita</span></div>
+          </button>
+          <button type="button" class="nav-item" data-view="view-topics">
+            <span class="nav-item-left"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#target"></use></svg> <span>Radar Topik</span></span>
+          </button>
+          <button type="button" class="nav-item" data-view="view-sources">
+            <span class="nav-item-left"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#radio-tower"></use></svg> <span>Sumber Berita</span></span>
             <span class="nav-badge" id="sidebar-sources-badge">11</span>
-          </div>
-          <div class="nav-item" data-view="view-trends">
-            <div class="nav-item-left"><span>🔥</span> <span>Radar Trending</span></div>
+          </button>
+          <button type="button" class="nav-item" data-view="view-trends">
+            <span class="nav-item-left"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#flame"></use></svg> <span>Radar Trending</span></span>
             <span class="nav-badge" id="sidebar-trends-badge">0</span>
-          </div>
-          <div class="nav-item" data-view="view-verifications">
-            <div class="nav-item-left"><span>🛡️</span> <span>Verifikasi Berita</span></div>
+          </button>
+          <button type="button" class="nav-item" data-view="view-verifications">
+            <span class="nav-item-left"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#shield-check"></use></svg> <span>Verifikasi Berita</span></span>
             <span class="nav-badge" id="sidebar-verif-badge">0</span>
-          </div>
-          <div class="nav-item" data-view="view-studio-prompt">
-            <div class="nav-item-left"><span>🎬</span> <span>Studio Prompt</span></div>
-          </div>
+          </button>
+          <button type="button" class="nav-item" data-view="view-studio-prompt">
+            <span class="nav-item-left"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#clapperboard"></use></svg> <span>Studio Prompt</span></span>
+          </button>
 
           <div class="nav-section-label">Sistem & Studio</div>
-          <div class="nav-item" data-view="view-agents">
-            <div class="nav-item-left"><span>🤖</span> <span>Kustomisasi Agen AI</span></div>
-          </div>
-          <div class="nav-item" data-view="view-n8n">
-            <div class="nav-item-left"><span>⚡</span> <span>n8n Studio</span></div>
-          </div>
-          <div class="nav-item" data-view="view-tokens">
-            <div class="nav-item-left"><span>🎨</span> <span>Studio Desain & Live Preview</span></div>
-          </div>
-          <div class="nav-item" data-view="view-audit">
-            <div class="nav-item-left"><span>📜</span> <span>Log Aktivitas</span></div>
-          </div>
+          <button type="button" class="nav-item" data-view="view-agents">
+            <span class="nav-item-left"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#bot"></use></svg> <span>Kustomisasi Agen AI</span></span>
+          </button>
+          <button type="button" class="nav-item" data-view="view-n8n">
+            <span class="nav-item-left"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#zap"></use></svg> <span>Otomasi Redaksi</span></span>
+          </button>
+          <button type="button" class="nav-item" data-view="view-tokens">
+            <span class="nav-item-left"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#palette"></use></svg> <span>Studio Desain & Live Preview</span></span>
+          </button>
+          <button type="button" class="nav-item" data-view="view-audit">
+            <span class="nav-item-left"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#scroll-text"></use></svg> <span>Log Aktivitas</span></span>
+          </button>
         </nav>
       </div>
 
@@ -103,14 +116,14 @@
               <span class="redaksi-greeting">Selamat Datang, Arya</span>
               <h1 class="redaksi-title">RUANG REDAKSI</h1>
               <div class="redaksi-pills">
-                <span class="pill-status">Mode: Otomatis penuh</span>
-                <span class="pill-status active"><span class="dot"></span> AI aktif · jam kerja 07.00–22.00 WIB</span>
+                <span class="pill-status">Otomasi draf · review redaksi wajib</span>
+                <span class="pill-status active"><span class="dot"></span> Data sumber, skor, verifikasi, lalu review</span>
               </div>
             </div>
             <div class="redaksi-actions-right">
-              <span class="cost-chip">✨ AI Hari ini: Rp 0 · 4 Agen Siap</span>
+              <span class="cost-chip">Biaya mengikuti provider yang dikonfigurasi</span>
               <button class="btn btn-lime" id="btn-run-pipeline-top">
-                <span>🔄</span> <span>Cari topik sekarang</span>
+                <svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#refresh-cw"></use></svg> <span>Cari topik sekarang</span>
               </button>
             </div>
           </div>
@@ -142,31 +155,31 @@
           <!-- 4 Agent Status Cards -->
           <div class="agents-row">
             <div class="agent-status-card">
-              <div class="agent-icon-circle agent-icon-scout">📡</div>
+              <div class="agent-icon-circle agent-icon-scout"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#radio-tower"></use></svg></div>
               <div class="agent-info">
                 <div class="agent-name-row">Scout <span class="dot"></span></div>
                 <div class="agent-desc">Pemantau topik</div>
-                <div class="agent-sub">Standby · 11 sumber aktif</div>
+                <div class="agent-sub">RSS, X API, dan fallback tercatat</div>
               </div>
             </div>
             <div class="agent-status-card">
-              <div class="agent-icon-circle agent-icon-analis">🎯</div>
+              <div class="agent-icon-circle agent-icon-analis"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#target"></use></svg></div>
               <div class="agent-info">
                 <div class="agent-name-row">Analis <span class="dot"></span></div>
                 <div class="agent-desc">Skor 0–100 & Fast-fail</div>
-                <div class="agent-sub">Standby · ambang skor 75</div>
+                <div class="agent-sub">Ambang mengikuti Agent Settings</div>
               </div>
             </div>
             <div class="agent-status-card">
-              <div class="agent-icon-circle agent-icon-copy">✍️</div>
+              <div class="agent-icon-circle agent-icon-copy"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#pen-line"></use></svg></div>
               <div class="agent-info">
                 <div class="agent-name-row">Copywriter <span class="dot"></span></div>
                 <div class="agent-desc">Headline & editorial</div>
-                <div class="agent-sub">Standby · 5 slide carousel</div>
+                <div class="agent-sub">Naskah berbasis bukti sumber</div>
               </div>
             </div>
             <div class="agent-status-card">
-              <div class="agent-icon-circle agent-icon-designer">🎨</div>
+              <div class="agent-icon-circle agent-icon-designer"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#palette"></use></svg></div>
               <div class="agent-info">
                 <div class="agent-name-row">Designer <span class="dot"></span></div>
                 <div class="agent-desc">Render deterministik</div>
@@ -218,28 +231,31 @@
           <div id="review-editor-subview" style="display: none;">
             <div class="editor-top-bar">
               <button class="btn-back-link" id="btn-back-to-gallery">
-                <span>←</span> <span>Kembali ke antrian review</span>
+                <svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#arrow-left"></use></svg> <span>Kembali ke antrian review</span>
               </button>
 
               <div class="editor-actions-group">
-                <span class="editor-source-chip" id="editor-source-link">🔗 Link sumber</span>
-                <button class="btn btn-primary" id="btn-action-regenerate-ai" style="background: linear-gradient(135deg, #1f7e81 0%, #102b45 100%); border: 1px solid var(--lime); color: #fff;">✨ Regenerate AI (Desain Ulang)</button>
-                <button class="btn btn-lime" id="btn-action-post-now">📸 Posting sekarang</button>
-                <button class="btn btn-dark" id="btn-action-approve-auto">⏱️ Setujui (Auto)</button>
-                <button class="btn btn-dark" id="btn-action-approve-manual">✈️ Sudah diposting manual</button>
-                <button class="btn btn-danger" id="btn-action-reject">❌ Tolak</button>
+                <span class="editor-source-chip" id="editor-source-link"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#link"></use></svg> Link sumber</span>
+                <button class="btn btn-primary" id="btn-action-regenerate-ai">Rancang ulang</button>
+                <button class="btn btn-lime" id="btn-action-approve-auto">Setujui & jadwalkan</button>
+                <button class="btn btn-dark" id="btn-action-approve-manual">Konfirmasi sudah terbit manual</button>
+                <button class="btn btn-danger" id="btn-action-reject"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#circle-x"></use></svg> Tolak</button>
               </div>
             </div>
 
+            <label class="editor-review-confirmation" for="editor-reviewed">
+              <input id="editor-reviewed" type="checkbox">
+              <span>Saya sudah membaca sumber, memeriksa angka, caption, dan seluruh slide. Perubahan terbaru sudah ditinjau sebelum persetujuan.</span>
+            </label>
             <div class="editor-main-grid">
               <!-- Left Column: Carousel Preview -->
               <div class="editor-preview-column">
                 <div class="carousel-phone-frame" style="position: relative;">
                   <img id="editor-main-slide-img" class="carousel-phone-img" src="" alt="Slide Preview">
-                  <button class="carousel-nav-arrow left" id="btn-slide-prev">&#10094;</button>
-                  <button class="carousel-nav-arrow right" id="btn-slide-next">&#10095;</button>
+                  <button class="carousel-nav-arrow left" id="btn-slide-prev" type="button" aria-label="Slide sebelumnya" title="Slide sebelumnya"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#arrow-left"></use></svg></button>
+                  <button class="carousel-nav-arrow right" id="btn-slide-next" type="button" aria-label="Slide selanjutnya" title="Slide selanjutnya"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#arrow-right"></use></svg></button>
                   <div id="editor-render-indicator" style="display: none; position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,0.75); border: 1px solid var(--lime); border-radius: 20px; padding: 4px 10px; font-size: 11px; color: var(--lime); z-index: 10;">
-                    ⚡ Merender Pratinjau...
+                    <svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#zap"></use></svg> Merender Pratinjau...
                   </div>
                 </div>
 
@@ -248,9 +264,9 @@
                 </div>
 
                 <div class="editor-preview-btns">
-                  <button class="btn btn-dark" id="btn-download-all-slides">⬇ Download semua slide</button>
-                  <button class="btn btn-dark" id="btn-copy-caption-full">📋 Copy caption + hashtag</button>
-                  <button class="btn btn-dark" id="btn-open-single-slide">🔍 Buka slide resolusi penuh ↗</button>
+                  <button class="btn btn-dark" id="btn-download-all-slides"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#download"></use></svg> Download semua slide</button>
+                  <button class="btn btn-dark" id="btn-copy-caption-full"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#copy"></use></svg> Copy caption + hashtag</button>
+                  <button class="btn btn-dark" id="btn-open-single-slide"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#search"></use></svg> Buka slide resolusi penuh <svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#external-link"></use></svg></button>
                 </div>
               </div>
 
@@ -264,8 +280,8 @@
                       <span id="editor-live-status-pill" class="pill-status active" style="font-size: 10px; padding: 2px 8px;"><span class="dot"></span> Live Preview Aktif</span>
                     </div>
                     <div style="display: flex; gap: 6px;">
-                      <button class="btn btn-dark" id="btn-add-slide-editor" title="Tambah slide baru" style="padding: 4px 10px; font-size: 11px;">➕ Tambah Slide</button>
-                      <button class="btn btn-dark" id="btn-del-slide-editor" title="Hapus slide ini" style="padding: 4px 10px; font-size: 11px; color: var(--down);">🗑️ Hapus</button>
+                      <button class="btn btn-dark" id="btn-add-slide-editor" title="Tambah slide baru" style="padding: 4px 10px; font-size: 11px;"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#plus"></use></svg> Tambah Slide</button>
+                      <button class="btn btn-dark" id="btn-del-slide-editor" title="Hapus slide ini" style="padding: 4px 10px; font-size: 11px; color: var(--down);"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#trash"></use></svg> Hapus</button>
                     </div>
                   </div>
 
@@ -287,7 +303,7 @@
                         <option value="deep-analysis">deep-analysis (Analisis Mendalam)</option>
                         <option value="takeaway-points">takeaway-points (Poin Kesimpulan)</option>
                         <option value="cta-close">cta-close (Slide Penutup & CTA)</option>
-                        <option value="custom">✏️ Layout Kustom Bebas...</option>
+                        <option value="custom">Layout Kustom Bebas...</option>
                       </select>
                       <input type="text" id="editor-custom-layout-input" class="form-input-dark" style="flex: 1; display: none;" placeholder="Nama layout kustom...">
                     </div>
@@ -315,7 +331,7 @@
                   </div>
 
                   <div style="display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap;">
-                    <button class="btn btn-lime" id="btn-save-and-rerender" style="flex: 1;">🔄 Simpan & Render Ulang Slide</button>
+                    <button class="btn btn-lime" id="btn-save-and-rerender" style="flex: 1;"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#refresh-cw"></use></svg> Simpan & Render Ulang Slide</button>
                     <button class="btn btn-dark" id="btn-save-text-only">Simpan Teks Saja</button>
                   </div>
                 </div>
@@ -336,9 +352,18 @@
             <p style="font-size: 13px; color: var(--muted);">Hasil kurasi sumber niche terverifikasi: BPS, Bank Indonesia, OJK, Mahkamah Konstitusi, dan bursa.</p>
           </div>
 
+          <div class="topic-controls">
+            <label class="topic-search-label" for="topic-search">Cari topik</label>
+            <input type="search" id="topic-search" class="form-input-dark" placeholder="Judul, sumber, atau ringkasan">
+            <select id="topic-sort" class="form-input-dark" aria-label="Urutkan topik">
+              <option value="newest">Terbaru</option>
+              <option value="score">Skor tertinggi</option>
+              <option value="trend">Trending tertinggi</option>
+            </select>
+          </div>
           <div class="gallery-filter-tabs">
             <button class="gallery-tab-btn active btn-topic-filter" data-status="">Semua Topik</button>
-            <button class="gallery-tab-btn btn-topic-filter" data-status="scored">Lolos (>=75)</button>
+            <button class="gallery-tab-btn btn-topic-filter" data-status="scored">Lolos Analis</button>
             <button class="gallery-tab-btn btn-topic-filter" data-status="rejected">Gugur / Fast-Fail</button>
             <button class="gallery-tab-btn btn-topic-filter" data-status="produced">Diproduksi</button>
           </div>
@@ -346,6 +371,7 @@
           <div class="radar-list" id="radar-list-container">
             <!-- Rendered by JS -->
           </div>
+          <button class="btn btn-outline" id="btn-topics-load-more" type="button" hidden>Muat topik berikutnya</button>
         </section>
 
 
@@ -355,14 +381,14 @@
         <section id="view-n8n" class="view-pane">
           <div style="margin-bottom: 24px;">
             <span class="redaksi-greeting">Mesin Otomasi</span>
-            <h2 style="font-family: 'Archivo Black', sans-serif; font-size: 28px; color: #fff; margin-bottom: 6px;">N8N WORKFLOW STUDIO</h2>
-            <p style="font-size: 13px; color: var(--muted);">Orkestrasi terjadwal setiap 30 menit memicu pipeline 4 agen AI dan notifikasi review.</p>
+            <h2 style="font-family: 'Archivo Black', sans-serif; font-size: 28px; color: #fff; margin-bottom: 6px;">OTOMASI REDAKSI</h2>
+            <p style="font-size: 13px; color: var(--muted);">Timer native memeriksa sumber setiap 15 menit. Satu siklus berjalan pada satu waktu. Hasil berhenti di antrean review; pengiriman eksternal memerlukan opt-in operator.</p>
+            <p id="workflow-runtime-status" role="status" style="margin-top:12px;color:var(--muted)"></p>
           </div>
 
           <div style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;">
-            <a href="https://n8n.avenia.my.id" target="_blank" class="btn btn-lime">🚀 Buka Canvas n8n Studio ↗</a>
-            <button class="btn btn-dark" id="btn-toggle-wf-dark">⚡ Aktifkan Otomasi</button>
-            <button class="btn btn-dark" id="btn-copy-wf-json-dark">📋 Salin JSON Workflow</button>
+            <button class="btn btn-dark" id="btn-toggle-wf-dark"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#zap"></use></svg> Aktifkan Otomasi</button>
+            <button class="btn btn-dark" id="btn-copy-wf-json-dark"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#copy"></use></svg> Salin JSON Workflow</button>
           </div>
 
           <div>
@@ -385,7 +411,7 @@
             </div>
             <div class="redaksi-actions-right">
               <button class="btn btn-lime" id="btn-save-design-studio">
-                <span>💾</span> <span>Simpan & Terapkan ke Render Engine</span>
+                <svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#save"></use></svg> <span>Simpan & Terapkan ke Render Engine</span>
               </button>
             </div>
           </div>
@@ -399,7 +425,7 @@
               <!-- Brand Identity Box -->
               <div class="agent-config-card" style="margin: 0;">
                 <div class="agent-card-title-row">
-                  <h3 class="agent-card-title">🏷️ Identitas Media & Handle Sosial</h3>
+                  <h3 class="agent-card-title"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#tag"></use></svg> Identitas Media & Handle Sosial</h3>
                   <span class="pill-status active"><span class="dot"></span> Header & Footer Otomatis</span>
                 </div>
                 <div class="form-grid-2col">
@@ -423,7 +449,7 @@
               <!-- Color Palette Box -->
               <div class="agent-config-card" style="margin: 0;">
                 <div class="agent-card-title-row">
-                  <h3 class="agent-card-title">🎨 Palet Warna Identitas (Design Tokens)</h3>
+                  <h3 class="agent-card-title"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#palette"></use></svg> Palet Warna Identitas (Design Tokens)</h3>
                   <span class="pill-status active"><span class="dot"></span> Sinkronisasi Instan</span>
                 </div>
                 <div class="palette-pickers-grid">
@@ -475,7 +501,7 @@
               <!-- Typography & Style Box -->
               <div class="agent-config-card" style="margin: 0;">
                 <div class="agent-card-title-row">
-                  <h3 class="agent-card-title">🔤 Tipografi & Gaya Kanvas</h3>
+                  <h3 class="agent-card-title"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#type"></use></svg> Tipografi & Gaya Kanvas</h3>
                 </div>
                 <div class="form-grid-2col">
                   <div class="form-group-editor">
@@ -491,7 +517,7 @@
 
               <!-- Raw YAML Editor Toggle -->
               <details style="background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px;">
-                <summary style="font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer;">⚙️ Editor Berkas tokens.yaml Mentah (Advanced Mode)</summary>
+                <summary style="font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer;"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#settings"></use></svg> Editor Berkas tokens.yaml Mentah (Advanced Mode)</summary>
                 <div style="margin-top: 12px;">
                   <textarea id="tokens-editor-dark" class="code-editor-dark" spellcheck="false" style="min-height: 200px; font-size: 12px;"></textarea>
                   <button class="btn btn-outline" id="btn-save-tokens-raw" style="margin-top: 8px;">Simpan Berkas YAML Mentah</button>
@@ -505,7 +531,7 @@
               <!-- 1. AI Carousel Generator Box -->
               <div class="agent-config-card" style="margin: 0; margin-bottom: 16px; padding: 16px; border: 1px solid var(--lime);">
                 <div class="agent-card-title-row" style="margin-bottom: 8px;">
-                  <h3 class="agent-card-title" style="color: #fff; font-size: 14px;">✨ Generate Carousel Baru (AI Creative Director)</h3>
+                  <h3 class="agent-card-title" style="color: #fff; font-size: 14px;"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#sparkles"></use></svg> Generate Carousel Baru (AI Creative Director)</h3>
                   <span class="pill-status active"><span class="dot"></span> Full AI Dynamic</span>
                 </div>
                 <p style="font-size: 11px; color: var(--muted); margin-bottom: 10px;">
@@ -528,9 +554,13 @@
                   <label class="form-label-editor">Sumber Primer / Atribusi</label>
                   <input type="text" id="studio-custom-source-text" class="form-input-dark" value="Bursa Efek Indonesia" placeholder="Nama instansi / sumber..." style="font-size: 12px;">
                 </div>
+                <div class="form-group-editor" style="margin-bottom: 10px;">
+                  <label class="form-label-editor" for="studio-custom-source-url">URL sumber primer</label>
+                  <input type="url" id="studio-custom-source-url" class="form-input-dark" placeholder="https://www.bps.go.id/..." required>
+                </div>
 
                 <button class="btn btn-lime" id="btn-studio-generate-ai" style="width: 100%; justify-content: center; font-weight: 700;">
-                  ✨ Rancang & Render Carousel (AI)
+                  <svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#sparkles"></use></svg> Rancang & Render Carousel (AI)
                 </button>
               </div>
 
@@ -538,13 +568,13 @@
               <div class="agent-config-card" style="margin: 0; padding: 18px; display: flex; flex-direction: column; align-items: center;">
                 <div style="width: 100%; display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                   <div>
-                    <h4 style="font-size: 14px; font-weight: 700; color: #fff; margin: 0;">📱 Live Preview Realtime</h4>
-                    <span style="font-size: 11px; color: var(--lime);" id="studio-preview-caption-badge">● Slide 1 dari 1</span>
+                    <h4 style="font-size: 14px; font-weight: 700; color: #fff; margin: 0;"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#smartphone"></use></svg> Live Preview Realtime</h4>
+                    <span style="font-size: 11px; color: var(--lime);" id="studio-preview-caption-badge"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#circle"></use></svg> Slide 1 dari 1</span>
                   </div>
                   <div style="display: flex; gap: 6px; align-items: center;">
-                    <button class="btn btn-dark" id="btn-studio-prev-slide" style="padding: 4px 10px; font-size: 12px;" title="Slide Sebelumnya">◀</button>
+                    <button class="btn btn-dark" id="btn-studio-prev-slide" type="button" style="padding: 4px 10px; font-size: 12px;" aria-label="Slide sebelumnya" title="Slide sebelumnya"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#arrow-left"></use></svg></button>
                     <span id="studio-slide-indicator-text" style="font-size: 11px; font-weight: 700; color: #fff; min-width: 45px; text-align: center;">1 / 1</span>
-                    <button class="btn btn-dark" id="btn-studio-next-slide" style="padding: 4px 10px; font-size: 12px;" title="Slide Selanjutnya">▶</button>
+                    <button class="btn btn-dark" id="btn-studio-next-slide" type="button" style="padding: 4px 10px; font-size: 12px;" aria-label="Slide selanjutnya" title="Slide selanjutnya"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#arrow-right"></use></svg></button>
                   </div>
                 </div>
 
@@ -552,7 +582,7 @@
                 <div class="live-preview-box" style="position: relative; width: 100%; max-width: 360px; aspect-ratio: 4/5; background: #000; border: 2px solid var(--border); border-radius: 12px; overflow: hidden; box-shadow: 0 16px 36px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;">
                   <img id="live-design-preview-img" alt="Live Preview Carousel" style="width: 100%; height: 100%; object-fit: contain; display: block;">
                   <div id="live-preview-spinner" style="display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.6); align-items: center; justify-content: center;">
-                    <span style="color: var(--lime); font-size: 13px; font-weight: 700;">⚡ Merender Pratinjau...</span>
+                    <span style="color: var(--lime); font-size: 13px; font-weight: 700;"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#zap"></use></svg> Merender Pratinjau...</span>
                   </div>
                 </div>
 
@@ -564,7 +594,7 @@
                 <!-- Live Content Editor for Active Studio Slide -->
                 <div style="width: 100%; margin-top: 14px; background: var(--card-subtle); border: 1px solid var(--border); border-radius: 8px; padding: 12px;">
                   <div style="font-size: 11px; font-weight: 700; color: var(--lime); margin-bottom: 8px; text-transform: uppercase;">
-                    ✏️ Edit Konten Slide Ini (Pratinjau Instan)
+                    <svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#pencil"></use></svg> Edit Konten Slide Ini (Pratinjau Instan)
                   </div>
                   <div class="form-group-editor" style="margin-bottom: 6px;">
                     <label class="form-label-editor" style="font-size: 10px;">Narasi / Teks Utama Slide</label>
@@ -583,7 +613,7 @@
                 </div>
 
                 <button class="btn btn-lime" id="btn-studio-save-to-drafts" style="width: 100%; justify-content: center; font-weight: 700; margin-top: 12px;">
-                  💾 Simpan sebagai Draf Produksi (Kirim ke Meja Review)
+                  <svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#save"></use></svg> Simpan sebagai Draf Produksi (Kirim ke Meja Review)
                 </button>
               </div>
             </div>
@@ -605,10 +635,10 @@
             </div>
             <div class="redaksi-actions-right" style="display: flex; gap: 10px;">
               <button class="btn btn-outline" id="btn-poll-sources-now">
-                <span>⚡</span> <span>Tarik Berita Sekarang (Scout)</span>
+                <svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#zap"></use></svg> <span>Tarik Berita Sekarang (Scout)</span>
               </button>
               <button class="btn btn-lime" id="btn-open-add-source-modal">
-                <span>➕</span> <span>Tambah Sumber Baru</span>
+                <svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#plus"></use></svg> <span>Tambah Sumber Baru</span>
               </button>
             </div>
           </div>
@@ -618,7 +648,7 @@
             <div class="overview-stat-card">
               <div class="stat-card-header">
                 <span class="stat-card-title">Total Sumber Aktif</span>
-                <span class="stat-card-icon" style="background: rgba(31, 126, 129, 0.2); color: var(--accent);">📡</span>
+                <span class="stat-card-icon" style="background: rgba(31, 126, 129, 0.2); color: var(--accent);"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#radio-tower"></use></svg></span>
               </div>
               <div class="stat-card-value" id="stat-sources-active">0</div>
               <div class="stat-card-trend">Dipantau oleh Scout</div>
@@ -626,7 +656,7 @@
             <div class="overview-stat-card">
               <div class="stat-card-header">
                 <span class="stat-card-title">Regulasi & OJK</span>
-                <span class="stat-card-icon" style="background: rgba(215, 147, 68, 0.2); color: var(--highlight);">⚖️</span>
+                <span class="stat-card-icon" style="background: rgba(215, 147, 68, 0.2); color: var(--highlight);"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#scale"></use></svg></span>
               </div>
               <div class="stat-card-value" id="stat-sources-regulasi">0</div>
               <div class="stat-card-trend">POJK, PMK, & Mahkamah</div>
@@ -634,7 +664,7 @@
             <div class="overview-stat-card">
               <div class="stat-card-header">
                 <span class="stat-card-title">Pasar Modal & Bursa</span>
-                <span class="stat-card-icon" style="background: rgba(26, 122, 79, 0.2); color: var(--up);">📈</span>
+                <span class="stat-card-icon" style="background: rgba(26, 122, 79, 0.2); color: var(--up);"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#trending-up"></use></svg></span>
               </div>
               <div class="stat-card-value" id="stat-sources-market">0</div>
               <div class="stat-card-trend">IHSG, Kontan, CNBC, Bisnis</div>
@@ -642,7 +672,7 @@
             <div class="overview-stat-card">
               <div class="stat-card-header">
                 <span class="stat-card-title">Data Primer BPS / BI</span>
-                <span class="stat-card-icon" style="background: rgba(16, 43, 69, 0.4); color: #fff;">🏛️</span>
+                <span class="stat-card-icon" style="background: rgba(16, 43, 69, 0.4); color: #fff;"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#landmark"></use></svg></span>
               </div>
               <div class="stat-card-value" id="stat-sources-primer">0</div>
               <div class="stat-card-trend">Siaran Pers Resmi</div>
@@ -691,10 +721,10 @@
             </div>
             <div class="redaksi-actions-right" style="display: flex; gap: 10px;">
               <button class="btn btn-outline" id="btn-seo-scan-now">
-                <span>🔥</span> <span>Pindai Trending Sekarang</span>
+                <svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#flame"></use></svg> <span>Pindai Trending Sekarang</span>
               </button>
               <button class="btn btn-lime" id="btn-refresh-trends">
-                <span>🔄</span> <span>Muat Ulang</span>
+                <svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#refresh-cw"></use></svg> <span>Muat Ulang</span>
               </button>
             </div>
           </div>
@@ -703,7 +733,7 @@
             <div class="overview-stat-card">
               <div class="stat-card-header">
                 <span class="stat-card-title">Trend 3 Hari Terakhir</span>
-                <span class="stat-card-icon" style="background: rgba(215, 147, 68, 0.2); color: var(--highlight);">🔥</span>
+                <span class="stat-card-icon" style="background: rgba(215, 147, 68, 0.2); color: var(--highlight);"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#flame"></use></svg></span>
               </div>
               <div class="stat-card-value" id="trend-stat-total">0</div>
               <div class="stat-card-trend">Item lolos skor minimum</div>
@@ -711,7 +741,7 @@
             <div class="overview-stat-card">
               <div class="stat-card-header">
                 <span class="stat-card-title">Sumber Trending Aktif</span>
-                <span class="stat-card-icon" style="background: rgba(31, 126, 129, 0.2); color: var(--accent);">📡</span>
+                <span class="stat-card-icon" style="background: rgba(31, 126, 129, 0.2); color: var(--accent);"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#radio-tower"></use></svg></span>
               </div>
               <div class="stat-card-value" id="trend-stat-sources">0</div>
               <div class="stat-card-trend">Akun X, query, & trends</div>
@@ -719,7 +749,7 @@
             <div class="overview-stat-card">
               <div class="stat-card-header">
                 <span class="stat-card-title">Skor Tertinggi</span>
-                <span class="stat-card-icon" style="background: rgba(26, 122, 79, 0.2); color: var(--up);">📈</span>
+                <span class="stat-card-icon" style="background: rgba(26, 122, 79, 0.2); color: var(--up);"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#trending-up"></use></svg></span>
               </div>
               <div class="stat-card-value" id="trend-stat-top">0</div>
               <div class="stat-card-trend">Dari 100</div>
@@ -727,7 +757,7 @@
             <div class="overview-stat-card">
               <div class="stat-card-header">
                 <span class="stat-card-title">Sudah Dipromosikan</span>
-                <span class="stat-card-icon" style="background: rgba(16, 43, 69, 0.4); color: #fff;">🎯</span>
+                <span class="stat-card-icon" style="background: rgba(16, 43, 69, 0.4); color: #fff;"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#target"></use></svg></span>
               </div>
               <div class="stat-card-value" id="trend-stat-promoted">0</div>
               <div class="stat-card-trend">Menjadi topik editorial</div>
@@ -739,6 +769,12 @@
             <button class="gallery-tab-btn btn-trend-filter" data-platform="news">Momentum Berita</button>
             <button class="gallery-tab-btn btn-trend-filter" data-platform="google_trends">Google Trends</button>
             <button class="gallery-tab-btn btn-trend-filter" data-platform="x">X / Twitter</button>
+          </div>
+
+          <div id="trend-health-banner" class="trend-health-banner" role="status" aria-live="polite">
+            <span class="trend-health-indicator" aria-hidden="true"></span>
+            <span id="trend-health-message">Memeriksa kesehatan sumber…</span>
+            <span id="trend-health-last-success" class="trend-health-time"></span>
           </div>
 
           <div class="activity-card" style="margin-bottom: 24px;">
@@ -753,7 +789,7 @@
 
           <div class="agent-config-card" style="margin: 0;">
             <div class="agent-card-title-row">
-              <h3 class="agent-card-title">⚙️ Sumber Trending yang Dipantau (Dapat Dikustomisasi)</h3>
+              <h3 class="agent-card-title"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#settings"></use></svg> Sumber Trending yang Dipantau (Dapat Dikustomisasi)</h3>
               <span class="pill-status active"><span class="dot"></span> Akun X & query bisa Anda ubah</span>
             </div>
             <p class="agent-card-desc">
@@ -811,7 +847,7 @@
             <div style="display: flex; justify-content: flex-end; gap: 10px;">
               <button type="button" class="btn btn-outline" id="btn-reset-trend-source">Reset Form</button>
               <button type="button" class="btn btn-lime" id="btn-save-trend-source">
-                <span>➕</span> <span>Tambah / Perbarui Sumber</span>
+                <svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#plus"></use></svg> <span>Tambah / Perbarui Sumber</span>
               </button>
             </div>
 
@@ -854,7 +890,7 @@
             </div>
             <div class="redaksi-actions-right">
               <button class="btn btn-lime" id="btn-refresh-verifications">
-                <span>🔄</span> <span>Muat Ulang Laporan</span>
+                <svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#refresh-cw"></use></svg> <span>Muat Ulang Laporan</span>
               </button>
             </div>
           </div>
@@ -863,7 +899,7 @@
             <div class="overview-stat-card">
               <div class="stat-card-header">
                 <span class="stat-card-title">Total Laporan</span>
-                <span class="stat-card-icon" style="background: rgba(31, 126, 129, 0.2); color: var(--accent);">🛡️</span>
+                <span class="stat-card-icon" style="background: rgba(31, 126, 129, 0.2); color: var(--accent);"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#shield-check"></use></svg></span>
               </div>
               <div class="stat-card-value" id="verif-stat-total">0</div>
               <div class="stat-card-trend">Seluruh riwayat verifikasi</div>
@@ -871,7 +907,7 @@
             <div class="overview-stat-card">
               <div class="stat-card-header">
                 <span class="stat-card-title">Terverifikasi</span>
-                <span class="stat-card-icon" style="background: rgba(26, 122, 79, 0.2); color: var(--up);">✅</span>
+                <span class="stat-card-icon" style="background: rgba(26, 122, 79, 0.2); color: var(--up);"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#circle-check"></use></svg></span>
               </div>
               <div class="stat-card-value" id="verif-stat-verified">0</div>
               <div class="stat-card-trend">Fakta & mostly verified</div>
@@ -879,7 +915,7 @@
             <div class="overview-stat-card">
               <div class="stat-card-header">
                 <span class="stat-card-title">Perlu Konteks / Opini</span>
-                <span class="stat-card-icon" style="background: rgba(215, 147, 68, 0.2); color: var(--highlight);">⚠️</span>
+                <span class="stat-card-icon" style="background: rgba(215, 147, 68, 0.2); color: var(--highlight);"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#triangle-exclamation-point"></use></svg></span>
               </div>
               <div class="stat-card-value" id="verif-stat-context">0</div>
               <div class="stat-card-trend">Bukan fakta utuh</div>
@@ -887,7 +923,7 @@
             <div class="overview-stat-card">
               <div class="stat-card-header">
                 <span class="stat-card-title">Menyesatkan / Hoaks</span>
-                <span class="stat-card-icon" style="background: rgba(178, 58, 72, 0.2); color: var(--down);">🚫</span>
+                <span class="stat-card-icon" style="background: rgba(178, 58, 72, 0.2); color: var(--down);"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#ban"></use></svg></span>
               </div>
               <div class="stat-card-value" id="verif-stat-hoax">0</div>
               <div class="stat-card-trend">Diblokir dari auto-produce</div>
@@ -920,7 +956,7 @@
           <div class="modal-content" style="max-width: 540px; width: 100%; background: #131720; border: 1px solid var(--border); border-radius: 12px; padding: 24px; position: relative; box-shadow: 0 20px 40px rgba(0,0,0,0.8);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 14px;">
               <h3 id="modal-source-title" style="font-family: 'Archivo Black', sans-serif; font-size: 18px; color: #fff; margin: 0;">Tambah Sumber Berita</h3>
-              <button type="button" class="btn-close-modal" id="btn-close-source-modal-x" style="background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer;">✕</button>
+              <button type="button" class="btn-close-modal" id="btn-close-source-modal-x" aria-label="Tutup formulir sumber berita" title="Tutup formulir sumber berita" style="background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer;"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#circle-x"></use></svg></button>
             </div>
             <form id="form-source">
               <input type="hidden" id="source-input-id" value="">
@@ -935,8 +971,8 @@
                   <label class="form-label-editor">Tipe Ingesti</label>
                   <select id="source-input-type" class="form-input-dark form-select-dark">
                     <option value="rss">RSS / Atom XML Feed</option>
-                    <option value="scraper">Web HTML Scraper</option>
-                    <option value="api">REST API</option>
+                    <option value="x_account">Akun X (timeline)</option>
+                    <option value="x_query">Pencarian X (real-time)</option>
                   </select>
                 </div>
                 <div class="form-group-editor" style="margin-bottom: 0;">
@@ -953,9 +989,9 @@
               </div>
 
               <div class="form-group-editor" style="margin-bottom: 14px;">
-                <label class="form-label-editor">URL Feed / Endpoint RSS</label>
-                <input type="url" id="source-input-url" class="form-input-dark" placeholder="https://example.com/rss.xml" required>
-                <span class="form-help-text">Dapat berupa URL RSS portal berita atau pencarian terfilter Google News.</span>
+                <label class="form-label-editor">URL, akun, atau query sumber</label>
+                <input type="text" id="source-input-url" class="form-input-dark" placeholder="https://example.com/rss.xml atau @ojkindonesia" required>
+                <span class="form-help-text" id="source-input-help">Feed RSS/Atom wajib HTTPS. Akun dan query X memakai X API jika token tersedia.</span>
               </div>
 
               <div class="form-grid-2col" style="margin-bottom: 20px;">
@@ -1007,62 +1043,129 @@
         <section id="view-agents" class="view-pane">
           <div class="redaksi-header-row" style="margin-bottom: 24px;">
             <div class="redaksi-title-block">
-              <span class="redaksi-greeting">Pusat Kendali Otonom 4 Agen</span>
+              <span class="redaksi-greeting">Pengaturan tujuh agen editorial</span>
               <h2 style="font-family: 'Archivo Black', sans-serif; font-size: 28px; color: #fff; margin-bottom: 6px;">KUSTOMISASI AGEN AI</h2>
               <p style="font-size: 13px; color: var(--muted); max-width: 650px;">
                 Sesuaikan model LLM, endpoint, API key, bobot scoring, aturan filter, dan tokens desain. Seluruh perubahan otomatis tersimpan & aktif di seluruh pipeline sistem.
               </p>
             </div>
             <div class="redaksi-actions-right">
-              <button class="btn btn-lime" id="btn-save-agents-config-top">
-                <span>💾</span> <span>Simpan & Terapkan Perubahan</span>
-              </button>
+              <div class="agent-test-controls">
+                <button class="btn btn-dark" id="btn-test-agent-config" type="button">Uji konfigurasi agen aktif</button>
+                <span id="agent-test-status" role="status" aria-live="polite"></span>
+                <button class="btn btn-lime" id="btn-save-agents-config-top">
+                  <svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#save"></use></svg> <span>Simpan & Terapkan Perubahan</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Provider & Model Catalog -->
+          <div class="agent-config-card" id="provider-catalog-card" style="margin-bottom: 20px;">
+            <div class="agent-card-title-row">
+              <h3 class="agent-card-title">
+                <svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#library"></use></svg>
+                Katalog Provider &amp; Model
+              </h3>
+              <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <span class="pill-status" id="provider-catalog-status">Belum dimuat</span>
+                <button class="btn btn-outline" id="btn-refresh-models" type="button">
+                  <svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#refresh-cw"></use></svg> <span>Refresh semua model</span>
+                </button>
+                <button class="btn btn-outline" id="btn-toggle-provider-form" type="button">
+                  <svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#plus"></use></svg> <span>Tambah provider</span>
+                </button>
+              </div>
+            </div>
+            <p class="agent-card-desc">
+              Endpoint resmi (Gemini, OpenAI, DeepSeek, Grok, Anthropic) dan router (agent router, 9router, OpenRouter, NVIDIA, Meta, custom) dikelola terpusat.
+              API key disimpan di secret store <code>0600</code> dan tidak pernah ditampilkan kembali. Model diambil langsung dari <code>/models</code> tiap provider.
+            </p>
+            <div id="provider-catalog-list" style="display: flex; flex-direction: column; gap: 10px;"></div>
+            <datalist id="provider-model-datalist"></datalist>
+
+            <div id="provider-form" hidden style="margin-top: 16px; border-top: 1px solid var(--border); padding-top: 16px;">
+              <div class="form-grid-2col">
+                <div class="form-group-editor"><label class="form-label-editor" for="provider-form-id">ID provider</label><input id="provider-form-id" class="form-input-dark" placeholder="mis. 9router" autocomplete="off"></div>
+                <div class="form-group-editor"><label class="form-label-editor" for="provider-form-label">Label</label><input id="provider-form-label" class="form-input-dark" placeholder="9Router" autocomplete="off"></div>
+                <div class="form-group-editor">
+                  <label class="form-label-editor" for="provider-form-kind">Jenis API</label>
+                  <select id="provider-form-kind" class="form-input-dark form-select-dark">
+                    <option value="openai">OpenAI-compatible</option>
+                    <option value="gemini">Gemini</option>
+                    <option value="anthropic">Anthropic</option>
+                  </select>
+                </div>
+                <div class="form-group-editor"><label class="form-label-editor" for="provider-form-env">Nama env API key</label><input id="provider-form-env" class="form-input-dark" placeholder="NINE_ROUTER_API_KEY" autocomplete="off"></div>
+              </div>
+              <div class="form-group-editor"><label class="form-label-editor" for="provider-form-url">Base URL</label><input id="provider-form-url" type="url" class="form-input-dark" placeholder="https://router.example/v1" autocomplete="off"></div>
+              <div class="form-group-editor"><label class="form-label-editor" for="provider-form-key">API key (opsional; langsung ke secret store 0600)</label><input id="provider-form-key" type="password" autocomplete="new-password" class="form-input-dark" placeholder="Kosongkan untuk mempertahankan key tersimpan"></div>
+              <label class="form-label-editor" style="display: flex; gap: 8px; align-items: center; margin-bottom: 10px;">
+                <input id="provider-form-enabled" type="checkbox" checked> Aktifkan provider untuk agen
+              </label>
+              <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                <button class="btn btn-lime" id="btn-save-provider" type="button"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#save"></use></svg> <span>Simpan provider</span></button>
+                <span id="provider-form-status" role="status" aria-live="polite" style="font-size: 12px; color: var(--muted);"></span>
+              </div>
+            </div>
+
+            <div style="margin-top: 16px; border-top: 1px solid var(--border); padding-top: 16px;">
+              <label class="form-label-editor" for="provider-routing-chain">Rantai fallback global (satu per baris, format <code>provider/model</code>)</label>
+              <textarea id="provider-routing-chain" class="form-input-dark form-textarea" rows="4" placeholder="masb/qwen3.8-27b"></textarea>
+              <div style="display: flex; gap: 10px; align-items: center; margin-top: 10px; flex-wrap: wrap;">
+                <button class="btn btn-outline" id="btn-save-routing" type="button"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#save"></use></svg> <span>Simpan rantai fallback</span></button>
+                <span id="provider-routing-status" role="status" aria-live="polite" style="font-size: 12px; color: var(--muted);"></span>
+              </div>
             </div>
           </div>
 
           <!-- Agent Selector Tabs -->
           <div class="agent-tabs-nav">
             <button class="agent-nav-tab active" data-agent="scout">
-              <span class="agent-tab-icon" style="color: var(--agent-scout);">📡</span>
+              <span class="agent-tab-icon" style="color: var(--agent-scout);"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#radio-tower"></use></svg></span>
               <div class="agent-tab-texts">
                 <span class="agent-tab-name">Scout</span>
                 <span class="agent-tab-role">Pemantau Topik</span>
               </div>
             </button>
             <button class="agent-nav-tab" data-agent="analis">
-              <span class="agent-tab-icon" style="color: var(--agent-analis);">🎯</span>
+              <span class="agent-tab-icon" style="color: var(--agent-analis);"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#target"></use></svg></span>
               <div class="agent-tab-texts">
                 <span class="agent-tab-name">Analis</span>
                 <span class="agent-tab-role">Skor & Fast-Fail</span>
               </div>
             </button>
             <button class="agent-nav-tab" data-agent="copywriter">
-              <span class="agent-tab-icon" style="color: var(--agent-copy);">✍️</span>
+              <span class="agent-tab-icon" style="color: var(--agent-copy);"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#pen-line"></use></svg></span>
               <div class="agent-tab-texts">
                 <span class="agent-tab-name">Copywriter</span>
                 <span class="agent-tab-role">Editorial & Carousel</span>
               </div>
             </button>
             <button class="agent-nav-tab" data-agent="designer">
-              <span class="agent-tab-icon" style="color: var(--agent-designer);">🎨</span>
+              <span class="agent-tab-icon" style="color: var(--agent-designer);"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#palette"></use></svg></span>
               <div class="agent-tab-texts">
                 <span class="agent-tab-name">Designer</span>
                 <span class="agent-tab-role">Design Tokens & Layout</span>
               </div>
             </button>
             <button class="agent-nav-tab" data-agent="seo">
-              <span class="agent-tab-icon" style="color: var(--highlight);">🔥</span>
+              <span class="agent-tab-icon" style="color: var(--highlight);"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#flame"></use></svg></span>
               <div class="agent-tab-texts">
                 <span class="agent-tab-name">SEO</span>
                 <span class="agent-tab-role">Pemburu Trending</span>
               </div>
             </button>
             <button class="agent-nav-tab" data-agent="verifikator">
-              <span class="agent-tab-icon" style="color: var(--up);">🛡️</span>
+              <span class="agent-tab-icon" style="color: var(--up);"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#shield-check"></use></svg></span>
               <div class="agent-tab-texts">
                 <span class="agent-tab-name">Verifikator</span>
                 <span class="agent-tab-role">Fact-Check & Konteks</span>
               </div>
+            </button>
+            <button class="agent-nav-tab" data-agent="studio">
+              <span class="agent-tab-icon" style="color: var(--agent-copy);"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#clapperboard"></use></svg></span>
+              <div class="agent-tab-texts"><span class="agent-tab-name">Studio Prompt</span><span class="agent-tab-role">Perencana Konten</span></div>
             </button>
           </div>
 
@@ -1070,7 +1173,7 @@
           <div class="agent-tab-panel active" id="tab-panel-scout">
             <div class="agent-config-card">
               <div class="agent-card-title-row">
-                <h3 class="agent-card-title">📡 Konfigurasi Agen Scout</h3>
+                <h3 class="agent-card-title"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#radio-tower"></use></svg> Konfigurasi Agen Scout</h3>
                 <span class="pill-status active"><span class="dot"></span> 11 Sumber Resmi RSS / Media Terpasang</span>
               </div>
               <p class="agent-card-desc">Mengatur frekuensi polling, ambang kemiripan deduplikasi, dan kata kunci prioritas kurasi.</p>
@@ -1116,7 +1219,7 @@
           <div class="agent-tab-panel" id="tab-panel-analis">
             <div class="agent-config-card">
               <div class="agent-card-title-row">
-                <h3 class="agent-card-title">🎯 Konfigurasi Mesin LLM & Evaluasi Analis</h3>
+                <h3 class="agent-card-title"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#target"></use></svg> Konfigurasi Mesin LLM & Evaluasi Analis</h3>
                 <span class="pill-status active"><span class="dot"></span> Gate 1 (Fast-Fail) + Gate 2 (0–100)</span>
               </div>
               <p class="agent-card-desc">Tentukan penyedia AI, model, API key, bobot rubrik 5 komponen, dan aturan fast-fail.</p>
@@ -1149,8 +1252,8 @@
                 <div class="form-group-editor">
                   <label class="form-label-editor">API Key</label>
                   <div class="input-with-toggle">
-                    <input type="password" id="analis-api-key" class="form-input-dark" placeholder="Kosongkan untuk memakai env GEMINI_API_KEY">
-                    <button type="button" class="btn-toggle-pw" onclick="togglePasswordVisibility('analis-api-key')">👁️</button>
+                    <input type="password" id="analis-api-key" class="form-input-dark" autocomplete="new-password" placeholder="Kosongkan untuk mempertahankan key tersimpan; isi untuk mengganti">
+                    <button type="button" class="btn-toggle-pw" onclick="togglePasswordVisibility('analis-api-key')" aria-label="Tampilkan atau sembunyikan API key Analis" title="Tampilkan atau sembunyikan API key Analis"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#eye"></use></svg></button>
                   </div>
                   <span class="form-help-text">Tersimpan aman di config server, tidak dipublikasikan ke publik.</span>
                 </div>
@@ -1222,7 +1325,7 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
           <div class="agent-tab-panel" id="tab-panel-copywriter">
             <div class="agent-config-card">
               <div class="agent-card-title-row">
-                <h3 class="agent-card-title">✍️ Konfigurasi Agen Copywriter</h3>
+                <h3 class="agent-card-title"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#pen-line"></use></svg> Konfigurasi Agen Copywriter</h3>
                 <span class="pill-status active"><span class="dot"></span> Karakteristik Brand Data-Editorial</span>
               </div>
               <p class="agent-card-desc">Mengatur model teks AI, jumlah slide carousel, nada suara, kata-kata terlarang, dan klausul disclaimer.</p>
@@ -1254,8 +1357,8 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
                 <div class="form-group-editor">
                   <label class="form-label-editor">API Key</label>
                   <div class="input-with-toggle">
-                    <input type="password" id="copywriter-api-key" class="form-input-dark" placeholder="Kosongkan untuk memakai env GEMINI_API_KEY">
-                    <button type="button" class="btn-toggle-pw" onclick="togglePasswordVisibility('copywriter-api-key')">👁️</button>
+                    <input type="password" id="copywriter-api-key" class="form-input-dark" autocomplete="new-password" placeholder="Kosongkan untuk mempertahankan key tersimpan; isi untuk mengganti">
+                    <button type="button" class="btn-toggle-pw" onclick="togglePasswordVisibility('copywriter-api-key')" aria-label="Tampilkan atau sembunyikan API key Copywriter" title="Tampilkan atau sembunyikan API key Copywriter"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#eye"></use></svg></button>
                   </div>
                 </div>
               </div>
@@ -1306,7 +1409,7 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
           <div class="agent-tab-panel" id="tab-panel-designer">
             <div class="agent-config-card">
               <div class="agent-card-title-row">
-                <h3 class="agent-card-title">🎨 Konfigurasi Agen Designer (Full AI Visual Architect)</h3>
+                <h3 class="agent-card-title"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#palette"></use></svg> Konfigurasi Agen Designer (Full AI Visual Architect)</h3>
                 <span class="pill-status active"><span class="dot"></span> AI Dynamic Layouts & Brand Tokens</span>
               </div>
               <p class="agent-card-desc">Agen Designer sepenuhnya otonom ditenagai AI: menentukan sendiri jumlah slide, merancang struktur visual per slide secara bebas tanpa batasan template kaku, serta mengekstrak data visual dari berita secara cerdas.</p>
@@ -1339,8 +1442,8 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
                 <div class="form-group-editor">
                   <label class="form-label-editor">API Key</label>
                   <div class="input-with-toggle">
-                    <input type="password" id="designer-api-key" class="form-input-dark" placeholder="Kosongkan untuk memakai env GEMINI_API_KEY">
-                    <button type="button" class="btn-toggle-pw" onclick="togglePasswordVisibility('designer-api-key')">👁️</button>
+                    <input type="password" id="designer-api-key" class="form-input-dark" autocomplete="new-password" placeholder="Kosongkan untuk mempertahankan key tersimpan; isi untuk mengganti">
+                    <button type="button" class="btn-toggle-pw" onclick="togglePasswordVisibility('designer-api-key')" aria-label="Tampilkan atau sembunyikan API key Designer" title="Tampilkan atau sembunyikan API key Designer"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#eye"></use></svg></button>
                   </div>
                 </div>
               </div>
@@ -1423,7 +1526,7 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
 
               <div style="background: rgba(31, 126, 129, 0.1); border: 1px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin-bottom: 20px;">
                 <div style="font-weight: 700; color: var(--lime); margin-bottom: 6px; font-size: 14px;">
-                  ✨ Render Engine Fluid & Otonom (Port 3000)
+                  <svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#sparkles"></use></svg> Render Engine Fluid & Otonom (Port 3000)
                 </div>
                 <div style="font-size: 13px; color: var(--text-dim); line-height: 1.5;">
                   Sistem render kini sepenuhnya adaptif dan tidak membatasi pilihan layout. Agen AI bebas menyusun komposisi visual apa pun—hero angka, infografis perbandingan, kartu metrik, kutipan pejabat, ringkasan regulasi, atau narasi editorial tebal—seluruhnya di-render secara instan dan tajam dalam rasio 4:5 (1080×1350 px).
@@ -1444,7 +1547,7 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
           <div class="agent-tab-panel" id="tab-panel-seo">
             <div class="agent-config-card">
               <div class="agent-card-title-row">
-                <h3 class="agent-card-title">🔥 Konfigurasi Agen SEO (Pemburu Trending)</h3>
+                <h3 class="agent-card-title"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#flame"></use></svg> Konfigurasi Agen SEO (Pemburu Trending)</h3>
                 <span class="pill-status active"><span class="dot"></span> X · Google Trends · Momentum Berita</span>
               </div>
               <p class="agent-card-desc">Agen SEO memindai sumber trending yang Anda tentukan, memberi skor virality, lalu mengusulkan sudut liputan. Sumber (akun X, query, geo trends) dikelola di view <strong>Radar Trending</strong>.</p>
@@ -1476,8 +1579,8 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
                 <div class="form-group-editor">
                   <label class="form-label-editor">API Key</label>
                   <div class="input-with-toggle">
-                    <input type="password" id="seo-api-key" class="form-input-dark" placeholder="Kosongkan untuk memakai env GEMINI_API_KEY">
-                    <button type="button" class="btn-toggle-pw" onclick="togglePasswordVisibility('seo-api-key')">👁️</button>
+                    <input type="password" id="seo-api-key" class="form-input-dark" autocomplete="new-password" placeholder="Kosongkan untuk mempertahankan key tersimpan; isi untuk mengganti">
+                    <button type="button" class="btn-toggle-pw" onclick="togglePasswordVisibility('seo-api-key')" aria-label="Tampilkan atau sembunyikan API key SEO" title="Tampilkan atau sembunyikan API key SEO"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#eye"></use></svg></button>
                   </div>
                 </div>
               </div>
@@ -1505,7 +1608,7 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
           <div class="agent-tab-panel" id="tab-panel-verifikator">
             <div class="agent-config-card">
               <div class="agent-card-title-row">
-                <h3 class="agent-card-title">🛡️ Konfigurasi Agen Verifikator (Fact-Check Redaksi)</h3>
+                <h3 class="agent-card-title"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#shield-check"></use></svg> Konfigurasi Agen Verifikator (Fact-Check Redaksi)</h3>
                 <span class="pill-status active"><span class="dot"></span> Fakta · Opini · Hoaks · Konteks</span>
               </div>
               <p class="agent-card-desc">Verifikator menguji klaim utama terhadap tier sumber, angka, sinyal bahasa, dan korroborasi lintas media. Status akhir menentukan apakah topik boleh diproduksi otomatis.</p>
@@ -1537,8 +1640,8 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
                 <div class="form-group-editor">
                   <label class="form-label-editor">API Key</label>
                   <div class="input-with-toggle">
-                    <input type="password" id="verifikator-api-key" class="form-input-dark" placeholder="Kosongkan untuk memakai env GEMINI_API_KEY">
-                    <button type="button" class="btn-toggle-pw" onclick="togglePasswordVisibility('verifikator-api-key')">👁️</button>
+                    <input type="password" id="verifikator-api-key" class="form-input-dark" autocomplete="new-password" placeholder="Kosongkan untuk mempertahankan key tersimpan; isi untuk mengganti">
+                    <button type="button" class="btn-toggle-pw" onclick="togglePasswordVisibility('verifikator-api-key')" aria-label="Tampilkan atau sembunyikan API key Verifikator" title="Tampilkan atau sembunyikan API key Verifikator"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#eye"></use></svg></button>
                   </div>
                 </div>
               </div>
@@ -1570,13 +1673,30 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
             </div>
           </div>
 
+          <div class="agent-tab-panel" id="tab-panel-studio">
+            <div class="agent-config-card">
+              <div class="agent-card-title-row">
+                <h3 class="agent-card-title">Konfigurasi Studio Prompt</h3>
+                <span class="pill-status active">Rencana selalu menunggu ACC redaksi</span>
+              </div>
+              <div class="form-grid-2col">
+                <div class="form-group-editor"><label class="form-label-editor" for="studio-agent-provider">Provider</label><select id="studio-agent-provider" class="form-input-dark form-select-dark"><option value="gemini">Gemini</option><option value="openai">OpenAI-compatible</option><option value="openrouter">OpenRouter</option><option value="groq">Groq</option><option value="deepseek">DeepSeek</option><option value="ollama">Ollama</option></select></div>
+                <div class="form-group-editor"><label class="form-label-editor" for="studio-agent-model">Model</label><input id="studio-agent-model" class="form-input-dark" value="gemini-3.8-flash"></div>
+              </div>
+              <div class="form-group-editor"><label class="form-label-editor" for="studio-agent-endpoint">Endpoint</label><input id="studio-agent-endpoint" type="url" class="form-input-dark" value="https://generativelanguage.googleapis.com"></div>
+              <div class="form-group-editor"><label class="form-label-editor" for="studio-agent-key">API key (opsional; kosong = pertahankan)</label><input id="studio-agent-key" type="password" autocomplete="new-password" class="form-input-dark" placeholder="Kosongkan untuk mempertahankan key tersimpan"></div>
+              <div class="form-group-editor"><label class="form-label-editor" for="studio-agent-prompt">Instruksi sistem</label><textarea id="studio-agent-prompt" class="form-input-dark form-textarea" rows="5"></textarea></div>
+              <div class="form-group-editor"><label class="form-label-editor" for="studio-agent-skills">skills.md Studio</label><textarea id="studio-agent-skills" class="form-input-dark form-textarea" rows="6"></textarea></div>
+            </div>
+          </div>
+
           <!-- Sticky Bottom Save Bar -->
           <div class="sticky-save-bar">
             <div class="sticky-save-info">
-              <span>💡 Perubahan konfigurasi agen otomatis disimpan ke <code style="color: var(--lime);">config/agents.json</code> dan langsung diaktifkan di seluruh runtime engine.</span>
+              <span><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#lightbulb"></use></svg> Perubahan konfigurasi agen otomatis disimpan ke <code style="color: var(--lime);">config/agents.json</code> dan langsung diaktifkan di seluruh runtime engine.</span>
             </div>
             <button class="btn btn-lime" id="btn-save-agents-config-bottom">
-              <span>💾</span> <span>Simpan & Terapkan ke Seluruh Sistem</span>
+              <svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#save"></use></svg> <span>Simpan & Terapkan ke Seluruh Sistem</span>
             </button>
           </div>
 
@@ -1596,15 +1716,19 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
 
           <div class="trend-panel" style="margin-bottom: 24px;">
             <div class="trend-panel-head">
-              <span class="trend-panel-title">📝 Prompt Produksi</span>
-              <select id="studio-mode" class="form-input-dark form-select-dark" style="width: auto; min-width: 200px;">
-                <option value="review">Review dulu (rekomendasi)</option>
-                <option value="auto_publish">Auto publish (+3 jam)</option>
-              </select>
+              <span class="trend-panel-title"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#notepad-text"></use></svg> Prompt Produksi</span>
             </div>
             <textarea id="studio-prompt-input" class="form-input-dark" rows="5" style="width: 100%; margin: 14px 0; resize: vertical; font-family: inherit;" placeholder="Contoh: Buat carousel analisis mendalam tentang kenaikan inflasi Sumut triwulan III 2026 — jelaskan penyebab, dampaknya ke daya beli, dan perspektif alternatifnya. Verifikasi kebenaran angkanya."></textarea>
+            <div class="form-grid-2col">
+              <div class="form-group-editor">
+                <label for="studio-source-topic" class="form-label-editor">Topik sumber (wajib: lolos Analis + URL publik)</label>
+                <select id="studio-source-topic" class="form-input-dark form-select-dark">
+                  <option value="">Pilih topik skor analis</option>
+                </select>
+              </div>
+            </div>
             <div style="display: flex; gap: 12px; align-items: center;">
-              <button type="button" class="btn btn-lime" id="btn-studio-submit"><span>🚀</span> <span>Buat Rencana</span></button>
+              <button type="button" class="btn btn-lime" id="btn-studio-submit"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#rocket"></use></svg> <span>Buat Rencana</span></button>
               <span style="font-size: 12px; color: var(--muted);" id="studio-submit-hint">Rencana bisa Anda edit / generate ulang sebelum diproduksi.</span>
             </div>
           </div>
@@ -1612,7 +1736,7 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
           <div class="trend-panel">
             <div class="trend-panel-head">
               <span class="trend-panel-title">Antrian Produksi</span>
-              <button type="button" class="btn btn-outline" id="btn-studio-refresh"><span>🔄</span> <span>Refresh</span></button>
+              <button type="button" class="btn btn-outline" id="btn-studio-refresh"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#refresh-cw"></use></svg> <span>Refresh</span></button>
             </div>
             <div id="studio-jobs-container" class="activity-list" style="display: flex; flex-direction: column; gap: 14px;">
               <!-- Rendered by JS -->
@@ -1626,6 +1750,6 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
   <!-- Toast -->
   <div id="toast" class="toast"></div>
 
-  <script src="/app.js?v=3.6.1"></script>
+  <script src="/app.js?v=3.8.1"></script>
 </body>
 </html>

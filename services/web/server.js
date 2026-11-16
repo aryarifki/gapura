@@ -13,13 +13,31 @@ import pkg from 'pg';
 const { Pool } = pkg;
 import yaml from 'js-yaml';
 import { exec } from 'child_process';
-import { produceSingleTopicDraft, buildCarouselSlides } from '../copywriter/copywriter.js';
-import { designCarouselSlides } from '../designer/designer.js';
-import { loadAgentsConfig, loadAgentSkills, saveAgentSkills } from '../common/llm.js';
+import { createWriteGuard, isAdminTokenConfigured, mergeAgentConfig, presentedAdminToken, redactAgentConfig, setAdminCookie, verifyAdminToken } from './access.js';
+import { isValidSignedStorageRequest } from '../common/storage-signature.js';
+import { renderPayload } from '../common/images.js';
+import { validatePublicSourceUrl, parsePublicSourceUrl } from '../common/sources.js';
+import { validateDesignOutput } from '../common/carousel.js';
+import { draftContentHash } from '../common/draft-revision.js';
+import { evaluateProductionGate, needsHumanReview, validateDraftApproval } from '../common/editorial.js';
+import { validateAgent, validateAgentConfig } from '../common/agent-config.js';
+import { buildAttempts, loadProvidersConfig, saveProvidersConfig, validateProvidersConfig } from '../common/providers.js';
+import { loadProviderSecrets, saveProviderSecret } from '../common/secret-store.js';
+import { loadModelCache, providerInventory, refreshModels } from '../common/model-catalog.js';
+import { saveSettings } from './settings-store.js';
+import { DraftError, editDraft } from './drafts.js';
+import { createZip } from './export.js';
+import { createScheduler } from './scheduler.js';
+import { produceSingleTopicDraft, regenerateDraft } from '../copywriter/copywriter.js';
+import { AGENT_KEYS, callAgentLLM, loadAgentsConfig, loadAgentSkills, saveAgentSkills } from '../common/llm.js';
 import { runScout } from '../scout/scout.js';
+import { validateSourceType } from '../scout/sources.js';
 import { runSeoScan, listTrends, promoteTrendToTopic } from '../seo/seo.js';
+import { buildTrendHealth } from '../seo/health.js';
 import { verifyTopic, getLatestVerification, listVerifications } from '../verificator/verificator.js';
 import { createPlan, regeneratePlan, updatePlan, executeJob, processQueuedJobs, listJobs, getJob } from '../studio/studio.js';
+import { validateStudioTopic } from '../studio/validation.js';
+import { runtimeSecret } from '../common/runtime-secret.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,15 +46,36 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const app = express();
 app.use(express.json());
+const accessGuardOptions = { publicOrigin: process.env.GAPURA_PUBLIC_ORIGIN || '' };
+app.use('/api', createWriteGuard(process.env.GAPURA_ADMIN_TOKEN || '', accessGuardOptions));
+app.use('/api', (req, res, next) => {
+  if (Object.values(req.query).some((value) => typeof value !== 'string')) return res.status(400).json({ error: 'Parameter query harus berupa teks tunggal.' });
+  return next();
+});
+app.param('id', (_req, res, next, value) => {
+  if (!/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value))) return res.status(400).json({ error: 'ID harus berupa bilangan bulat positif.' });
+  return next();
+});
+app.param('agent', (_req, res, next, value) => {
+  if (!AGENT_KEYS.includes(value)) return res.status(400).json({ error: 'Nama agen tidak valid.' });
+  return next();
+});
+const storageAccessGuard = createWriteGuard(process.env.GAPURA_ADMIN_TOKEN || '', accessGuardOptions);
+app.use('/storage', (req, res, next) => {
+  const requestPath = String(req.originalUrl || '').split('?')[0];
+  if (isValidSignedStorageRequest(requestPath, req.query.expires, req.query.signature, process.env.GAPURA_ADMIN_TOKEN || '')) return next();
+  return storageAccessGuard(req, res, next);
+});
 
-const PORT = 3005;
+const PORT = parseInt(process.env.PORT || '3005', 10);
 const HOST = '127.0.0.1';
-const STORAGE_PATH = path.resolve(__dirname, '../../storage');
-const DESIGN_SYSTEM_PATH = path.resolve(__dirname, '../../design-system');
+const STORAGE_PATH = process.env.STORAGE_PATH || path.resolve(__dirname, '../../storage');
+const DESIGN_SYSTEM_PATH = process.env.DESIGN_SYSTEM_PATH || path.resolve(__dirname, '../../design-system');
 const TOKENS_PATH = path.join(DESIGN_SYSTEM_PATH, 'tokens.yaml');
-const AGENTS_CONFIG_PATH = path.resolve(__dirname, '../../config/agents.json');
-const RENDER_SERVICE_URL = 'http://127.0.0.1:3000';
-const RENDER_SECRET = process.env.RENDER_SECRET || 'dev_render_secret_hme';
+const AGENTS_CONFIG_PATH = process.env.AGENTS_CONFIG_PATH || path.resolve(__dirname, '../../config/agents.json');
+const PROVIDERS_CONFIG_PATH = process.env.PROVIDERS_CONFIG_PATH || path.resolve(__dirname, '../../config/providers.json');
+const RENDER_SERVICE_URL = process.env.RENDER_SERVICE_URL || 'http://127.0.0.1:3000';
+const RENDER_SECRET = runtimeSecret('RENDER_SECRET', { testValue: 'isolated-render-test' });
 
 const pool = new Pool({
   host: process.env.HME_DB_HOST || '127.0.0.1',
@@ -45,6 +84,7 @@ const pool = new Pool({
   password: process.env.HME_DB_PASSWORD,
   database: process.env.HME_DB_NAME || 'hme',
 });
+const draftDependencies = { pool, renderUrl: RENDER_SERVICE_URL, renderSecret: RENDER_SECRET, storagePath: STORAGE_PATH };
 
 async function writeAudit(entity, entityId, action, actor = 'web_admin', payload = {}) {
   try {
@@ -58,14 +98,7 @@ async function writeAudit(entity, entityId, action, actor = 'web_admin', payload
   }
 }
 
-const n8nPool = new Pool({
-  host: process.env.DB_POSTGRESDB_HOST || '127.0.0.1',
-  port: parseInt(process.env.DB_POSTGRESDB_PORT || '5432'),
-  user: process.env.DB_POSTGRESDB_USER || 'hme_user',
-  password: process.env.DB_POSTGRESDB_PASSWORD,
-  database: process.env.DB_POSTGRESDB_DATABASE || 'n8n',
-  max: 3,
-});
+const scheduler = createScheduler();
 
 // Cache-Control & Anti-CDN Stale Middleware (Global)
 app.use((req, res, next) => {
@@ -99,6 +132,54 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', app: 'gapura-dashboard', version: '2.0.0' });
 });
 
+if (process.env.NODE_ENV === 'test') {
+  app.post('/__test/shutdown', (_req, res) => {
+    res.status(204).end();
+    setImmediate(() => server.close(() => process.exit(0)));
+  });
+}
+
+app.get('/api/access/status', (_req, res) => {
+  res.json({ admin_token_configured: isAdminTokenConfigured(process.env.GAPURA_ADMIN_TOKEN || '') });
+});
+
+app.post('/api/access/verify', (req, res) => {
+  const token = presentedAdminToken(req);
+  if (!verifyAdminToken(token, process.env.GAPURA_ADMIN_TOKEN || '')) {
+    return res.status(isAdminTokenConfigured(process.env.GAPURA_ADMIN_TOKEN || '') ? 401 : 503).json({ error: 'Token admin tidak valid atau belum dikonfigurasi.' });
+  }
+  setAdminCookie(res, token, process.env.NODE_ENV === 'production');
+  return res.json({ status: 'success' });
+});
+
+app.get('/media/drafts/:draftId/slide_:slideNo.png', async (req, res) => {
+  const draftId = Number.parseInt(req.params.draftId, 10);
+  const slideNo = Number.parseInt(req.params.slideNo, 10);
+  const expires = Number(req.query.expires);
+  const signature = String(req.query.signature || '');
+  const requestPath = `/storage/drafts/${draftId}/slide_${slideNo}.png`;
+  if (!isValidSignedStorageRequest(requestPath, expires, signature, process.env.GAPURA_ADMIN_TOKEN || '')) {
+    return res.status(403).json({ error: 'URL aset tidak valid atau sudah kedaluwarsa.' });
+  }
+  const filePath = path.join(STORAGE_PATH, 'drafts', String(draftId), `slide_${slideNo}.png`);
+  return res.sendFile(filePath, (error) => { if (error && !res.headersSent) res.status(error.statusCode || 404).end(); });
+});
+
+// JPEG derivatives are what Instagram, Facebook, and Threads fetch. The PNG
+// route above stays the dashboard preview.
+app.get('/media/drafts/:draftId/slide_:slideNo.jpg', async (req, res) => {
+  const draftId = Number.parseInt(req.params.draftId, 10);
+  const slideNo = Number.parseInt(req.params.slideNo, 10);
+  const expires = Number(req.query.expires);
+  const signature = String(req.query.signature || '');
+  const requestPath = `/storage/drafts/${draftId}/slide_${slideNo}.jpg`;
+  if (!isValidSignedStorageRequest(requestPath, expires, signature, process.env.GAPURA_ADMIN_TOKEN || '')) {
+    return res.status(403).json({ error: 'URL aset tidak valid atau sudah kedaluwarsa.' });
+  }
+  const filePath = path.join(STORAGE_PATH, 'drafts', String(draftId), `slide_${slideNo}.jpg`);
+  return res.sendFile(filePath, (error) => { if (error && !res.headersSent) res.status(error.statusCode || 404).end(); });
+});
+
 // Log error/aksi dari browser agar tombol yang gagal dapat ditelusuri dari
 // menu Log Aktivitas, bukan hanya dari console browser.
 app.post('/api/client-log', async (req, res) => {
@@ -117,23 +198,19 @@ app.post('/api/client-log', async (req, res) => {
 // 1. Dashboard Stats
 app.get('/api/stats', async (req, res) => {
   try {
-    const rawRes = await pool.query('SELECT count(*) FROM raw_items');
+    const rawRes = await pool.query("SELECT count(*) FROM raw_items WHERE fetched_at >= NOW() - INTERVAL '24 hours'");
     const topicsRes = await pool.query('SELECT count(*) FROM topics');
-    const scoresRes = await pool.query("SELECT verdict, count(*) FROM topic_scores GROUP BY verdict");
+    const scoresRes = await pool.query("SELECT verdict, count(*) FROM topic_scores WHERE created_at >= NOW() - INTERVAL '24 hours' GROUP BY verdict");
     const draftsRes = await pool.query("SELECT status, count(*) FROM drafts GROUP BY status");
     const schedRes = await pool.query("SELECT count(*) FROM scheduled_posts WHERE status = 'pending'");
 
-    // Check Render Service & n8n health
+    // Health includes the actual scheduler rather than a legacy workflow flag.
     let renderHealthy = false;
-    let n8nHealthy = false;
     try {
       const r = await fetch(`${RENDER_SERVICE_URL}/health`, { signal: AbortSignal.timeout(2000) });
       renderHealthy = r.ok;
     } catch {}
-    try {
-      const n = await fetch('http://127.0.0.1:5678/healthz', { signal: AbortSignal.timeout(2000) });
-      n8nHealthy = n.ok;
-    } catch {}
+    const scheduleHealth = await scheduler.status();
 
     const verdictCounts = {};
     scoresRes.rows.forEach((r) => { verdictCounts[r.verdict] = parseInt(r.count); });
@@ -150,7 +227,7 @@ app.get('/api/stats', async (req, res) => {
       services: {
         database: true,
         render: renderHealthy,
-        n8n: n8nHealthy,
+        scheduler: scheduleHealth.active,
       },
     });
   } catch (err) {
@@ -165,7 +242,7 @@ app.get('/api/drafts', async (req, res) => {
       SELECT d.*, t.title as topic_title, t.primary_source, t.url as source_url, ts.score_total, ts.reasoning as score_reason
       FROM drafts d
       JOIN topics t ON d.topic_id = t.id
-      LEFT JOIN topic_scores ts ON t.id = ts.topic_id
+      LEFT JOIN LATERAL (SELECT * FROM topic_scores WHERE topic_id=t.id ORDER BY created_at DESC,id DESC LIMIT 1) ts ON TRUE
       ORDER BY 
         CASE WHEN d.status = 'draft' THEN 1 WHEN d.status = 'scheduled' THEN 2 WHEN d.status = 'approved' THEN 3 ELSE 4 END,
         d.id DESC
@@ -193,6 +270,19 @@ app.get('/api/drafts', async (req, res) => {
 });
 
 // 2b. Single Draft Detail with Slides
+app.get('/api/drafts/:id/export', async (req, res) => {
+  try {
+    const { rows: [draft] } = await pool.query('SELECT caption,hashtags,slides FROM drafts WHERE id=$1', [req.params.id]);
+    if (!draft) return res.status(404).json({ error: 'Draf tidak ditemukan.' });
+    const { rows: slides } = await pool.query('SELECT slide_no FROM draft_slides WHERE draft_id=$1 ORDER BY slide_no', [req.params.id]);
+    if (!slides.length || slides.length !== draft.slides.length) return res.status(409).json({ error: 'Render belum lengkap. Render ulang sebelum ekspor.' });
+    const files = [{ name: 'caption.txt', data: `${draft.caption}\n\n${(draft.hashtags || []).join(' ')}` }];
+    for (const { slide_no } of slides) files.push({ name: `slide_${slide_no}.png`, data: await fs.promises.readFile(path.join(STORAGE_PATH, 'drafts', req.params.id, `slide_${slide_no}.png`)) });
+    res.set('Content-Disposition', `attachment; filename="Gapura_Draft_${req.params.id}.zip"`);
+    res.type('application/zip').send(createZip(files));
+  } catch (error) { res.status(error.code === 'ENOENT' ? 409 : 500).json({ error: error.code === 'ENOENT' ? 'Aset belum tersedia. Render ulang draf.' : error.message }); }
+});
+
 app.get('/api/drafts/:id', async (req, res) => {
   const draftId = parseInt(req.params.id);
   try {
@@ -200,7 +290,7 @@ app.get('/api/drafts/:id', async (req, res) => {
       SELECT d.*, t.id as topic_id, t.title as topic_title, t.summary as topic_summary, t.primary_source, t.url as source_url, ts.score_total, ts.reasoning as score_reason
       FROM drafts d
       JOIN topics t ON d.topic_id = t.id
-      LEFT JOIN topic_scores ts ON t.id = ts.topic_id
+      LEFT JOIN LATERAL (SELECT * FROM topic_scores WHERE topic_id=t.id ORDER BY created_at DESC,id DESC LIMIT 1) ts ON TRUE
       WHERE d.id = $1
     `, [draftId]);
 
@@ -209,6 +299,7 @@ app.get('/api/drafts/:id', async (req, res) => {
     }
 
     const d = drafts[0];
+    d.revision = draftContentHash(d);
     const { rows: slides } = await pool.query(
       'SELECT slide_no, layout, render_path, text_snapshot, data_snapshot FROM draft_slides WHERE draft_id = $1 ORDER BY slide_no ASC',
       [d.id]
@@ -232,114 +323,35 @@ app.get('/api/drafts/:id', async (req, res) => {
 app.post('/api/drafts/:id/regenerate-ai', async (req, res) => {
   const draftId = parseInt(req.params.id);
   try {
-    const { rows: drafts } = await pool.query(`
-      SELECT d.*, t.id as topic_id, t.title, t.summary, t.primary_source, t.url
-      FROM drafts d
-      JOIN topics t ON d.topic_id = t.id
-      WHERE d.id = $1
-    `, [draftId]);
-
-    if (drafts.length === 0) {
-      return res.status(404).json({ error: 'Draf tidak ditemukan' });
-    }
-
-    const d = drafts[0];
-    const topic = {
-      id: d.topic_id,
-      title: d.title,
-      summary: d.summary,
-      primary_source: d.primary_source,
-      url: d.url,
-    };
-
-    console.log(`[Web API] Regenerasi draf #${draftId} dengan AI Designer...`);
-    const carouselData = await buildCarouselSlides(topic);
-
-    // Call Render Service
-    const renderResp = await fetch(`${RENDER_SERVICE_URL}/render`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Render-Secret': RENDER_SECRET,
-      },
-      body: JSON.stringify({
-        draft_id: draftId,
-        slides: carouselData.slides,
-      }),
-    });
-
-    if (!renderResp.ok) {
-      const errText = await renderResp.text();
-      throw new Error(`Render Service error: HTTP ${renderResp.status} - ${errText}`);
-    }
-
-    const renderData = await renderResp.json();
-
-    // Update drafts table
-    await pool.query(
-      `UPDATE drafts SET slides = $1, caption = $2, hashtags = $3, status = 'draft', updated_at = NOW() WHERE id = $4`,
-      [JSON.stringify(carouselData.slides), carouselData.caption, carouselData.hashtags, draftId]
-    );
-
-    // Replace draft_slides records
-    await pool.query('DELETE FROM draft_slides WHERE draft_id = $1', [draftId]);
-    for (const slideRes of renderData.rendered_slides) {
-      await pool.query(
-        `INSERT INTO draft_slides (draft_id, slide_no, layout, render_path, text_snapshot, data_snapshot)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [
-          draftId,
-          slideRes.slide_no,
-          slideRes.layout,
-          slideRes.file_path,
-          carouselData.slides[slideRes.slide_no - 1]?.teks || '',
-          JSON.stringify(carouselData.slides[slideRes.slide_no - 1]?.data || {}),
-        ]
-      );
-    }
-
-    await pool.query(
-      `INSERT INTO audit_log (entity, entity_id, action, actor, payload) VALUES ('draft', $1, 'regenerated_ai', 'web_editor', $2)`,
-      [draftId, JSON.stringify({ slides_count: carouselData.slides.length })]
-    );
-
-    const updatedSlides = renderData.rendered_slides.map((s) => ({
-      slide_no: s.slide_no,
-      layout: s.layout,
-      text: carouselData.slides[s.slide_no - 1]?.teks || '',
-      data: carouselData.slides[s.slide_no - 1]?.data || {},
-      image_url: `/storage/drafts/${draftId}/slide_${s.slide_no}.png`,
-    }));
-
-    res.json({
-      status: 'success',
-      draft_id: draftId,
-      caption: carouselData.caption,
-      hashtags: carouselData.hashtags,
-      rendered_slides: updatedSlides,
-    });
+    const result = await regenerateDraft(draftId, pool);
+    const { rows: [draft] } = await pool.query('SELECT caption,hashtags FROM drafts WHERE id=$1', [draftId]);
+    const { rows: slides } = await pool.query('SELECT slide_no,layout,text_snapshot AS text,data_snapshot AS data FROM draft_slides WHERE draft_id=$1 ORDER BY slide_no', [draftId]);
+    res.json({ status: 'success', ...result, ...draft, needs_review: true, rendered_slides: slides.map((slide) => ({ ...slide, image_url: `/storage/drafts/${draftId}/slide_${slide.slide_no}.png` })) });
   } catch (err) {
     console.error('[Web API] Error regenerating draft:', err);
-    res.status(500).json({ error: err.message });
+    res.status(/not_found/.test(err.message) ? 404 : /Render/.test(err.message) ? 502 : 409).json({ error: err.message });
   }
 });
 
 // 2d. On-the-fly AI Slide Generator (Studio Desain & Playground)
 app.post('/api/designer/generate-slides', async (req, res) => {
-  const { title, summary, primary_source } = req.body;
+  const { title, summary, primary_source, url } = req.body;
   if (!title || title.trim().length === 0) {
     return res.status(400).json({ error: 'Judul / topik berita wajib diisi.' });
   }
   try {
+    const sourceUrl = String(url || '').trim();
+    const sourceError = validatePublicSourceUrl(sourceUrl);
+    if (sourceError) return res.status(400).json({ error: `URL sumber primer wajib valid: ${sourceError}` });
     const topic = {
       id: 0,
       title: title.trim(),
       summary: (summary || '').trim(),
       primary_source: (primary_source || '@gapuramedia').trim(),
-      url: '',
+      url: sourceUrl,
     };
-    const slides = await designCarouselSlides(topic);
-    res.json({ status: 'success', slides });
+    const design = await (await import('../designer/designer.js')).designCarouselContent(topic);
+    res.json({ status: 'success', format: design.format, slides: design.slides });
   } catch (err) {
     console.error('[Web API] Error generating slides via AI Designer:', err);
     res.status(500).json({ error: err.message });
@@ -348,27 +360,28 @@ app.post('/api/designer/generate-slides', async (req, res) => {
 
 // 2e. Create Draft & Slides from Custom Studio Design
 app.post('/api/drafts/create-from-custom', async (req, res) => {
-  const { title, summary, primary_source, slides, caption, hashtags } = req.body;
+  const { title, summary, primary_source, source_url, slides, caption, hashtags, format } = req.body;
   if (!title || !Array.isArray(slides) || slides.length === 0) {
     return res.status(400).json({ error: 'Data draf tidak lengkap atau slide kosong.' });
   }
+  if (validatePublicSourceUrl(source_url)) return res.status(400).json({ error: 'Sumber primer HTTPS yang dapat diverifikasi wajib diisi.' });
   try {
     // 1. Simpan Topik
     const { rows: topicRows } = await pool.query(
-      `INSERT INTO topics (title, summary, primary_source, url, status)
-       VALUES ($1, $2, $3, $4, 'produced') RETURNING id`,
-      [title, summary || '', primary_source || '@gapuramedia', 'custom-studio']
+      `INSERT INTO topics (title, summary, primary_source, url, status, source_kind)
+       VALUES ($1, $2, $3, $4, 'new', 'custom_studio') RETURNING id`,
+      [title, summary || '', primary_source || parsePublicSourceUrl(source_url).sourceName, source_url]
     );
     const topicId = topicRows[0].id;
 
-    // 2. Simpan Draft
+    // 2. Simpan draft as a review-only design preview; it is not marked as scored.
     const defaultCaption = caption || `${title}\n\n${summary || ''}\n\nSumber Data: ${primary_source || '@gapuramedia'}\n\n---\nDisclaimer: Informasi disajikan untuk tujuan edukasi publik dan bukan merupakan rekomendasi investasi beli/jual saham atau nasihat hukum resmi.`;
     const defaultHashtags = Array.isArray(hashtags) && hashtags.length > 0 ? hashtags : ['#GapuraMedia', '#DataEkonomi', '#BursaSaham', '#IHSG'];
 
     const { rows: draftRows } = await pool.query(
-      `INSERT INTO drafts (topic_id, slides, caption, hashtags, disclaimer_type, status, needs_review, tokens_version, copy_model)
-       VALUES ($1, $2, $3, $4, 'keuangan', 'draft', false, 'v1.0', 'studio-ai-designer') RETURNING id`,
-      [topicId, JSON.stringify(slides), defaultCaption, defaultHashtags]
+      `INSERT INTO drafts (topic_id, slides, content_format, caption, hashtags, disclaimer_type, status, needs_review, tokens_version, copy_model)
+       VALUES ($1, $2, $3, $4, $5, 'keuangan', 'draft', true, 'v1.0', 'studio-ai-designer') RETURNING id`,
+      [topicId, JSON.stringify(slides), req.body?.format === 'single' && slides.length === 1 ? 'single' : 'carousel', defaultCaption, defaultHashtags]
     );
     const draftId = draftRows[0].id;
 
@@ -381,7 +394,7 @@ app.post('/api/drafts/create-from-custom', async (req, res) => {
       },
       body: JSON.stringify({
         draft_id: draftId,
-        slides,
+        slides: await renderPayload(slides),
       }),
     });
 
@@ -431,26 +444,73 @@ app.post('/api/drafts/:id/approve', async (req, res) => {
   const { mode = 'auto' } = req.body; // 'auto' or 'manual'
 
   try {
-    if (mode === 'auto') {
-      const scheduledAt = new Date(Date.now() + 3 * 3600 * 1000);
-      await pool.query("UPDATE drafts SET status = 'scheduled', updated_at = NOW() WHERE id = $1", [draftId]);
-      await pool.query(
-        "INSERT INTO scheduled_posts (draft_id, mode, scheduled_at, status) VALUES ($1, 'auto', $2, 'pending')",
-        [draftId, scheduledAt]
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows: lockedDrafts } = await client.query(
+        `SELECT d.*, t.id AS topic_id FROM drafts d
+         JOIN topics t ON t.id = d.topic_id WHERE d.id = $1 FOR UPDATE OF d`, [draftId]
       );
-      await pool.query(
-        "INSERT INTO audit_log (entity, entity_id, action, actor, payload) VALUES ('draft', $1, 'approved_auto', 'web_admin', $2)",
-        [draftId, JSON.stringify({ scheduled_at: scheduledAt })]
+      if (!lockedDrafts.length) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Draf tidak ditemukan.' });
+      }
+      const contentHash = draftContentHash(lockedDrafts[0]);
+      if (req.body.expected_revision !== contentHash) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'Draf telah berubah. Muat ulang dan tinjau konten terbaru sebelum menyetujui.' });
+      }
+      if (req.body.reviewed !== true) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'Konfirmasi review konten wajib diisi sebelum menyetujui.' });
+      }
+      const { rows: verificationRows } = await client.query(
+        'SELECT status, confidence FROM verification_reports WHERE topic_id = $1 ORDER BY created_at DESC LIMIT 1',
+        [lockedDrafts[0].topic_id]
       );
-    } else {
-      await pool.query("UPDATE drafts SET status = 'approved', updated_at = NOW() WHERE id = $1", [draftId]);
-      await pool.query(
-        "INSERT INTO audit_log (entity, entity_id, action, actor, payload) VALUES ('draft', $1, 'approved_manual', 'web_admin', '{}')",
-        [draftId]
-      );
+      const gate = validateDraftApproval({
+        status: lockedDrafts[0].status,
+        needsReview: lockedDrafts[0].needs_review,
+        verification: verificationRows[0] || null,
+        mode,
+        acknowledgeReview: req.body.reviewed === true,
+      });
+      if (!gate.allowed) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: `Persetujuan diblokir: ${gate.reason}.` });
+      }
+      if (lockedDrafts[0].status !== 'draft') {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'Draf sudah diproses atau tidak lagi dapat disetujui.' });
+      }
+
+      if (mode === 'auto') {
+        const scheduledAt = new Date(Date.now() + 3 * 3600 * 1000);
+        await client.query("UPDATE drafts SET status = 'scheduled', needs_review=FALSE, updated_at = NOW() WHERE id = $1", [draftId]);
+        await client.query(
+          "INSERT INTO scheduled_posts (draft_id, mode, scheduled_at, status) VALUES ($1, 'auto', $2, 'pending')",
+          [draftId, scheduledAt]
+        );
+        await client.query(
+          "INSERT INTO audit_log (entity, entity_id, action, actor, payload) VALUES ('draft', $1, 'approved_auto', 'web_admin', $2)",
+          [draftId, JSON.stringify({ scheduled_at: scheduledAt, content_hash: contentHash })]
+        );
+      } else {
+        await client.query("UPDATE drafts SET status = 'published', updated_at = NOW() WHERE id = $1", [draftId]);
+        await client.query(
+          "INSERT INTO audit_log (entity, entity_id, action, actor, payload) VALUES ('draft', $1, 'published_manual', 'web_admin', $2)",
+          [draftId, JSON.stringify({ content_hash: contentHash })]
+        );
+      }
+      await client.query('COMMIT');
+    } catch (transactionError) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw transactionError;
+    } finally {
+      client.release();
     }
 
-    res.json({ status: 'success', draftId, mode });
+    res.json({ status: 'success', draftId, mode, published: mode === 'manual' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -462,7 +522,8 @@ app.post('/api/drafts/:id/reject', async (req, res) => {
   const { reason = 'Ditolak via web dashboard' } = req.body;
 
   try {
-    await pool.query("UPDATE drafts SET status = 'rejected', updated_at = NOW() WHERE id = $1", [draftId]);
+    const { rowCount } = await pool.query("UPDATE drafts SET status = 'rejected', updated_at = NOW() WHERE id = $1 AND status IN ('draft','scheduled','approved') RETURNING id", [draftId]);
+    if (rowCount !== 1) return res.status(409).json({ error: 'Draf sudah diproses atau tidak lagi dapat ditolak.' });
     await pool.query(
       "INSERT INTO audit_log (entity, entity_id, action, actor, payload) VALUES ('draft', $1, 'rejected', 'web_admin', $2)",
       [draftId, JSON.stringify({ reason })]
@@ -478,59 +539,21 @@ app.post('/api/drafts/:id/reject', async (req, res) => {
 app.post('/api/drafts/:id/edit-slide', async (req, res) => {
   const draftId = parseInt(req.params.id);
   const { slide_no, new_text, layout, data, category, source } = req.body;
-
   try {
-    const { rows: drafts } = await pool.query('SELECT slides FROM drafts WHERE id = $1', [draftId]);
-    if (drafts.length === 0) return res.status(404).json({ error: 'Draft not found' });
-
-    const slides = drafts[0].slides;
-    const targetIdx = slides.findIndex((s) => (s.no || 0) === slide_no || slides.indexOf(s) === slide_no - 1);
-    if (targetIdx === -1) return res.status(400).json({ error: 'Slide number not found' });
-
-    if (new_text !== undefined) slides[targetIdx].teks = new_text;
-    if (layout) slides[targetIdx].layout = layout;
-    if (data !== undefined) slides[targetIdx].data = data;
-    if (category) {
-      if (!slides[targetIdx].data) slides[targetIdx].data = {};
-      slides[targetIdx].data.category = category;
-    }
-    if (source) slides[targetIdx].source = source;
-
-    // Call Render Service
-    const renderResp = await fetch(`${RENDER_SERVICE_URL}/render`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Render-Secret': RENDER_SECRET },
-      body: JSON.stringify({ draft_id: draftId, slides }),
-    });
-
-    if (!renderResp.ok) throw new Error('Render service failed');
-
-    // Update DB
-    const slideFilePath = path.join(STORAGE_PATH, 'drafts', String(draftId), `slide_${slide_no}.png`);
-    await pool.query('UPDATE drafts SET slides = $1, updated_at = NOW() WHERE id = $2', [JSON.stringify(slides), draftId]);
-    await pool.query(
-      `INSERT INTO draft_slides (draft_id, slide_no, layout, render_path, text_snapshot, data_snapshot, rendered_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW())
-       ON CONFLICT (draft_id, slide_no) DO UPDATE
-       SET layout = EXCLUDED.layout, render_path = EXCLUDED.render_path, text_snapshot = EXCLUDED.text_snapshot, data_snapshot = EXCLUDED.data_snapshot, rendered_at = NOW()`,
-      [draftId, slide_no, slides[targetIdx].layout, slideFilePath, slides[targetIdx].teks, JSON.stringify(slides[targetIdx].data || {})]
-    );
-
-    await pool.query(
-      "INSERT INTO audit_log (entity, entity_id, action, actor, payload) VALUES ('draft', $1, 'edit_slide', 'web_admin', $2)",
-      [draftId, JSON.stringify({ slide_no, layout: slides[targetIdx].layout, teks: slides[targetIdx].teks })]
-    );
-
-    res.json({
-      status: 'success',
-      draftId,
-      slide_no,
-      layout: slides[targetIdx].layout,
-      data: slides[targetIdx].data,
-      image_url: `/storage/drafts/${draftId}/slide_${slide_no}.png?t=${Date.now()}`,
-    });
+    if (!Number.isInteger(slide_no) || slide_no < 1) throw new DraftError('Nomor slide tidak valid.');
+    const result = await editDraft(draftId, (draft) => {
+      const slide = draft.slides[slide_no - 1];
+      if (!slide) throw new DraftError('Slide tidak ditemukan.');
+      if (new_text !== undefined) slide.teks = new_text;
+      if (layout) slide.layout = layout;
+      if (data !== undefined) slide.data = data;
+      if (category) slide.data = { ...slide.data, category };
+      if (source) slide.source = source;
+      return { slides: draft.slides };
+    }, draftDependencies);
+    res.json({ status: 'success', draftId, slide_no, layout: result.slides[slide_no - 1].layout, data: result.slides[slide_no - 1].data, image_url: `/storage/drafts/${draftId}/slide_${slide_no}.png?t=${Date.now()}`, needs_review: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
 
@@ -540,39 +563,13 @@ app.post('/api/drafts/:id/add-slide', async (req, res) => {
   const { layout = 'big-statement', teks = 'Poin penting tambahan...', data = {} } = req.body;
 
   try {
-    const { rows: drafts } = await pool.query('SELECT slides FROM drafts WHERE id = $1', [draftId]);
-    if (drafts.length === 0) return res.status(404).json({ error: 'Draft not found' });
-
-    const slides = drafts[0].slides;
-    const newSlideNo = slides.length + 1;
-    slides.push({
-      no: newSlideNo,
-      layout,
-      teks,
-      data,
-      source: '@gapuramedia',
-    });
-
-    // Re-render
-    const renderResp = await fetch(`${RENDER_SERVICE_URL}/render`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Render-Secret': RENDER_SECRET },
-      body: JSON.stringify({ draft_id: draftId, slides }),
-    });
-
-    if (!renderResp.ok) throw new Error('Render service failed');
-
-    const newSlidePath = path.join(STORAGE_PATH, 'drafts', String(draftId), `slide_${newSlideNo}.png`);
-    await pool.query('UPDATE drafts SET slides = $1, updated_at = NOW() WHERE id = $2', [JSON.stringify(slides), draftId]);
-    await pool.query(
-      `INSERT INTO draft_slides (draft_id, slide_no, layout, render_path, text_snapshot, data_snapshot, rendered_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-      [draftId, newSlideNo, layout, newSlidePath, teks, JSON.stringify(data)]
-    );
-
-    res.json({ status: 'success', draftId, new_slide_no: newSlideNo, total_slides: slides.length });
+    const result = await editDraft(draftId, (draft) => {
+      draft.slides.push({ no: draft.slides.length + 1, layout, teks, data, source: '@gapuramedia' });
+      return { slides: draft.slides };
+    }, draftDependencies);
+    res.json({ status: 'success', draftId, new_slide_no: result.slides.length, total_slides: result.slides.length, needs_review: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
 
@@ -582,100 +579,69 @@ app.post('/api/drafts/:id/delete-slide', async (req, res) => {
   const { slide_no } = req.body;
 
   try {
-    const { rows: drafts } = await pool.query('SELECT slides FROM drafts WHERE id = $1', [draftId]);
-    if (drafts.length === 0) return res.status(404).json({ error: 'Draft not found' });
-
-    let slides = drafts[0].slides;
-    if (slides.length <= 1) return res.status(400).json({ error: 'Draf minimal harus memiliki 1 slide.' });
-
-    slides = slides.filter((s, idx) => (s.no || idx + 1) !== slide_no);
-    slides.forEach((s, idx) => { s.no = idx + 1; });
-
-    // Clean old slide files and re-render
-    const renderResp = await fetch(`${RENDER_SERVICE_URL}/render`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Render-Secret': RENDER_SECRET },
-      body: JSON.stringify({ draft_id: draftId, slides }),
-    });
-
-    if (!renderResp.ok) throw new Error('Render service failed');
-
-    await pool.query('DELETE FROM draft_slides WHERE draft_id = $1', [draftId]);
-    for (const s of slides) {
-      const sPath = path.join(STORAGE_PATH, 'drafts', String(draftId), `slide_${s.no}.png`);
-      await pool.query(
-        `INSERT INTO draft_slides (draft_id, slide_no, layout, render_path, text_snapshot, data_snapshot, rendered_at)
-         VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-        [draftId, s.no, s.layout, sPath, s.teks, JSON.stringify(s.data || {})]
-      );
-    }
-    await pool.query('UPDATE drafts SET slides = $1, updated_at = NOW() WHERE id = $2', [JSON.stringify(slides), draftId]);
-
-    res.json({ status: 'success', draftId, total_slides: slides.length });
+    const result = await editDraft(draftId, (draft) => {
+      if (!Number.isInteger(slide_no) || slide_no < 1 || slide_no > draft.slides.length) throw new DraftError('Nomor slide tidak valid.');
+      if (draft.slides.length === 1) throw new DraftError('Draf minimal memiliki satu slide.');
+      draft.slides.splice(slide_no - 1, 1);
+      return { slides: draft.slides };
+    }, draftDependencies);
+    res.json({ status: 'success', draftId, total_slides: result.slides.length, needs_review: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
 
 // 5b. Update Draft Full (caption, slides, schedule)
 app.post('/api/drafts/:id/update-full', async (req, res) => {
   const draftId = parseInt(req.params.id);
-  const { caption, slides, scheduled_at, mode = 'auto' } = req.body;
+  const { caption, slides, hashtags, scheduled_at } = req.body;
   try {
-    if (caption) {
-      await pool.query('UPDATE drafts SET caption = $1, updated_at = NOW() WHERE id = $2', [caption, draftId]);
-    }
-    if (slides && Array.isArray(slides)) {
-      await pool.query('UPDATE drafts SET slides = $1, updated_at = NOW() WHERE id = $2', [JSON.stringify(slides), draftId]);
-      await fetch(`${RENDER_SERVICE_URL}/render`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Render-Secret': RENDER_SECRET },
-        body: JSON.stringify({ draft_id: draftId, slides }),
-      });
-      // Update draft_slides snapshots
-      for (const s of slides) {
-        await pool.query(
-          'UPDATE draft_slides SET text_snapshot = $1, rendered_at = NOW() WHERE draft_id = $2 AND slide_no = $3',
-          [s.teks || '', draftId, s.no]
-        );
-      }
-    }
-    if (scheduled_at) {
-      await pool.query("UPDATE drafts SET status = 'scheduled', updated_at = NOW() WHERE id = $1", [draftId]);
-      await pool.query(
-        "INSERT INTO scheduled_posts (draft_id, mode, scheduled_at, status) VALUES ($1, $2, $3, 'pending')",
-        [draftId, mode, new Date(scheduled_at)]
-      );
-      await pool.query(
-        "INSERT INTO audit_log (entity, entity_id, action, actor, payload) VALUES ('draft', $1, 'scheduled_custom', 'web_admin', $2)",
-        [draftId, JSON.stringify({ scheduled_at, mode })]
-      );
-    }
+    if (scheduled_at) throw new DraftError('Simpan perubahan terlebih dahulu, lalu setujui melalui tombol jadwalkan.');
+    if (caption === undefined && slides === undefined && hashtags === undefined) throw new DraftError('Tidak ada perubahan yang dikirim.');
+    await editDraft(draftId, (draft) => ({ slides: slides ?? draft.slides, caption: caption ?? draft.caption, hashtags: hashtags ?? draft.hashtags, render: slides !== undefined }), draftDependencies);
     res.json({ status: 'success', draftId });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
 
 // 6. Topics List with Scores
 app.get('/api/topics', async (req, res) => {
-  const { status, limit = 50 } = req.query;
+  const { status, limit = 50, offset = 0, q = '', sort = 'newest' } = req.query;
+  const pageSize = Math.max(1, Math.min(100, Number.parseInt(limit, 10) || 40));
+  const pageOffset = Math.max(0, Math.min(1000000, Number.parseInt(offset, 10) || 0));
+  if (status && !['new', 'scored', 'rejected', 'produced', 'archived'].includes(status)) {
+    return res.status(400).json({ error: 'Status topik tidak valid.' });
+  }
+  if (String(q).length > 200) return res.status(400).json({ error: 'Kueri pencarian maksimal 200 karakter.' });
   try {
     let query = `
       SELECT t.*, ts.score_relevance, ts.score_credibility, ts.score_momentum, ts.score_engagement, ts.score_compliance, ts.score_total, ts.verdict, ts.reasoning
       FROM topics t
-      LEFT JOIN topic_scores ts ON t.id = ts.topic_id
+      LEFT JOIN LATERAL (SELECT s.* FROM topic_scores s WHERE s.topic_id = t.id ORDER BY s.id DESC LIMIT 1) ts ON TRUE
     `;
     const params = [];
+    const filters = [];
     if (status) {
-      query += ' WHERE t.status = $1 ';
       params.push(status);
+      filters.push(`t.status = $${params.length}`);
     }
-    query += ` ORDER BY t.id DESC LIMIT $${params.length + 1} `;
-    params.push(parseInt(limit));
+    if (q.trim()) {
+      params.push(`%${q.trim()}%`);
+      filters.push(`(t.title ILIKE $${params.length} OR COALESCE(t.summary, '') ILIKE $${params.length} OR COALESCE(t.primary_source, '') ILIKE $${params.length})`);
+    }
+    if (filters.length) query += ` WHERE ${filters.join(' AND ')} `;
+    const orderBy = sort === 'score' ? 'COALESCE(ts.score_total, 0) DESC, t.id DESC'
+      : sort === 'trend' ? 'COALESCE(t.trend_score, 0) DESC, t.id DESC' : 't.id DESC';
+    query += ` ORDER BY ${orderBy} LIMIT $${params.length + 1} OFFSET $${params.length + 2} `;
+    params.push(pageSize + 1, pageOffset);
 
     const { rows } = await pool.query(query, params);
-    res.json(rows);
+    const hasMore = rows.length > pageSize;
+    const results = hasMore ? rows.slice(0, pageSize) : rows;
+    res.set('X-Has-More', String(hasMore));
+    res.set('X-Next-Offset', String(pageOffset + results.length));
+    res.json(results);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -685,7 +651,9 @@ app.get('/api/topics', async (req, res) => {
 app.post('/api/topics/:id/promote', async (req, res) => {
   const topicId = parseInt(req.params.id);
   try {
-    await pool.query("UPDATE topics SET status = 'scored', updated_at = NOW() WHERE id = $1", [topicId]);
+    const { rows } = await pool.query('SELECT status FROM topics WHERE id = $1', [topicId]);
+    if (!rows.length) return res.status(404).json({ error: 'Topik tidak ditemukan.' });
+    if (rows[0].status !== 'scored') return res.status(409).json({ error: 'Topik harus lebih dahulu lolos evaluasi Analis.' });
     await pool.query(
       "INSERT INTO audit_log (entity, entity_id, action, actor, payload) VALUES ('topic', $1, 'promote_manual', 'web_admin', '{}')",
       [topicId]
@@ -701,67 +669,15 @@ app.post('/api/topics/:id/auto-produce', async (req, res) => {
   const topicId = parseInt(req.params.id);
   const force = req.body?.force === true || req.query?.force === 'true';
   try {
-    // Cek apakah sudah pernah diproduksi
-    const { rows: existingDrafts } = await pool.query('SELECT id FROM drafts WHERE topic_id = $1 LIMIT 1', [topicId]);
-    if (existingDrafts.length > 0 && !force) {
-      return res.json({ status: 'success', draft_id: existingDrafts[0].id, is_existing: true });
-    }
-
-    // Ambil detail topik
-    const { rows: topics } = await pool.query('SELECT * FROM topics WHERE id = $1', [topicId]);
-    if (topics.length === 0) {
-      return res.status(404).json({ error: 'Topik tidak ditemukan' });
-    }
-
-    const topic = topics[0];
-
-    // Gate verifikasi: konten berstatus hoaks tidak boleh diproduksi otomatis.
-    const { rows: verificationRows } = await pool.query(
-      'SELECT * FROM verification_reports WHERE topic_id = $1 ORDER BY created_at DESC LIMIT 1',
-      [topicId]
-    );
-    const latestVerification = verificationRows[0] || null;
-    if (latestVerification?.status === 'hoax_detected' && !force) {
-      return res.status(409).json({
-        error: 'Konten terindikasi hoaks dan diblokir dari produksi otomatis. Tinjau laporan verifikasi atau kirim force=true setelah review manual.',
-        verification: latestVerification,
-      });
-    }
-
-    if (existingDrafts.length > 0 && force) {
-      const draftId = existingDrafts[0].id;
-      const carouselData = await buildCarouselSlides(topic, latestVerification);
-      const renderResp = await fetch(`${RENDER_SERVICE_URL}/render`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Render-Secret': RENDER_SECRET },
-        body: JSON.stringify({ draft_id: draftId, slides: carouselData.slides }),
-      });
-      const renderData = await renderResp.json();
-      await pool.query('UPDATE drafts SET slides = $1, caption = $2, hashtags = $3, status = $4, updated_at = NOW() WHERE id = $5',
-        [JSON.stringify(carouselData.slides), carouselData.caption, carouselData.hashtags, 'draft', draftId]);
-      await pool.query('DELETE FROM draft_slides WHERE draft_id = $1', [draftId]);
-      for (const slideRes of renderData.rendered_slides) {
-        await pool.query(
-          `INSERT INTO draft_slides (draft_id, slide_no, layout, render_path, text_snapshot, data_snapshot)
-           VALUES ($1, $2, $3, $4, $5, $6)`,
-          [
-            draftId,
-            slideRes.slide_no,
-            slideRes.layout,
-            slideRes.file_path,
-            carouselData.slides[slideRes.slide_no - 1]?.teks || '',
-            JSON.stringify(carouselData.slides[slideRes.slide_no - 1]?.data || {}),
-          ]
-        );
-      }
-      return res.json({ status: 'success', draft_id: draftId, is_existing: false, slides_count: carouselData.slides.length });
-    }
-
-    const result = await produceSingleTopicDraft(topic, pool);
-    res.json({ status: 'success', draft_id: result.draft_id, is_existing: false, slides_count: result.slides_count });
+    let result;
+    if (force) {
+      const { rows } = await pool.query('SELECT id FROM drafts WHERE topic_id=$1 ORDER BY id DESC LIMIT 1', [topicId]);
+      result = rows.length ? await regenerateDraft(rows[0].id, pool) : await produceSingleTopicDraft(topicId, pool);
+    } else result = await produceSingleTopicDraft(topicId, pool);
+    res.json({ status: 'success', ...result });
   } catch (err) {
     console.error('[Web API] Auto-produce error:', err);
-    res.status(500).json({ error: err.message });
+    res.status(/not_found/.test(err.message) ? 404 : /Render/.test(err.message) ? 502 : 409).json({ error: err.message });
   }
 });
 
@@ -871,6 +787,132 @@ app.post('/api/render/preview', async (req, res) => {
   }
 });
 
+// 9a. Provider & Model Catalog API (admin guard applies to /api)
+const PROVIDER_EDITABLE = new Set(['label', 'kind', 'base_url', 'api_key_env', 'enabled', 'default_model', 'models', 'max_tokens', 'headers', 'notes']);
+const PROVIDER_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,39}$/;
+
+function providerSnapshot() {
+  const config = loadProvidersConfig(PROVIDERS_CONFIG_PATH);
+  const secrets = loadProviderSecrets();
+  const cache = loadModelCache();
+  return {
+    providers: providerInventory(config, { env: process.env, secrets, cache }),
+    routing: config.routing || { fallback_chain: [] },
+  };
+}
+
+app.get('/api/providers', (_req, res) => {
+  try {
+    res.json(providerSnapshot());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/providers/refresh', async (req, res) => {
+  try {
+    const providerId = req.body?.provider_id ? String(req.body.provider_id) : null;
+    if (providerId && !PROVIDER_ID_PATTERN.test(providerId)) return res.status(400).json({ error: 'ID provider tidak valid.' });
+    const config = loadProvidersConfig(PROVIDERS_CONFIG_PATH);
+    await refreshModels({ providerId, config, env: process.env, secrets: loadProviderSecrets() });
+    await writeAudit('ai_providers', null, 'refresh_models', 'web_admin', { provider_id: providerId || 'all' });
+    res.json({ status: 'success', ...providerSnapshot() });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/providers/routing', async (req, res) => {
+  const chain = req.body?.fallback_chain;
+  try {
+    const config = loadProvidersConfig(PROVIDERS_CONFIG_PATH);
+    config.routing = { ...(config.routing || {}), fallback_chain: chain };
+    const errors = validateProvidersConfig(config);
+    if (errors.length) return res.status(400).json({ status: 'invalid', details: errors });
+    saveProvidersConfig(config, PROVIDERS_CONFIG_PATH);
+    await writeAudit('ai_providers', null, 'update_routing', 'web_admin', { entries: Array.isArray(chain) ? chain.length : 0 });
+    res.json({ status: 'success', ...providerSnapshot() });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/providers/test', async (req, res) => {
+  const { provider_id: providerId } = req.body || {};
+  if (!PROVIDER_ID_PATTERN.test(String(providerId || ''))) return res.status(400).json({ error: 'ID provider tidak valid.' });
+  const config = loadProvidersConfig(PROVIDERS_CONFIG_PATH);
+  const entry = config.providers?.[providerId];
+  if (!entry) return res.status(404).json({ error: 'Provider tidak ditemukan.' });
+  const model = String(req.body?.model || entry.default_model || '').trim();
+  if (!model) return res.status(400).json({ error: 'Model uji wajib diisi.' });
+  const prompt = typeof req.body?.prompt === 'string' && req.body.prompt.trim() ? req.body.prompt.slice(0, 300) : 'Balas JSON {"ok":true} tanpa penjelasan.';
+  const inlineKey = typeof req.body?.api_key === 'string' ? req.body.api_key.trim() : '';
+  const isolated = { providers: config.providers, routing: { fallback_chain: [] } };
+  try {
+    buildAttempts({ provider: providerId, model, api_key: inlineKey }, isolated, { env: process.env, secrets: loadProviderSecrets() });
+  } catch (error) {
+    return res.status(400).json({ status: 'invalid', error: error.message });
+  }
+  const started = Date.now();
+  try {
+    let metadata;
+    const result = await callAgentLLM('studio', prompt, 'Ini uji koneksi provider. Balas JSON {"ok":true}; jangan memproduksi berita.', true, {
+      config: { studio: { provider: providerId, model, api_key: inlineKey } },
+      providers: isolated,
+      env: process.env,
+      secrets: loadProviderSecrets(),
+      onMetadata: (value) => { metadata = value; },
+      timeoutMs: 30000,
+    });
+    JSON.parse(result.replace(/```json|```/g, '').trim());
+    res.json({ status: 'passed', provider: providerId, model: metadata?.model || model, latency_ms: Date.now() - started, message: 'Provider merespons dengan JSON valid. Tidak ada perubahan tersimpan.' });
+  } catch (error) {
+    res.status(502).json({ status: 'failed', provider: providerId, model, latency_ms: Date.now() - started, error: String(error.message || error).slice(0, 500) });
+  }
+});
+
+app.post('/api/providers/:providerId', async (req, res) => {
+  const providerId = String(req.params.providerId || '');
+  if (!PROVIDER_ID_PATTERN.test(providerId)) return res.status(400).json({ error: 'ID provider tidak valid.' });
+  const body = req.body || {};
+  const unknown = Object.keys(body).filter((key) => !PROVIDER_EDITABLE.has(key));
+  if (unknown.length) return res.status(400).json({ error: `Field tidak dikenal: ${unknown.join(', ')}.` });
+  try {
+    const config = loadProvidersConfig(PROVIDERS_CONFIG_PATH);
+    const existing = config.providers[providerId] || {};
+    const next = { ...existing };
+    for (const [key, value] of Object.entries(body)) {
+      if (key === 'models' && typeof value === 'string') next.models = value.split('\n').map((line) => line.trim()).filter(Boolean);
+      else next[key] = value;
+    }
+    if (!next.api_key_env) next.api_key_env = `${providerId.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_API_KEY`;
+    config.providers[providerId] = next;
+    const errors = validateProvidersConfig(config);
+    if (errors.length) return res.status(400).json({ status: 'invalid', details: errors });
+    saveProvidersConfig(config, PROVIDERS_CONFIG_PATH);
+    await writeAudit('ai_providers', null, 'upsert_provider', 'web_admin', { provider_id: providerId, enabled: next.enabled !== false });
+    res.json({ status: 'success', ...providerSnapshot() });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/providers/:providerId/key', async (req, res) => {
+  const providerId = String(req.params.providerId || '');
+  if (!PROVIDER_ID_PATTERN.test(providerId)) return res.status(400).json({ error: 'ID provider tidak valid.' });
+  const apiKey = typeof req.body?.api_key === 'string' ? req.body.api_key.trim() : '';
+  if (!apiKey) return res.status(400).json({ error: 'API key wajib diisi.' });
+  const entry = loadProvidersConfig(PROVIDERS_CONFIG_PATH).providers?.[providerId];
+  if (!entry) return res.status(404).json({ error: 'Provider tidak ditemukan.' });
+  try {
+    saveProviderSecret(entry.api_key_env, apiKey);
+    await writeAudit('ai_providers', null, 'set_api_key', 'web_admin', { provider_id: providerId, env: entry.api_key_env });
+    res.json({ status: 'success', provider: providerId, key_configured: true, message: 'API key tersimpan di secret store provider (0600).' });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // 9b. AI Agents Configuration API
 app.get('/api/agents/config', (req, res) => {
   try {
@@ -882,8 +924,9 @@ app.get('/api/agents/config', (req, res) => {
       designer: loadAgentSkills('designer'),
       seo: loadAgentSkills('seo'),
       verifikator: loadAgentSkills('verifikator'),
+      studio: loadAgentSkills('studio'),
     };
-    res.json(config);
+    res.json(redactAgentConfig(config));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -891,77 +934,67 @@ app.get('/api/agents/config', (req, res) => {
 
 app.post('/api/agents/config', async (req, res) => {
   try {
-    const newConfig = req.body;
-    if (!newConfig || typeof newConfig !== 'object') {
-      return res.status(400).json({ error: 'Payload konfigurasi tidak valid.' });
-    }
-
-    // 1. Simpan skills.md kustom untuk masing-masing agen
-    if (newConfig.skills && typeof newConfig.skills === 'object') {
-      ['scout', 'analis', 'copywriter', 'designer', 'seo', 'verifikator'].forEach((key) => {
-        if (typeof newConfig.skills[key] === 'string') {
-          saveAgentSkills(key, newConfig.skills[key]);
-        }
-      });
-    }
-
-    // 2. Simpan konfigurasi ke config/agents.json (tanpa bloat payload skills)
-    const jsonToSave = { ...newConfig };
-    delete jsonToSave.skills;
-    fs.writeFileSync(AGENTS_CONFIG_PATH, JSON.stringify(jsonToSave, null, 2), 'utf8');
-
-    // 3. Jika konfigurasi designer / tokens ada pembaruan, sinkronisasi ke tokens.yaml dan reload Render Service
-    if (newConfig.designer && newConfig.designer.tokens) {
+    await saveSettings(req.body, {
+      configPath: AGENTS_CONFIG_PATH,
+      skillsDir: process.env.AGENT_SKILLS_DIR || path.resolve(__dirname, '../../config/skills'),
+    });
+    const warnings = [];
+    if (req.body.designer?.tokens && process.env.GAPURA_DISABLE_WORKERS !== 'true') {
       try {
-        let existingTokens = {};
-        if (fs.existsSync(TOKENS_PATH)) {
-          existingTokens = yaml.load(fs.readFileSync(TOKENS_PATH, 'utf8')) || {};
-        }
-        existingTokens.palette = {
-          ...(existingTokens.palette || {}),
-          ...(newConfig.designer.tokens.palette || {}),
-        };
-        existingTokens.typography = {
-          ...(existingTokens.typography || {}),
-          ...(newConfig.designer.tokens.typography || {}),
-        };
-        const tokensYaml = yaml.dump(existingTokens);
-        fs.writeFileSync(TOKENS_PATH, tokensYaml, 'utf8');
-        await fetch(`${RENDER_SERVICE_URL}/tokens/reload`, {
-          method: 'POST',
-          headers: { 'X-Render-Secret': RENDER_SECRET },
-        });
-        console.log('[Web API] Desain tokens berhasil disinkronisasi & di-reload di Render Service.');
-      } catch (tokenErr) {
-        console.warn('[Web API] Gagal sinkronisasi token desain:', tokenErr.message);
-      }
+        const tokens = yaml.load(fs.readFileSync(TOKENS_PATH, 'utf8'));
+        for (const key of ['palette', 'typography']) tokens[key] = { ...tokens[key], ...req.body.designer.tokens[key] };
+        fs.writeFileSync(`${TOKENS_PATH}.tmp`, yaml.dump(tokens));
+        fs.renameSync(`${TOKENS_PATH}.tmp`, TOKENS_PATH);
+        const response = await fetch(`${RENDER_SERVICE_URL}/tokens/reload`, { method: 'POST', headers: { 'X-Render-Secret': RENDER_SECRET }, signal: AbortSignal.timeout(4000) });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      } catch (error) { warnings.push(`Konfigurasi tersimpan; sinkronisasi render perlu diulang: ${error.message}`); }
     }
-
-    // 4. Jika threshold analis diubah, sinkronisasi ke app_settings DB
-    if (newConfig.analis && newConfig.analis.min_score_threshold) {
-      try {
-        await pool.query(
-          `INSERT INTO app_settings (key, value, updated_at)
-           VALUES ('score_threshold', $1, NOW())
-           ON CONFLICT (key) DO UPDATE
-           SET value = EXCLUDED.value, updated_at = NOW()`,
-          [JSON.stringify({ initial_strict_score: parseInt(newConfig.analis.min_score_threshold) })]
-        );
-      } catch (dbErr) {
-        console.warn('[Web API] Gagal sinkronisasi score_threshold ke DB:', dbErr.message);
-      }
-    }
-
-    // 5. Catat ke audit_log
-    await pool.query(
-      "INSERT INTO audit_log (entity, entity_id, action, actor, payload) VALUES ('ai_agents', 1, 'update_config', 'web_admin', $1)",
-      [JSON.stringify({ updated_agents: Object.keys(newConfig) })]
-    );
-
-    res.json({ status: 'success', message: 'Konfigurasi 6 Agen AI dan seluruh berkas skills.md berhasil disimpan dan diterapkan ke seluruh sistem.' });
+    await writeAudit('ai_agents', 1, 'update_config', 'web_admin', { updated_agents: Object.keys(req.body).filter((key) => key !== 'skills') });
+    res.json({ status: 'success', message: 'Konfigurasi tujuh agen dan skills tersimpan.', warnings });
   } catch (err) {
-    console.error('[Web API] Gagal menyimpan config agen:', err);
-    res.status(500).json({ error: err.message });
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/agents/config/test', async (req, res) => {
+  const { agent, config: candidate = {}, prompt } = req.body || {};
+  if (agent === 'scout') {
+    const scout = candidate.scout || {};
+    const limit = Number(scout.max_items_per_source);
+    const threshold = Number(scout.dedup_similarity_threshold);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isFinite(threshold) || threshold < 0.5 || threshold > 1) return res.status(400).json({ error: 'Batas item atau ambang deduplikasi Scout tidak valid.' });
+    return res.json({ status: 'passed', message: 'Scout deterministik: batas item dan deduplikasi valid. Tidak ada panggilan LLM atau penulisan data.' });
+  }
+  const allowedAgents = new Set(['analis', 'copywriter', 'designer', 'seo', 'verifikator', 'studio']);
+  if (!allowedAgents.has(agent)) return res.status(400).json({ error: 'Nama agen tidak valid.' });
+  if (typeof prompt !== 'string' || prompt.length < 5 || prompt.length > 300) return res.status(400).json({ error: 'Prompt uji harus 5-300 karakter.' });
+  if (!candidate?.[agent]) return res.status(400).json({ error: 'Payload konfigurasi agen tidak ditemukan.' });
+  const merged = mergeAgentConfig(loadAgentsConfig(), { [agent]: candidate[agent] });
+  const validationErrors = validateAgent(agent, merged[agent]);
+  if (validationErrors.length) return res.status(400).json({ status: 'invalid', details: validationErrors });
+  const current = merged[agent] || {};
+  const providersConfig = loadProvidersConfig(PROVIDERS_CONFIG_PATH);
+  const secrets = loadProviderSecrets();
+  try {
+    buildAttempts(current, providersConfig, { env: process.env, secrets });
+  } catch (error) {
+    return res.status(400).json({ error: `Rantai provider ${agent} tidak dapat dipakai: ${error.message}` });
+  }
+  try {
+    let metadata;
+    const result = await callAgentLLM(agent, prompt, 'Ini uji koneksi konfigurasi. Balas JSON {"ok":true}; jangan memproduksi berita.', true, {
+      config: merged,
+      providers: providersConfig,
+      env: process.env,
+      secrets,
+      skills: req.body.skills?.[agent] ?? loadAgentSkills(agent),
+      onMetadata: (value) => { metadata = value; },
+      timeoutMs: 15000,
+    });
+    JSON.parse(result.replace(/```json|```/g, '').trim());
+    res.json({ status: 'passed', message: 'Provider merespons dengan JSON valid. Perubahan belum disimpan.', provider: metadata?.provider || current.provider, model: metadata?.model || current.model });
+  } catch (error) {
+    res.status(502).json({ status: 'failed', error: String(error.message || error).slice(0, 500) });
   }
 });
 
@@ -995,61 +1028,19 @@ app.get('/api/audit-log', async (req, res) => {
 
 // 11. Workflow API
 app.get('/api/workflow', async (req, res) => {
-  try {
-    const workflowPath = path.resolve(__dirname, '../../workflows/HME_Content_Pipeline.json');
-    let workflowJson = {};
-    if (fs.existsSync(workflowPath)) {
-      workflowJson = JSON.parse(fs.readFileSync(workflowPath, 'utf8'));
-    }
-
-    let dbWorkflow = null;
-    try {
-      const { rows } = await n8nPool.query(
-        'SELECT id, name, active, "updatedAt" FROM workflow_entity WHERE id = $1 LIMIT 1',
-        ['d3j0Kr9koCQFlRIG']
-      );
-      if (rows.length > 0) {
-        dbWorkflow = rows[0];
-      }
-    } catch (dbErr) {
-      console.warn('[Web API] Query n8n DB error:', dbErr.message);
-    }
-
-    res.json({
-      id: dbWorkflow ? dbWorkflow.id : 'd3j0Kr9koCQFlRIG',
-      name: dbWorkflow ? dbWorkflow.name : 'Homeless Media Engine - Content Pipeline',
-      active: dbWorkflow ? dbWorkflow.active : false,
-      updated_at: dbWorkflow ? dbWorkflow.updatedAt : null,
-      canvas_url: 'https://n8n.avenia.my.id/workflow/d3j0Kr9koCQFlRIG',
-      json: workflowJson,
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  const status = await scheduler.status();
+  res.json({ ...status, json: { schedule: 'every 15 minutes', command: 'scripts/run_pipeline.sh', steps: ['Scout', 'Trending', 'Analis', 'Verifikator', 'Copywriter + Render', 'Review'], delivery: 'operator opt-in only', lock: 'flock' } });
 });
 
 app.post('/api/workflow/toggle', async (req, res) => {
   const { active } = req.body;
   try {
-    const isActive = Boolean(active);
-    await n8nPool.query(
-      'UPDATE workflow_entity SET active = $1, "updatedAt" = NOW() WHERE id = $2',
-      [isActive, 'd3j0Kr9koCQFlRIG']
-    );
-
-    // Reload / restart n8n to apply schedule triggers cleanly
-    exec('systemctl restart hme-n8n', (err) => {
-      if (err) console.error('[Web API] Failed to restart hme-n8n:', err);
-    });
-
-    await pool.query(
-      "INSERT INTO audit_log (entity, entity_id, action, actor, payload) VALUES ('workflow', 1, $1, 'web_admin', $2)",
-      [isActive ? 'activated' : 'deactivated', JSON.stringify({ active: isActive })]
-    );
-
-    res.json({ status: 'success', active: isActive });
+    if (process.env.GAPURA_DISABLE_WORKERS === 'true') return res.status(409).json({ error: 'Scheduler tidak diubah di lingkungan pengujian.' });
+    const status = await scheduler.toggle(active);
+    await writeAudit('workflow', 1, active ? 'activated' : 'deactivated', 'web_admin', { active, scheduler: 'systemd' });
+    res.json({ status: 'success', ...status });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(400).json({ error: err.message });
   }
 });
 
@@ -1081,6 +1072,8 @@ app.post('/api/sources', async (req, res) => {
   if (!name || !url_or_query) {
     return res.status(400).json({ error: 'Nama sumber dan URL/Query wajib diisi.' });
   }
+  const sourceError = validateSourceType(type, url_or_query);
+  if (sourceError) return res.status(400).json({ error: sourceError });
 
   try {
     const query = `
@@ -1115,6 +1108,8 @@ app.put('/api/sources/:id', async (req, res) => {
   if (!name || !url_or_query) {
     return res.status(400).json({ error: 'Nama sumber dan URL/Query wajib diisi.' });
   }
+  const sourceError = validateSourceType(type, url_or_query);
+  if (sourceError) return res.status(400).json({ error: sourceError });
 
   try {
     const query = `
@@ -1177,7 +1172,7 @@ app.delete('/api/sources/:id', async (req, res) => {
 app.post('/api/sources/poll', async (req, res) => {
   try {
     console.log('[Web API] Memulai tarikan manual Scout RSS Poller...');
-    const result = await runScout();
+    const result = await runScout({ force: true });
     res.json({
       status: 'success',
       message: `Scout selesai: ${result.totalFetched} berita dipindai, ${result.totalDuplicates} duplikat diabaikan, ${result.totalNew} topik baru masuk ke Radar!`,
@@ -1275,7 +1270,7 @@ app.delete('/api/trend-sources/:id', async (req, res) => {
 app.post('/api/seo/scan', async (req, res) => {
   try {
     console.log('[Web API] Memulai pemindaian Agen SEO...');
-    const summary = await runSeoScan({ sourceId: req.body?.source_id ? parseInt(req.body.source_id, 10) : null });
+    const summary = await runSeoScan({ sourceId: req.body?.source_id ? parseInt(req.body.source_id, 10) : null, force: true });
     res.json({
       status: 'success',
       message: `SEO selesai: ${summary.items_seen} item dipindai dari ${summary.sources} sumber, ${summary.items_new} item baru.`,
@@ -1298,6 +1293,20 @@ app.get('/api/seo/trends', async (req, res) => {
     res.json(rows);
   } catch (err) {
     await writeAudit('seo', 0, 'error_list', 'web_admin', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/seo/health', async (_req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, is_active, last_scanned_at, last_success_at, last_error FROM trend_sources ORDER BY id`
+    );
+    res.json(buildTrendHealth(rows, {
+      xApiConfigured: Boolean(process.env.X_BEARER_TOKEN),
+      rssHubConfigured: Boolean(process.env.RSSHUB_BASE_URL),
+    }));
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
@@ -1357,19 +1366,30 @@ app.get('/api/verifications', async (req, res) => {
 // ==============================================================================
 app.post('/api/studio/jobs', async (req, res) => {
   const prompt = String(req.body?.prompt || '').trim();
-  const mode = req.body?.mode === 'auto_publish' ? 'auto_publish' : 'review';
+  const topicId = Number.parseInt(req.body?.topic_id, 10);
   if (prompt.length < 10) {
     return res.status(400).json({ error: 'Prompt minimal 10 karakter.' });
   }
   if (prompt.length > 4000) {
     return res.status(400).json({ error: 'Prompt maksimal 4000 karakter.' });
   }
+  if (!Number.isInteger(topicId) || topicId < 1) return res.status(400).json({ error: 'Pilih topik Radar yang sudah lolos Analis dan memiliki sumber primer.' });
   try {
-    const { rows } = await pool.query(
-      `INSERT INTO prompt_jobs (prompt, mode, actor) VALUES ($1, $2, 'admin') RETURNING *`,
-      [prompt, mode]
+    const { rows: topicRows } = await pool.query(
+      `SELECT t.id, t.status, t.url, t.title, t.verification_status, ts.score_total, ts.verdict AS score_verdict
+       FROM topics t LEFT JOIN LATERAL (
+         SELECT score_total,verdict FROM topic_scores WHERE topic_id = t.id ORDER BY created_at DESC,id DESC LIMIT 1
+       ) ts ON TRUE WHERE t.id = $1`, [topicId]
     );
-    await writeAudit('prompt_job', rows[0].id, 'created', 'admin', { mode, prompt_len: prompt.length });
+    const eligibility = validateStudioTopic(topicRows[0], loadAgentsConfig().analis?.min_score_threshold || 76);
+    if (!eligibility.valid) return res.status(409).json({ error: `Topik sumber tidak memenuhi gate: ${eligibility.reason}.` });
+    const { rowCount: existingDraftCount } = await pool.query('SELECT 1 FROM drafts WHERE topic_id = $1 LIMIT 1', [topicId]);
+    if (existingDraftCount) return res.status(409).json({ error: 'Topik sudah memiliki draf. Buka draf tersebut dari Radar Topik untuk diedit.' });
+    const { rows } = await pool.query(
+      `INSERT INTO prompt_jobs (prompt, mode, topic_id, actor) VALUES ($1, 'review', $2, 'admin') RETURNING *`,
+      [prompt, topicId]
+    );
+    await writeAudit('prompt_job', rows[0].id, 'created', 'admin', { mode: 'review', topic_id: topicId, prompt_len: prompt.length });
     res.json({ status: 'success', job: rows[0] });
   } catch (err) {
     await writeAudit('prompt_job', 0, 'error_create', 'admin', { error: err.message });
@@ -1420,7 +1440,7 @@ app.get('/api/studio/jobs/:id/stream', async (req, res) => {
         res.write(`data: ${JSON.stringify({ step: log.step, level: log.level, message: log.message, status: job.status, progress: job.progress })}\n\n`);
       }
       res.write(`: ping ${Date.now()}\n\n`);
-      const done = ['review', 'scheduled', 'published', 'failed', 'cancelled'].includes(job.status);
+      const done = ['plan_review', 'review', 'scheduled', 'published', 'failed', 'cancelled'].includes(job.status);
       if (done || Date.now() - started > 15 * 60 * 1000) {
         res.write(`data: ${JSON.stringify({ done: true, status: job.status, error: job.error })}\n\n`);
         clearInterval(timer);
@@ -1463,12 +1483,12 @@ app.post('/api/studio/jobs/:id/run', async (req, res) => {
   const id = parseInt(req.params.id, 10);
   try {
     const { rows } = await pool.query(
-      "UPDATE prompt_jobs SET status = 'planning', current_step = 'planning', error = NULL, updated_at = NOW() WHERE id = $1 AND status IN ('queued','plan_review','failed') RETURNING *",
+      "SELECT * FROM prompt_jobs WHERE id = $1 AND status IN ('queued','plan_review','failed')",
       [id]
     );
     if (rows.length === 0) return res.status(409).json({ error: 'Job tidak dalam status yang bisa dijalankan.' });
     // Eksekusi async; progress via SSE
-    executeJob(id, { autoPublish: rows[0].mode === 'auto_publish' }).catch(() => {});
+    executeJob(id).catch(() => {});
     res.json({ status: 'success', job: rows[0] });
   } catch (err) {
     await writeAudit('prompt_job', id, 'error_run', 'admin', { error: err.message });
@@ -1493,8 +1513,12 @@ app.post('/api/studio/jobs/:id/cancel', async (req, res) => {
 });
 
 // Worker loop: proses job queued tiap 20 detik
-setInterval(() => { processQueuedJobs().catch(() => {}); }, 20000);
+const studioWorker = process.env.GAPURA_DISABLE_WORKERS === 'true' ? null
+  : setInterval(() => { processQueuedJobs().catch(() => {}); }, 20000);
 
-app.listen(PORT, HOST, () => {
-  console.log(`[Gapura Web Dashboard] Running on http://${HOST}:${PORT}`);
+const server = app.listen(PORT, HOST, () => {
+  console.log(`[Gapura Web Dashboard] Running on http://${HOST}:${server.address().port}`);
 });
+server.on('close', () => { if (studioWorker) clearInterval(studioWorker); });
+
+export { app, pool, server };

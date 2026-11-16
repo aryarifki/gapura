@@ -6,6 +6,8 @@
 let currentDrafts = [];
 let currentFilter = 'all';
 let currentTopicStatus = '';
+let currentTopicOffset = 0;
+let topicHasMore = false;
 let activeDraft = null;
 let activeSlideIndex = 0;
 let currentWorkflowActive = false;
@@ -15,10 +17,16 @@ let activeStudioSlideIndex = 0;
 let editorLivePreviewDebounceTimer = null;
 let designStudioDebounceTimer = null;
 let designStudioInitialized = false;
+let appNavigation = null;
+let adminAccessReady = false;
+let createNavigationController = null;
+
+const nativeFetch = window.fetch.bind(window);
 
 // Logging terpusat: setiap klik tombol dan error frontend dikirim ke audit_log.
 // Logging bersifat best-effort agar kegagalan logger tidak memblokir UI.
 function reportClientLog(level, action, error = null, meta = {}) {
+  if (!adminAccessReady) return Promise.resolve();
   const payload = {
     level,
     action,
@@ -72,19 +80,179 @@ function bindClick(id, handler) {
   };
 }
 
+function collectAgentConfigPayload() {
+  return {
+      scout: {
+        poll_interval_mins: parseInt(document.getElementById('scout-poll-interval')?.value || '30'),
+        dedup_similarity_threshold: parseFloat(document.getElementById('scout-dedup-threshold')?.value || '0.85'),
+        max_items_per_source: parseInt(document.getElementById('scout-max-items')?.value || '15'),
+        custom_keywords: document.getElementById('scout-keywords')?.value || '',
+        rules: document.getElementById('scout-rules')?.value || '',
+      },
+      analis: {
+        provider: document.getElementById('analis-provider')?.value || 'gemini',
+        endpoint: document.getElementById('analis-endpoint')?.value || 'https://generativelanguage.googleapis.com',
+        api_key: document.getElementById('analis-api-key')?.value || '',
+        model: document.getElementById('analis-model')?.value || 'gemini-3.8-flash',
+        min_score_threshold: parseInt(document.getElementById('analis-threshold')?.value || '76'),
+        weights: {
+          relevance: parseInt(document.getElementById('weight-relevance')?.value || '30'),
+          credibility: parseInt(document.getElementById('weight-credibility')?.value || '25'),
+          momentum: parseInt(document.getElementById('weight-momentum')?.value || '20'),
+          engagement: parseInt(document.getElementById('weight-engagement')?.value || '15'),
+          compliance: parseInt(document.getElementById('weight-compliance')?.value || '10'),
+        },
+        fast_fail_rules: document.getElementById('analis-fastfail')?.value || '',
+        system_prompt: document.getElementById('analis-prompt')?.value || '',
+      },
+      copywriter: {
+        provider: document.getElementById('copywriter-provider')?.value || 'gemini',
+        endpoint: document.getElementById('copywriter-endpoint')?.value || 'https://generativelanguage.googleapis.com',
+        api_key: document.getElementById('copywriter-api-key')?.value || '',
+        model: document.getElementById('copywriter-model')?.value || 'gemini-3.8-flash',
+        slide_count: parseInt(document.getElementById('copywriter-slides-count')?.value || '5'),
+        tone_of_voice: document.getElementById('copywriter-tone')?.value || '',
+        banned_words: document.getElementById('copywriter-banned-words')?.value || '',
+        system_prompt: document.getElementById('copywriter-prompt')?.value || '',
+        disclaimer_financial: document.getElementById('copywriter-disclaimer-fin')?.value || '',
+        disclaimer_legal: document.getElementById('copywriter-disclaimer-legal')?.value || '',
+      },
+      designer: {
+        provider: document.getElementById('designer-provider')?.value || 'gemini',
+        endpoint: document.getElementById('designer-endpoint')?.value || 'https://generativelanguage.googleapis.com',
+        api_key: document.getElementById('designer-api-key')?.value || '',
+        model: document.getElementById('designer-model')?.value || 'gemini-3.8-flash',
+        system_prompt: document.getElementById('designer-prompt')?.value || '',
+        tokens: { palette: Object.fromEntries(['bg', 'ink', 'accent', 'highlight', 'up', 'down'].map((key) => [key, document.getElementById(`color-${key}-hex`)?.value || ''])), typography: {
+          display_font: document.getElementById('designer-display-font')?.value || 'Archivo Black',
+          text_font: document.getElementById('designer-text-font')?.value || 'Inter',
+        } },
+        default_layouts: {
+          cover: document.getElementById('layout-cover')?.value || 'cover-focus',
+          context: document.getElementById('layout-context')?.value || 'big-statement',
+          evidence_data: document.getElementById('layout-data')?.value || 'chart-bar',
+          implication: document.getElementById('layout-implication')?.value || 'comparison',
+          close: document.getElementById('layout-close')?.value || 'cta-close',
+        },
+        auto_fit_text: document.getElementById('designer-autofit')?.checked !== false,
+      },
+      seo: {
+        provider: document.getElementById('seo-provider')?.value || 'gemini',
+        endpoint: document.getElementById('seo-endpoint')?.value || 'https://generativelanguage.googleapis.com',
+        api_key: document.getElementById('seo-api-key')?.value || '',
+        model: document.getElementById('seo-model')?.value || 'gemini-3.8-flash',
+        min_virality_score: parseInt(document.getElementById('seo-min-virality')?.value || '55'),
+        system_prompt: document.getElementById('seo-prompt')?.value || '',
+      },
+      verifikator: {
+        provider: document.getElementById('verifikator-provider')?.value || 'gemini',
+        endpoint: document.getElementById('verifikator-endpoint')?.value || 'https://generativelanguage.googleapis.com',
+        api_key: document.getElementById('verifikator-api-key')?.value || '',
+        model: document.getElementById('verifikator-model')?.value || 'gemini-3.8-flash',
+        min_confidence_publish: parseInt(document.getElementById('verifikator-min-confidence')?.value || '60'),
+        block_hoax: document.getElementById('verifikator-block-hoax')?.checked !== false,
+        system_prompt: document.getElementById('verifikator-prompt')?.value || '',
+      },
+      studio: {
+        ...window.gapuraAgentStudioConfig,
+        provider: document.getElementById('studio-agent-provider')?.value || 'gemini',
+        endpoint: document.getElementById('studio-agent-endpoint')?.value || 'https://generativelanguage.googleapis.com',
+        model: document.getElementById('studio-agent-model')?.value || 'gemini-3.8-flash',
+        api_key: document.getElementById('studio-agent-key')?.value || '',
+        system_prompt: document.getElementById('studio-agent-prompt')?.value || '',
+      },
+      skills: {
+        scout: document.getElementById('scout-skills-md')?.value || '',
+        analis: document.getElementById('analis-skills-md')?.value || '',
+        copywriter: document.getElementById('copywriter-skills-md')?.value || '',
+        designer: document.getElementById('designer-skills-md')?.value || '',
+        seo: document.getElementById('seo-skills-md')?.value || '',
+        verifikator: document.getElementById('verifikator-skills-md')?.value || '',
+        studio: document.getElementById('studio-agent-skills')?.value || '',
+      },
+  };
+}
+
+window.gapuraAgentStudioConfig = { provider: 'gemini', endpoint: 'https://generativelanguage.googleapis.com', model: 'gemini-3.8-flash', api_key: '' };
+
 // 1. Inisialisasi & Navigasi
 document.addEventListener('DOMContentLoaded', () => {
+  Promise.all([import('./navigation.js'), import('./icon-map.js')])
+    .then(([navigation]) => {
+      createNavigationController = navigation.createNavigationController;
+      bootstrapAdminAccess();
+    })
+    .catch((error) => showAccessGate(`Dashboard gagal memuat aset UI: ${error.message}`));
+});
+
+async function bootstrapAdminAccess() {
+  try {
+    const response = await nativeFetch('/api/access/status');
+    const status = await response.json();
+    if (!status.admin_token_configured) {
+      showAccessGate('Akses admin belum dikonfigurasi di environment service.');
+      return;
+    }
+    const verify = await nativeFetch('/api/access/verify', { method: 'POST' });
+    if (verify.ok) return initializeAdminApp();
+    showAccessGate();
+  } catch (error) {
+    showAccessGate(`Tidak dapat memeriksa akses admin: ${error.message}`);
+  }
+}
+
+function showAccessGate(message = '') {
+  const gate = document.getElementById('admin-access-gate');
+  const app = document.querySelector('.app-container');
+  if (gate) gate.hidden = false;
+  if (app) app.inert = true;
+  const status = document.getElementById('admin-access-message');
+  if (status) status.textContent = message;
+  const form = document.getElementById('admin-access-form');
+  if (form) form.onsubmit = async (event) => {
+    event.preventDefault();
+    const input = document.getElementById('admin-access-token');
+    const submit = form.querySelector('button[type="submit"]');
+    if (!input?.value) return;
+    if (submit) submit.disabled = true;
+    try {
+      const response = await nativeFetch('/api/access/verify', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${input.value}` },
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Token admin tidak valid.');
+      input.value = '';
+      initializeAdminApp();
+    } catch (error) {
+      if (status) status.textContent = error.message;
+    } finally {
+      if (submit) submit.disabled = false;
+    }
+  };
+}
+
+function initializeAdminApp() {
+  if (adminAccessReady) return;
+  adminAccessReady = true;
+  window.adminAccessReadyFlag = true;
+  const gate = document.getElementById('admin-access-gate');
+  const app = document.querySelector('.app-container');
+  if (gate) gate.hidden = true;
+  if (app) app.inert = false;
+  const mobileBar = document.querySelector('.mobile-top-bar');
+  if (mobileBar) mobileBar.hidden = false;
+  appNavigation = createNavigationController({
+    window,
+    onNavigate: renderRoute,
+  });
+  appNavigation.initialize();
   setupNavigation();
   loadStats();
   loadDrafts();
   loadActivityFeed();
-
-  // Polling data berkala
-  setInterval(() => {
-    loadStats();
-    loadActivityFeed();
-  }, 15000);
-});
+  setInterval(() => { loadStats(); loadActivityFeed(); }, 15000);
+}
 
 function setupNavigation() {
   // Mobile Sidebar Toggle
@@ -99,42 +267,9 @@ function setupNavigation() {
   // Sidebar Menu Clicks
   document.querySelectorAll('.nav-item').forEach((item) => {
     item.onclick = () => {
-      document.querySelectorAll('.nav-item').forEach((i) => i.classList.remove('active'));
-      document.querySelectorAll('.view-pane').forEach((p) => p.classList.remove('active'));
-
-      item.classList.add('active');
       const viewId = item.dataset.view;
-      const targetView = document.getElementById(viewId);
-      if (targetView) targetView.classList.add('active');
-
+      appNavigation.navigate({ view: viewId });
       if (sidebar) sidebar.classList.remove('mobile-open');
-
-      if (viewId === 'view-overview') {
-        loadStats();
-        loadActivityFeed();
-      } else if (viewId === 'view-review') {
-        loadDrafts();
-        showGalleryView();
-      } else if (viewId === 'view-topics') {
-        loadTopics();
-      } else if (viewId === 'view-sources') {
-        loadSources();
-      } else if (viewId === 'view-trends') {
-        loadTrends();
-        loadTrendSources();
-      } else if (viewId === 'view-verifications') {
-        loadVerifications();
-      } else if (viewId === 'view-studio-prompt') {
-        loadStudioJobs();
-      } else if (viewId === 'view-agents') {
-        loadAgentsConfigUI();
-      } else if (viewId === 'view-n8n') {
-        loadWorkflow();
-      } else if (viewId === 'view-tokens') {
-        loadDesignStudio();
-      } else if (viewId === 'view-audit') {
-        loadAuditFull();
-      }
     };
   });
 
@@ -162,6 +297,8 @@ function setupNavigation() {
   const saveBottomBtn = document.getElementById('btn-save-agents-config-bottom');
   if (saveTopBtn) saveTopBtn.onclick = saveAgentsConfigUI;
   if (saveBottomBtn) saveBottomBtn.onclick = saveAgentsConfigUI;
+  const testAgentButton = document.getElementById('btn-test-agent-config');
+  if (testAgentButton) testAgentButton.onclick = testAgentSettings;
 
   // Analis Threshold Slider & Num Sync
   const thresholdSlider = document.getElementById('analis-threshold');
@@ -206,9 +343,21 @@ function setupNavigation() {
       document.querySelectorAll('.btn-topic-filter').forEach((b) => b.classList.remove('active'));
       btn.classList.add('active');
       currentTopicStatus = btn.dataset.status;
+      currentTopicOffset = 0;
       loadTopics();
     };
   });
+
+  const topicSearch = document.getElementById('topic-search');
+  let topicSearchTimer;
+  if (topicSearch) topicSearch.addEventListener('input', () => {
+    clearTimeout(topicSearchTimer);
+    topicSearchTimer = setTimeout(() => { currentTopicOffset = 0; loadTopics(); }, 220);
+  });
+  const topicSort = document.getElementById('topic-sort');
+  if (topicSort) topicSort.onchange = () => { currentTopicOffset = 0; loadTopics(); };
+  const loadMore = document.getElementById('btn-topics-load-more');
+  if (loadMore) loadMore.onclick = () => loadTopics({ append: true });
 
   // Runner Button
   const runBtn = document.getElementById('btn-run-pipeline-top');
@@ -232,6 +381,9 @@ function setupNavigation() {
   bindClick('btn-copy-caption-full', copyFullCaption);
   bindClick('btn-download-all-slides', downloadAllSlides);
   bindClick('btn-open-single-slide', openCurrentSlideFull);
+  document.getElementById('review-editor-subview')?.addEventListener('input', (event) => {
+    if (event.target.matches('input:not([type="checkbox"]), textarea, select')) invalidateDraftReview();
+  });
 
   const regenBtn = document.getElementById('btn-action-regenerate-ai');
   if (regenBtn) regenBtn.onclick = regenerateActiveDraftAI;
@@ -479,10 +631,14 @@ function renderGalleryCards() {
 
 // 5. Deep Draft Review & Slide Editor Mode (Reference IMG_20261110_205004_739.jpg & s-2.jpg)
 function openDraftEditor(draftId) {
-  activeDraft = currentDrafts.find((d) => d.id === draftId);
-  if (!activeDraft) return;
+  appNavigation.navigate({ view: 'view-review', draftId: Number(draftId) });
+}
 
+function renderDraftEditor(draft) {
+  activeDraft = draft;
   activeSlideIndex = 0;
+  const reviewed = document.getElementById('editor-reviewed');
+  if (reviewed) reviewed.checked = false;
 
   // Toggle subviews
   document.getElementById('review-gallery-subview').style.display = 'none';
@@ -500,9 +656,17 @@ function openDraftEditor(draftId) {
   document.getElementById('editor-input-hashtags').value = (activeDraft.hashtags || []).join(' ');
 }
 
+function invalidateDraftReview() {
+  if (activeDraft) delete activeDraft.revision;
+  const reviewed = document.getElementById('editor-reviewed');
+  if (reviewed) reviewed.checked = false;
+}
+
 function showGalleryView() {
   document.getElementById('review-gallery-subview').style.display = 'block';
   document.getElementById('review-editor-subview').style.display = 'none';
+  const route = appNavigation.current();
+  if (route.view === 'view-review' && route.draftId) appNavigation.back({ view: 'view-review' });
   loadDrafts();
 }
 
@@ -566,6 +730,7 @@ async function updateEditorLivePreview() {
 
 async function regenerateActiveDraftAI() {
   if (!activeDraft) return;
+  invalidateDraftReview();
 
   const btn = document.getElementById('btn-action-regenerate-ai');
   const originalHtml = btn ? btn.innerHTML : '';
@@ -973,6 +1138,7 @@ function navigateSlide(dir) {
 
 async function saveAndRerenderSlide() {
   if (!activeDraft) return;
+  invalidateDraftReview();
   const slideNo = activeSlideIndex + 1;
   const newText = document.getElementById('editor-input-slide-text').value;
 
@@ -1029,6 +1195,7 @@ async function addSlideToDraft() {
   if (!activeDraft) return;
   const confirmAdd = confirm('Tambah slide baru di akhir carousel ini?');
   if (!confirmAdd) return;
+  invalidateDraftReview();
 
   try {
     const res = await fetch(`/api/drafts/${activeDraft.id}/add-slide`, {
@@ -1044,7 +1211,7 @@ async function addSlideToDraft() {
       const result = await res.json();
       showToast(`Slide #${result.new_slide_no} berhasil ditambahkan!`);
       await loadDrafts();
-      activeDraft = currentDrafts.find((d) => d.id === activeDraft.id);
+      activeDraft = { ...currentDrafts.find((d) => d.id === activeDraft.id), revision: null };
       activeSlideIndex = (activeDraft.rendered_slides || []).length - 1;
       renderActiveSlide();
       renderThumbnailsStrip();
@@ -1064,6 +1231,7 @@ async function deleteSlideFromDraft() {
   const slideNo = activeSlideIndex + 1;
   const confirmDel = confirm(`Yakin ingin menghapus Slide #${slideNo}?`);
   if (!confirmDel) return;
+  invalidateDraftReview();
 
   try {
     const res = await fetch(`/api/drafts/${activeDraft.id}/delete-slide`, {
@@ -1074,7 +1242,7 @@ async function deleteSlideFromDraft() {
     if (res.ok) {
       showToast(`Slide #${slideNo} berhasil dihapus.`);
       await loadDrafts();
-      activeDraft = currentDrafts.find((d) => d.id === activeDraft.id);
+      activeDraft = { ...currentDrafts.find((d) => d.id === activeDraft.id), revision: null };
       activeSlideIndex = Math.max(0, activeSlideIndex - 1);
       renderActiveSlide();
       renderThumbnailsStrip();
@@ -1086,6 +1254,7 @@ async function deleteSlideFromDraft() {
 
 async function saveTextOnly() {
   if (!activeDraft) return;
+  invalidateDraftReview();
   const newCaption = document.getElementById('editor-input-caption').value;
   try {
     const res = await fetch(`/api/drafts/${activeDraft.id}/update-full`, {
@@ -1104,8 +1273,8 @@ async function saveTextOnly() {
 function copyFullCaption() {
   if (!activeDraft) return;
   const caption = document.getElementById('editor-input-caption').value;
-  const hashtags = document.getElementById('editor-input-hashtags').value;
-  const fullText = `${caption}\n\n${hashtags}`;
+  const hashtags = document.getElementById('editor-input-hashtags').value.split(/\s+/).filter((tag) => tag && !caption.includes(tag));
+  const fullText = `${caption}${hashtags.length ? `\n\n${hashtags.join(' ')}` : ''}`;
   navigator.clipboard.writeText(fullText);
   showToast('Caption + Hashtag berhasil disalin ke clipboard!');
 }
@@ -1121,29 +1290,34 @@ function openCurrentSlideFull() {
 
 function downloadAllSlides() {
   if (!activeDraft) return;
-  const slides = activeDraft.rendered_slides || [];
-  slides.forEach((s) => {
-    const link = document.createElement('a');
-    link.href = s.image_url;
-    link.download = `Draft_${activeDraft.id}_Slide_${s.slide_no}.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  });
-  showToast(`Mengunduh ${slides.length} slide carousel...`);
+  const link = document.createElement('a');
+  link.href = `/api/drafts/${activeDraft.id}/export`;
+  link.download = `Gapura_Draft_${activeDraft.id}.zip`;
+  link.click();
+  showToast('Mengunduh paket gambar dan caption.');
 }
 
 async function approveCurrentDraft(mode) {
   if (!activeDraft) return;
+  if (!activeDraft.revision) {
+    showToast('Muat ulang halaman atau buka ulang draf dari galeri, lalu tinjau konten terbaru sebelum menyetujui.');
+    return;
+  }
   try {
     const res = await fetch(`/api/drafts/${activeDraft.id}/approve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode }),
+      body: JSON.stringify({ mode, reviewed: document.getElementById('editor-reviewed')?.checked === true, expected_revision: activeDraft.revision }),
     });
     if (res.ok) {
-      showToast(`Draf #${activeDraft.id} disetujui (${mode === 'auto' ? 'Auto-Publish' : 'Manual'})!`);
+      await res.json().catch(() => ({}));
+      showToast(mode === 'auto'
+        ? `Draf #${activeDraft.id} lolos gate dan telah dijadwalkan.`
+        : `Draf #${activeDraft.id} ditandai sudah terbit secara manual.`);
       showGalleryView();
+    } else {
+      const result = await res.json().catch(() => ({}));
+      throw new Error(result.error || `HTTP ${res.status}`);
     }
   } catch (err) {
     showToast(`Error: ${err.message}`);
@@ -1173,17 +1347,27 @@ async function rejectCurrentDraft() {
 // 6. Radar Topik (Reference IMG_20261110_204957_926.jpg)
 async function loadTopics() {
   try {
-    let url = '/api/topics?limit=40';
-    if (currentTopicStatus) url += `&status=${currentTopicStatus}`;
+    const params = new URLSearchParams({
+      limit: '40', offset: String(currentTopicOffset),
+      sort: document.getElementById('topic-sort')?.value || 'newest',
+      q: document.getElementById('topic-search')?.value?.trim() || '',
+    });
+    if (currentTopicStatus) params.set('status', currentTopicStatus);
+    const url = `/api/topics?${params.toString()}`;
     const res = await fetch(url);
     if (!res.ok) return;
     const topics = await res.json();
-    cachedTopics = topics;
+    topicHasMore = res.headers.get('X-Has-More') === 'true';
+    currentTopicOffset = Number.parseInt(res.headers.get('X-Next-Offset') || String(currentTopicOffset + topics.length), 10);
+    cachedTopics = params.get('offset') === '0' ? topics : [...cachedTopics, ...topics];
     populateStudioTopics();
+    populateStudioSourceTopics();
 
     const container = document.getElementById('radar-list-container');
     if (!container) return;
-    container.innerHTML = '';
+    if (params.get('offset') === '0') container.innerHTML = '';
+    const loadMore = document.getElementById('btn-topics-load-more');
+    if (loadMore) loadMore.hidden = !topicHasMore;
 
     if (topics.length === 0) {
       container.innerHTML = `<div style="padding: 40px; text-align: center; color: var(--muted); background: var(--card-bg); border-radius: 10px;">Tidak ada topik ditemukan.</div>`;
@@ -1196,8 +1380,8 @@ async function loadTopics() {
 
       const card = document.createElement('div');
       card.className = 'radar-item-card';
-      card.title = 'Klik untuk langsung mereview & memproduksi draf carousel ini';
-      card.onclick = () => autoProduceAndReviewTopic(t.id, t.title);
+      card.dataset.topicId = t.id;
+      card.title = 'Pilih topik untuk melihat sumber dan verifikasi, lalu produksi jika lolos.';
 
       card.innerHTML = `
         <div class="radar-score-col">
@@ -1207,21 +1391,51 @@ async function loadTopics() {
           <div class="radar-item-title">${escapeHtml(t.title)}</div>
           <div class="radar-item-summary">↳ ${escapeHtml(t.summary ? t.summary.slice(0, 160) + '...' : '')}</div>
           <div class="radar-badges-row">
-            <span class="radar-badge ${isLolos ? 'radar-badge-lolos' : 'radar-badge-gugur'}">${isLolos ? 'Lolos' : 'Gugur'}</span>
-            <span class="radar-badge radar-badge-category">${escapeHtml(t.primary_source)}</span>
+            <span class="radar-badge ${isLolos ? 'radar-badge-lolos' : 'radar-badge-gugur'}">${isLolos ? 'Skor analis lolos' : escapeHtml(t.status || 'Belum dinilai')}</span>
+            <span class="radar-badge radar-badge-category">${escapeHtml(t.source_kind || 'feed')} · ${escapeHtml(t.primary_source || 'Sumber tidak diketahui')}</span>
             <span class="radar-source-meta">· ${formatTimeAgo(t.created_at)}</span>
+            <span class="radar-source-meta">${escapeHtml(t.verification_status || 'Belum diverifikasi')}</span>
+            <span class="radar-source-meta">${t.score_total == null ? 'Skor belum tersedia' : `Skor ${Number(t.score_total)}/100`}</span>
             <span class="radar-action-hint" style="color: var(--lime); font-size: 11px; font-weight: 700; margin-left: auto; display: flex; align-items: center; gap: 4px;">
-              <span>⚡</span> <span>Siap Produksi ↗</span>
+              <span>🔗</span> <span>Buka detail</span>
             </span>
+          </div>
+          <div class="radar-card-actions">
+            ${t.url ? `<a class="btn btn-outline" href="${escapeHtml(t.url)}" target="_blank" rel="noopener noreferrer">Buka sumber primer</a>` : ''}
+            ${t.status === 'scored' || t.status === 'produced' ? `<button class="btn btn-outline" data-verify-topic="${t.id}">Verifikasi</button>` : ''}
+            ${isLolos ? `<button class="btn btn-lime" data-produce-topic="${t.id}">Buat draf review</button>` : ''}
           </div>
         </div>
       `;
 
+      card.querySelector('[data-verify-topic]')?.addEventListener('click', (event) => {
+        event.stopPropagation();
+        verifyTopicNow(t.id, event.currentTarget);
+      });
+      card.querySelector('[data-produce-topic]')?.addEventListener('click', (event) => {
+        event.stopPropagation();
+        autoProduceAndReviewTopic(t.id, t.title);
+      });
       container.appendChild(card);
     });
   } catch (err) {
     console.error('Error loadTopics:', err);
   }
+}
+
+function populateStudioSourceTopics() {
+  const select = document.getElementById('studio-source-topic');
+  if (!select) return;
+  const selected = select.value;
+  const eligible = cachedTopics.filter((topic) => ['scored', 'produced'].includes(topic.status) && topic.url);
+  select.innerHTML = '<option value="">Pilih topik skor analis</option>';
+  for (const topic of eligible) {
+    const option = document.createElement('option');
+    option.value = topic.id;
+    option.textContent = `#${topic.id} · ${String(topic.title || '').slice(0, 90)} · ${topic.score_total ?? '—'}`;
+    select.appendChild(option);
+  }
+  if (eligible.some((topic) => String(topic.id) === selected)) select.value = selected;
 }
 
 // 7. Trigger Pipeline Runner
@@ -1260,8 +1474,10 @@ async function loadWorkflow() {
     currentWorkflowActive = !!data.active;
     const btn = document.getElementById('btn-toggle-wf-dark');
     if (btn) {
-      btn.textContent = currentWorkflowActive ? '⏸️ Jeda Otomasi n8n' : '⚡ Aktifkan Otomasi n8n';
+      btn.textContent = currentWorkflowActive ? 'Jeda otomasi draf' : 'Aktifkan otomasi draf';
     }
+    const status = document.getElementById('workflow-runtime-status');
+    if (status) status.textContent = `Scheduler ${data.kind || 'systemd'}: ${data.active ? 'aktif' : 'berhenti'} · berikutnya ${data.next_run || 'belum tersedia'}`;
   } catch (err) {
     console.error('Error loadWorkflow:', err);
   }
@@ -1276,7 +1492,7 @@ async function toggleWorkflowState() {
     });
     const result = await res.json();
     if (result.status === 'success') {
-      showToast(`Otomasi n8n berhasil ${result.active ? 'diaktifkan' : 'dijeda'}!`);
+      showToast(`Otomasi draf ${result.active ? 'diaktifkan' : 'dijeda'}.`);
       loadWorkflow();
     }
   } catch (err) {
@@ -1429,8 +1645,9 @@ function updateStudioSlideUI() {
 async function generateStudioCarouselAI() {
   const title = document.getElementById('studio-custom-topic-text')?.value?.trim();
   const source = document.getElementById('studio-custom-source-text')?.value?.trim() || '@gapuramedia';
-  if (!title) {
-    showToast('Silakan masukkan judul atau pilih topik terlebih dahulu!');
+  const sourceUrl = document.getElementById('studio-custom-source-url')?.value?.trim() || '';
+  if (!title || !sourceUrl) {
+    showToast('Judul dan URL sumber primer wajib diisi.');
     return;
   }
 
@@ -1450,7 +1667,7 @@ async function generateStudioCarouselAI() {
     const res = await fetch('/api/designer/generate-slides', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, primary_source: source }),
+      body: JSON.stringify({ title, primary_source: source, url: sourceUrl }),
     });
 
     if (!res.ok) {
@@ -1464,6 +1681,7 @@ async function generateStudioCarouselAI() {
     }
 
     studioSlides = data.slides;
+    window.studioDesignFormat = data.format || 'carousel';
     activeStudioSlideIndex = 0;
     showToast(`✨ AI Designer sukses merancang ${studioSlides.length} slide carousel!`);
     updateStudioSlideUI();
@@ -1486,6 +1704,7 @@ async function saveStudioToDrafts() {
 
   const title = document.getElementById('studio-custom-topic-text')?.value?.trim() || studioSlides[0]?.data?.title || 'Carousel Studio Gapura';
   const source = document.getElementById('studio-custom-source-text')?.value?.trim() || '@gapuramedia';
+  const sourceUrl = document.getElementById('studio-custom-source-url')?.value?.trim() || '';
 
   const btn = document.getElementById('btn-studio-save-to-drafts');
   const origHtml = btn.innerHTML;
@@ -1500,6 +1719,8 @@ async function saveStudioToDrafts() {
         title,
         summary: studioSlides[0]?.teks || '',
         primary_source: source,
+        source_url: sourceUrl,
+        format: window.studioDesignFormat || 'carousel',
         slides: studioSlides,
       }),
     });
@@ -1976,6 +2197,9 @@ function setupSourcesEvents() {
   const form = document.getElementById('form-source');
   if (form) form.onsubmit = handleSaveSource;
 
+  const typeSelect = document.getElementById('source-input-type');
+  if (typeSelect) typeSelect.onchange = updateSourceInputHelp;
+
   const pollBtn = document.getElementById('btn-poll-sources-now');
   if (pollBtn) pollBtn.onclick = pollSourcesNow;
 }
@@ -1993,6 +2217,21 @@ window.openAddSourceModal = function () {
   const modal = document.getElementById('modal-source');
   if (modal) modal.style.display = 'flex';
 };
+
+function updateSourceInputHelp() {
+  const type = document.getElementById('source-input-type')?.value;
+  const input = document.getElementById('source-input-url');
+  const help = document.getElementById('source-input-help');
+  if (input) {
+    input.type = type === 'rss' ? 'url' : 'text';
+    input.placeholder = type === 'rss' ? 'https://example.com/rss.xml' : type === 'x_account' ? '@ojkindonesia' : 'IHSG OJK lang:id';
+  }
+  if (help) help.textContent = type === 'rss'
+    ? 'Feed RSS/Atom wajib HTTPS.'
+    : type === 'x_account'
+      ? 'Masukkan @handle. Membutuhkan X_BEARER_TOKEN.'
+      : 'Masukkan kata kunci pencarian X, misalnya IHSG lang:id. Membutuhkan X_BEARER_TOKEN.';
+}
 
 window.openEditSourceModal = function (id) {
   const src = sourcesDataCache.find((s) => s.id === id);
@@ -2181,9 +2420,16 @@ async function autoProduceAndReviewTopic(topicId, topicTitle) {
 }
 
 function switchToView(viewId) {
+  appNavigation.navigate({ view: viewId });
+}
+
+function renderRoute(route) {
+  activeDraft = null;
+  clearTimeout(editorLivePreviewDebounceTimer);
   document.querySelectorAll('.nav-item').forEach((i) => i.classList.remove('active'));
   document.querySelectorAll('.view-pane').forEach((p) => p.classList.remove('active'));
 
+  const viewId = route.view;
   const navItem = document.querySelector(`.nav-item[data-view="${viewId}"]`);
   const viewPane = document.getElementById(viewId);
   if (navItem) navItem.classList.add('active');
@@ -2192,12 +2438,21 @@ function switchToView(viewId) {
   const sidebar = document.getElementById('app-sidebar');
   if (sidebar) sidebar.classList.remove('mobile-open');
 
-  if (viewId === 'view-overview') {
+  if (viewId === 'view-review') {
+    const gallery = document.getElementById('review-gallery-subview');
+    const editor = document.getElementById('review-editor-subview');
+    if (route.draftId) {
+      if (gallery) gallery.style.display = 'none';
+      if (editor) editor.style.display = 'none';
+      loadDraftForRoute(route.draftId);
+    } else {
+      if (gallery) gallery.style.display = 'block';
+      if (editor) editor.style.display = 'none';
+      loadDrafts();
+    }
+  } else if (viewId === 'view-overview') {
     loadStats();
     loadActivityFeed();
-  } else if (viewId === 'view-review') {
-    loadDrafts();
-    showGalleryView();
   } else if (viewId === 'view-topics') {
     loadTopics();
   } else if (viewId === 'view-sources') {
@@ -2208,6 +2463,7 @@ function switchToView(viewId) {
   } else if (viewId === 'view-verifications') {
     loadVerifications();
   } else if (viewId === 'view-studio-prompt') {
+    loadStudioSourceTopics();
     loadStudioJobs();
   } else if (viewId === 'view-agents') {
     loadAgentsConfigUI();
@@ -2217,6 +2473,22 @@ function switchToView(viewId) {
     loadDesignStudio();
   } else if (viewId === 'view-audit') {
     loadAuditFull();
+  }
+}
+
+async function loadDraftForRoute(draftId) {
+  try {
+    const response = await fetch(`/api/drafts/${encodeURIComponent(draftId)}`);
+    if (!response.ok) throw new Error(`Draf #${draftId} tidak tersedia.`);
+    const draft = await response.json();
+    const route = appNavigation.current();
+    if (route.view !== 'view-review' || Number(route.draftId) !== Number(draftId)) return;
+    renderDraftEditor(draft);
+  } catch (error) {
+    const route = appNavigation.current();
+    if (route.view !== 'view-review' || Number(route.draftId) !== Number(draftId)) return;
+    showToast(error.message);
+    appNavigation.navigate({ view: 'view-review' }, { replace: true });
   }
 }
 
@@ -2237,6 +2509,14 @@ async function loadAgentsConfigUI() {
     const res = await fetch('/api/agents/config');
     if (!res.ok) return;
     const config = await res.json();
+    window.gapuraAgentStudioConfig = config.studio || {};
+    const studio = config.studio || {};
+    if (document.getElementById('studio-agent-provider')) document.getElementById('studio-agent-provider').value = studio.provider || 'gemini';
+    if (document.getElementById('studio-agent-model')) document.getElementById('studio-agent-model').value = studio.model || 'gemini-3.8-flash';
+    if (document.getElementById('studio-agent-endpoint')) document.getElementById('studio-agent-endpoint').value = studio.endpoint || 'https://generativelanguage.googleapis.com';
+    if (document.getElementById('studio-agent-prompt')) document.getElementById('studio-agent-prompt').value = studio.system_prompt || '';
+    if (document.getElementById('studio-agent-key')) document.getElementById('studio-agent-key').placeholder = studio.api_key_configured ? 'Key tersimpan; kosongkan untuk mempertahankan atau isi untuk mengganti' : 'Belum ada key tersimpan; dapat memakai environment';
+    if (document.getElementById('studio-agent-skills')) document.getElementById('studio-agent-skills').value = config.skills?.studio || '';
 
     // Scout
     const scout = config.scout || {};
@@ -2252,7 +2532,7 @@ async function loadAgentsConfigUI() {
     if (document.getElementById('analis-provider')) document.getElementById('analis-provider').value = analis.provider || 'gemini';
     if (document.getElementById('analis-model')) document.getElementById('analis-model').value = analis.model || 'gemini-2.0-flash';
     if (document.getElementById('analis-endpoint')) document.getElementById('analis-endpoint').value = analis.endpoint || 'https://generativelanguage.googleapis.com';
-    if (document.getElementById('analis-api-key')) document.getElementById('analis-api-key').value = analis.api_key || '';
+    if (document.getElementById('analis-api-key')) document.getElementById('analis-api-key').placeholder = analis.api_key_configured ? 'Key tersimpan; kosongkan untuk mempertahankan atau isi untuk mengganti' : 'Belum ada key tersimpan; dapat memakai environment';
 
     const minThreshold = analis.min_score_threshold ?? 75;
     if (document.getElementById('analis-threshold')) document.getElementById('analis-threshold').value = minThreshold;
@@ -2275,7 +2555,7 @@ async function loadAgentsConfigUI() {
     if (document.getElementById('copywriter-provider')) document.getElementById('copywriter-provider').value = copy.provider || 'gemini';
     if (document.getElementById('copywriter-model')) document.getElementById('copywriter-model').value = copy.model || 'gemini-2.0-flash';
     if (document.getElementById('copywriter-endpoint')) document.getElementById('copywriter-endpoint').value = copy.endpoint || 'https://generativelanguage.googleapis.com';
-    if (document.getElementById('copywriter-api-key')) document.getElementById('copywriter-api-key').value = copy.api_key || '';
+    if (document.getElementById('copywriter-api-key')) document.getElementById('copywriter-api-key').placeholder = copy.api_key_configured ? 'Key tersimpan; kosongkan untuk mempertahankan atau isi untuk mengganti' : 'Belum ada key tersimpan; dapat memakai environment';
     if (document.getElementById('copywriter-slides-count')) document.getElementById('copywriter-slides-count').value = copy.slide_count ?? 5;
     if (document.getElementById('copywriter-tone')) document.getElementById('copywriter-tone').value = copy.tone_of_voice ?? '';
     if (document.getElementById('copywriter-banned-words')) document.getElementById('copywriter-banned-words').value = copy.banned_words ?? '';
@@ -2289,7 +2569,7 @@ async function loadAgentsConfigUI() {
     if (document.getElementById('designer-provider')) document.getElementById('designer-provider').value = designer.provider || 'gemini';
     if (document.getElementById('designer-model')) document.getElementById('designer-model').value = designer.model || 'gemini-2.0-flash';
     if (document.getElementById('designer-endpoint')) document.getElementById('designer-endpoint').value = designer.endpoint || 'https://generativelanguage.googleapis.com';
-    if (document.getElementById('designer-api-key')) document.getElementById('designer-api-key').value = designer.api_key || '';
+    if (document.getElementById('designer-api-key')) document.getElementById('designer-api-key').placeholder = designer.api_key_configured ? 'Key tersimpan; kosongkan untuk mempertahankan atau isi untuk mengganti' : 'Belum ada key tersimpan; dapat memakai environment';
     if (document.getElementById('designer-prompt')) document.getElementById('designer-prompt').value = designer.system_prompt || '';
     if (document.getElementById('designer-skills-md')) document.getElementById('designer-skills-md').value = (config.skills && config.skills.designer) || '';
 
@@ -2325,7 +2605,7 @@ async function loadAgentsConfigUI() {
     if (document.getElementById('seo-provider')) document.getElementById('seo-provider').value = seo.provider || 'gemini';
     if (document.getElementById('seo-model')) document.getElementById('seo-model').value = seo.model || 'gemini-3.5-flash-lite';
     if (document.getElementById('seo-endpoint')) document.getElementById('seo-endpoint').value = seo.endpoint || 'https://generativelanguage.googleapis.com';
-    if (document.getElementById('seo-api-key')) document.getElementById('seo-api-key').value = seo.api_key || '';
+    if (document.getElementById('seo-api-key')) document.getElementById('seo-api-key').placeholder = seo.api_key_configured ? 'Key tersimpan; kosongkan untuk mempertahankan atau isi untuk mengganti' : 'Belum ada key tersimpan; dapat memakai environment';
     if (document.getElementById('seo-min-virality')) document.getElementById('seo-min-virality').value = seo.min_virality_score ?? 55;
     if (document.getElementById('seo-prompt')) document.getElementById('seo-prompt').value = seo.system_prompt ?? '';
     if (document.getElementById('seo-skills-md')) document.getElementById('seo-skills-md').value = (config.skills && config.skills.seo) || '';
@@ -2335,13 +2615,291 @@ async function loadAgentsConfigUI() {
     if (document.getElementById('verifikator-provider')) document.getElementById('verifikator-provider').value = verif.provider || 'gemini';
     if (document.getElementById('verifikator-model')) document.getElementById('verifikator-model').value = verif.model || 'gemini-3.5-flash-lite';
     if (document.getElementById('verifikator-endpoint')) document.getElementById('verifikator-endpoint').value = verif.endpoint || 'https://generativelanguage.googleapis.com';
-    if (document.getElementById('verifikator-api-key')) document.getElementById('verifikator-api-key').value = verif.api_key || '';
+    if (document.getElementById('verifikator-api-key')) document.getElementById('verifikator-api-key').placeholder = verif.api_key_configured ? 'Key tersimpan; kosongkan untuk mempertahankan atau isi untuk mengganti' : 'Belum ada key tersimpan; dapat memakai environment';
     if (document.getElementById('verifikator-min-confidence')) document.getElementById('verifikator-min-confidence').value = verif.min_confidence_publish ?? 60;
     if (document.getElementById('verifikator-block-hoax')) document.getElementById('verifikator-block-hoax').checked = verif.block_hoax !== false;
     if (document.getElementById('verifikator-prompt')) document.getElementById('verifikator-prompt').value = verif.system_prompt ?? '';
     if (document.getElementById('verifikator-skills-md')) document.getElementById('verifikator-skills-md').value = (config.skills && config.skills.verifikator) || '';
+
+    await loadProviderCatalogUI();
   } catch (err) {
     console.error('Error loadAgentsConfigUI:', err);
+  }
+}
+
+// ==============================================================================
+// 12b. Provider & Model Catalog UI
+// ==============================================================================
+let providerCatalogCache = null;
+let providerCatalogBound = false;
+let editingProviderId = '';
+
+const AGENT_PROVIDER_SELECTS = ['analis-provider', 'copywriter-provider', 'designer-provider', 'seo-provider', 'verifikator-provider', 'studio-agent-provider'];
+const AGENT_MODEL_INPUTS = ['analis-model', 'copywriter-model', 'designer-model', 'seo-model', 'verifikator-model', 'studio-agent-model'];
+
+function providerById(id) {
+  return providerCatalogCache?.providers?.find((provider) => provider.id === id);
+}
+
+function pickProviderTestModel(provider) {
+  const unusable = /(image|tts|audio|lyria|embed|transcribe|robotics|computer-use|deep-research|nano-banana)/i;
+  const models = (provider.models || []).filter((model) => !unusable.test(model));
+  return provider.default_model || models[0] || provider.models?.[0] || '';
+}
+
+function renderProviderCatalog(data) {
+  const list = document.getElementById('provider-catalog-list');
+  const status = document.getElementById('provider-catalog-status');
+  if (!list) return;
+  const providers = data.providers || [];
+  const totalModels = providers.reduce((sum, provider) => sum + (provider.model_count || 0), 0);
+  if (status) status.textContent = `${providers.length} provider · ${totalModels} model termuat`;
+  if (!providers.length) {
+    list.innerHTML = '<p class="agent-card-desc">Belum ada provider. Tambahkan endpoint resmi atau router di atas.</p>';
+    return;
+  }
+  list.innerHTML = providers.map((provider) => {
+    const enabledLabel = provider.enabled ? 'aktif' : 'nonaktif';
+    return `
+      <div class="provider-row" style="display: grid; grid-template-columns: minmax(200px, 1.6fr) 96px 100px 84px auto; gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: rgba(255, 255, 255, 0.02);">
+        <div style="min-width: 0;">
+          <strong style="font-size: 13px; color: #fff;">${escapeHtml(provider.label)}</strong>
+          <div style="font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(provider.id)} · ${escapeHtml(provider.base_url || 'Base URL belum diisi')}</div>
+        </div>
+        <span class="pill-status ${provider.enabled ? 'active' : ''}"><span class="dot"></span>${enabledLabel}</span>
+        <span class="pill-status ${provider.key_configured ? 'active' : ''}"><span class="dot"></span>${provider.key_configured ? 'key siap' : 'tanpa key'}</span>
+        <span style="font-size: 12px; color: var(--muted);">${provider.model_count} model</span>
+        <div style="display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap;">
+          <button class="btn btn-outline" type="button" data-provider-refresh="${escapeHtml(provider.id)}">Refresh</button>
+          <button class="btn btn-outline" type="button" data-provider-test="${escapeHtml(provider.id)}">Uji</button>
+          <button class="btn btn-outline" type="button" data-provider-edit="${escapeHtml(provider.id)}">Ubah</button>
+        </div>
+        ${provider.error ? `<div style="grid-column: 1 / -1; font-size: 11px; color: var(--down);">${escapeHtml(provider.error)}</div>` : ''}
+      </div>`;
+  }).join('');
+}
+
+function syncProviderModelDatalist(providers) {
+  const datalist = document.getElementById('provider-model-datalist');
+  if (!datalist) return;
+  const models = [...new Set(providers.flatMap((provider) => provider.models || []))].sort((a, b) => a.localeCompare(b));
+  datalist.innerHTML = models.map((model) => `<option value="${escapeHtml(model)}"></option>`).join('');
+  for (const inputId of AGENT_MODEL_INPUTS) {
+    const input = document.getElementById(inputId);
+    if (input) input.setAttribute('list', 'provider-model-datalist');
+  }
+}
+
+function populateAgentProviderSelects(providers) {
+  for (const selectId of AGENT_PROVIDER_SELECTS) {
+    const select = document.getElementById(selectId);
+    if (!select) continue;
+    const current = select.value;
+    select.innerHTML = providers.map((provider) => `<option value="${escapeHtml(provider.id)}">${escapeHtml(provider.label)}${provider.enabled ? '' : ' (nonaktif)'}</option>`).join('');
+    if (providers.some((provider) => provider.id === current)) select.value = current;
+    else if (select.options.length) select.value = select.options[0].value;
+  }
+}
+
+async function loadProviderCatalogUI() {
+  bindProviderCatalogControls();
+  try {
+    const response = await fetch('/api/providers');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    providerCatalogCache = data;
+    renderProviderCatalog(data);
+    populateAgentProviderSelects(data.providers || []);
+    syncProviderModelDatalist(data.providers || []);
+    const chain = document.getElementById('provider-routing-chain');
+    if (chain) chain.value = (data.routing?.fallback_chain || []).join('\n');
+  } catch (error) {
+    const status = document.getElementById('provider-catalog-status');
+    if (status) status.textContent = `Gagal memuat katalog: ${error.message}`;
+  }
+}
+
+function bindProviderCatalogControls() {
+  if (providerCatalogBound) return;
+  providerCatalogBound = true;
+
+  document.getElementById('btn-refresh-models')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    const status = document.getElementById('provider-catalog-status');
+    if (status) status.textContent = 'Memuat model dari semua provider...';
+    try {
+      const response = await fetch('/api/providers/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
+      providerCatalogCache = result;
+      renderProviderCatalog(result);
+      populateAgentProviderSelects(result.providers || []);
+      syncProviderModelDatalist(result.providers || []);
+      showToast('Katalog model diperbarui dari provider.');
+    } catch (error) {
+      if (status) status.textContent = `Refresh gagal: ${error.message}`;
+      showToast(`Refresh model gagal: ${error.message}`);
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  document.getElementById('btn-toggle-provider-form')?.addEventListener('click', () => {
+    const form = document.getElementById('provider-form');
+    if (!form) return;
+    form.hidden = !form.hidden;
+    if (!form.hidden) resetProviderForm();
+  });
+
+  document.getElementById('provider-catalog-list')?.addEventListener('click', async (event) => {
+    const refreshId = event.target.closest('[data-provider-refresh]')?.dataset.providerRefresh;
+    const testId = event.target.closest('[data-provider-test]')?.dataset.providerTest;
+    const editId = event.target.closest('[data-provider-edit]')?.dataset.providerEdit;
+    if (refreshId) return refreshSingleProvider(refreshId, event.target.closest('button'));
+    if (testId) return testProviderConnection(testId, event.target.closest('button'));
+    if (editId) return editProviderForm(editId);
+  });
+
+  document.getElementById('btn-save-provider')?.addEventListener('click', saveProviderForm);
+  document.getElementById('btn-save-routing')?.addEventListener('click', saveRoutingChain);
+}
+
+function resetProviderForm() {
+  editingProviderId = '';
+  const idInput = document.getElementById('provider-form-id');
+  if (idInput) { idInput.value = ''; idInput.disabled = false; }
+  const fields = { 'provider-form-label': '', 'provider-form-env': '', 'provider-form-url': '', 'provider-form-key': '' };
+  for (const [id, value] of Object.entries(fields)) {
+    const element = document.getElementById(id);
+    if (element) element.value = value;
+  }
+  const kind = document.getElementById('provider-form-kind');
+  if (kind) kind.value = 'openai';
+  const enabled = document.getElementById('provider-form-enabled');
+  if (enabled) enabled.checked = true;
+  const status = document.getElementById('provider-form-status');
+  if (status) status.textContent = '';
+}
+
+function editProviderForm(id) {
+  const provider = providerById(id);
+  if (!provider) return;
+  editingProviderId = id;
+  const form = document.getElementById('provider-form');
+  if (form) form.hidden = false;
+  const idInput = document.getElementById('provider-form-id');
+  if (idInput) { idInput.value = provider.id; idInput.disabled = true; }
+  const values = {
+    'provider-form-label': provider.label,
+    'provider-form-kind': provider.kind,
+    'provider-form-env': provider.api_key_env,
+    'provider-form-url': provider.base_url,
+  };
+  for (const [elementId, value] of Object.entries(values)) {
+    const element = document.getElementById(elementId);
+    if (element) element.value = value || '';
+  }
+  const key = document.getElementById('provider-form-key');
+  if (key) key.value = '';
+  const enabled = document.getElementById('provider-form-enabled');
+  if (enabled) enabled.checked = provider.enabled;
+  const status = document.getElementById('provider-form-status');
+  if (status) status.textContent = `Mengubah ${provider.id}. Kosongkan API key bila tidak ingin mengganti.`;
+}
+
+async function refreshSingleProvider(id, button) {
+  if (button) button.disabled = true;
+  try {
+    const response = await fetch('/api/providers/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider_id: id }) });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
+    providerCatalogCache = result;
+    renderProviderCatalog(result);
+    syncProviderModelDatalist(result.providers || []);
+    const updated = result.providers.find((provider) => provider.id === id);
+    showToast(updated?.error ? `${id}: ${updated.error}` : `${id}: ${updated?.model_count || 0} model dimuat.`);
+  } catch (error) {
+    showToast(`Refresh ${id} gagal: ${error.message}`);
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+async function testProviderConnection(id, button) {
+  const provider = providerById(id);
+  const model = provider ? pickProviderTestModel(provider) : '';
+  if (!model) return showToast(`Pilih model untuk ${id} lebih dulu (refresh katalog).`);
+  if (button) button.disabled = true;
+  try {
+    const response = await fetch('/api/providers/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider_id: id, model }) });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.status === 'failed') throw new Error(result.error || (result.details || []).join(' ') || `HTTP ${response.status}`);
+    showToast(`${provider.label || id} · ${result.model}: JSON valid dalam ${result.latency_ms} ms.`);
+  } catch (error) {
+    showToast(`${provider?.label || id} gagal: ${error.message}`);
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+async function saveProviderForm() {
+  const status = document.getElementById('provider-form-status');
+  const button = document.getElementById('btn-save-provider');
+  const id = (editingProviderId || document.getElementById('provider-form-id')?.value || '').trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9_-]{0,39}$/.test(id)) {
+    if (status) status.textContent = 'ID provider harus huruf kecil, angka, minus, atau garis bawah.';
+    return;
+  }
+  const payload = {
+    label: document.getElementById('provider-form-label')?.value.trim() || id,
+    kind: document.getElementById('provider-form-kind')?.value || 'openai',
+    base_url: document.getElementById('provider-form-url')?.value.trim() || '',
+    api_key_env: document.getElementById('provider-form-env')?.value.trim() || '',
+    enabled: document.getElementById('provider-form-enabled')?.checked !== false,
+  };
+  const apiKey = document.getElementById('provider-form-key')?.value.trim() || '';
+  if (button) button.disabled = true;
+  if (status) status.textContent = 'Menyimpan provider...';
+  try {
+    const response = await fetch(`/api/providers/${encodeURIComponent(id)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error((result.details || [result.error || `HTTP ${response.status}`]).join(' '));
+    if (apiKey) {
+      const keyResponse = await fetch(`/api/providers/${encodeURIComponent(id)}/key`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ api_key: apiKey }) });
+      const keyResult = await keyResponse.json().catch(() => ({}));
+      if (!keyResponse.ok) throw new Error(keyResult.error || `API key HTTP ${keyResponse.status}`);
+    }
+    if (status) status.textContent = `Provider ${id} tersimpan.`;
+    showToast(`Provider ${id} tersimpan${apiKey ? ' beserta API key' : ''}.`);
+    resetProviderForm();
+    await loadProviderCatalogUI();
+  } catch (error) {
+    if (status) status.textContent = `Gagal menyimpan: ${error.message}`;
+    showToast(`Gagal menyimpan provider: ${error.message}`);
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+async function saveRoutingChain() {
+  const status = document.getElementById('provider-routing-status');
+  const button = document.getElementById('btn-save-routing');
+  const chain = (document.getElementById('provider-routing-chain')?.value || '')
+    .split('\n').map((line) => line.trim()).filter(Boolean);
+  if (button) button.disabled = true;
+  if (status) status.textContent = 'Menyimpan rantai fallback...';
+  try {
+    const response = await fetch('/api/providers/routing', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fallback_chain: chain }) });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error((result.details || [result.error || `HTTP ${response.status}`]).join(' '));
+    if (status) status.textContent = `Rantai fallback tersimpan (${chain.length} entri).`;
+    showToast('Rantai fallback global tersimpan.');
+  } catch (error) {
+    if (status) status.textContent = `Gagal: ${error.message}`;
+    showToast(`Gagal menyimpan fallback: ${error.message}`);
+  } finally {
+    if (button) button.disabled = false;
   }
 }
 
@@ -2357,98 +2915,7 @@ async function saveAgentsConfigUI() {
   });
 
   try {
-    const payload = {
-      scout: {
-        poll_interval_mins: parseInt(document.getElementById('scout-poll-interval')?.value || '30'),
-        dedup_similarity_threshold: parseFloat(document.getElementById('scout-dedup-threshold')?.value || '0.85'),
-        max_items_per_source: parseInt(document.getElementById('scout-max-items')?.value || '15'),
-        custom_keywords: document.getElementById('scout-keywords')?.value || '',
-        rules: document.getElementById('scout-rules')?.value || '',
-      },
-      analis: {
-        provider: document.getElementById('analis-provider')?.value || 'gemini',
-        endpoint: document.getElementById('analis-endpoint')?.value || 'https://generativelanguage.googleapis.com',
-        api_key: document.getElementById('analis-api-key')?.value || '',
-        model: document.getElementById('analis-model')?.value || 'gemini-2.0-flash',
-        min_score_threshold: parseInt(document.getElementById('analis-threshold')?.value || '75'),
-        weights: {
-          relevance: parseInt(document.getElementById('weight-relevance')?.value || '30'),
-          credibility: parseInt(document.getElementById('weight-credibility')?.value || '25'),
-          momentum: parseInt(document.getElementById('weight-momentum')?.value || '20'),
-          engagement: parseInt(document.getElementById('weight-engagement')?.value || '15'),
-          compliance: parseInt(document.getElementById('weight-compliance')?.value || '10'),
-        },
-        fast_fail_rules: document.getElementById('analis-fastfail')?.value || '',
-        system_prompt: document.getElementById('analis-prompt')?.value || '',
-      },
-      copywriter: {
-        provider: document.getElementById('copywriter-provider')?.value || 'gemini',
-        endpoint: document.getElementById('copywriter-endpoint')?.value || 'https://generativelanguage.googleapis.com',
-        api_key: document.getElementById('copywriter-api-key')?.value || '',
-        model: document.getElementById('copywriter-model')?.value || 'gemini-2.0-flash',
-        slide_count: parseInt(document.getElementById('copywriter-slides-count')?.value || '5'),
-        tone_of_voice: document.getElementById('copywriter-tone')?.value || '',
-        banned_words: document.getElementById('copywriter-banned-words')?.value || '',
-        system_prompt: document.getElementById('copywriter-prompt')?.value || '',
-        disclaimer_financial: document.getElementById('copywriter-disclaimer-fin')?.value || '',
-        disclaimer_legal: document.getElementById('copywriter-disclaimer-legal')?.value || '',
-      },
-      designer: {
-        provider: document.getElementById('designer-provider')?.value || 'gemini',
-        endpoint: document.getElementById('designer-endpoint')?.value || 'https://generativelanguage.googleapis.com',
-        api_key: document.getElementById('designer-api-key')?.value || '',
-        model: document.getElementById('designer-model')?.value || 'gemini-2.0-flash',
-        system_prompt: document.getElementById('designer-prompt')?.value || '',
-        tokens: {
-          palette: {
-            bg: document.getElementById('color-bg-hex')?.value || '#f7f5f0',
-            ink: document.getElementById('color-ink-hex')?.value || '#102b45',
-            accent: document.getElementById('color-accent-hex')?.value || '#1f7e81',
-            highlight: document.getElementById('color-highlight-hex')?.value || '#d79344',
-            up: document.getElementById('color-up-hex')?.value || '#1a7a4f',
-            down: document.getElementById('color-down-hex')?.value || '#b23a48',
-          },
-          typography: {
-            display_font: document.getElementById('designer-display-font')?.value || 'Archivo Black',
-            text_font: document.getElementById('designer-text-font')?.value || 'Inter',
-          },
-        },
-        default_layouts: {
-          cover: document.getElementById('layout-cover')?.value || 'cover-stat',
-          context: document.getElementById('layout-context')?.value || 'big-statement',
-          evidence_data: document.getElementById('layout-data')?.value || 'chart-bar',
-          evidence_legal: document.getElementById('layout-implication')?.value || 'comparison',
-          implication: document.getElementById('layout-implication')?.value || 'comparison',
-          close: document.getElementById('layout-close')?.value || 'cta-close',
-        },
-        auto_fit_text: document.getElementById('designer-autofit')?.checked !== false,
-      },
-      seo: {
-        provider: document.getElementById('seo-provider')?.value || 'gemini',
-        endpoint: document.getElementById('seo-endpoint')?.value || 'https://generativelanguage.googleapis.com',
-        api_key: document.getElementById('seo-api-key')?.value || '',
-        model: document.getElementById('seo-model')?.value || 'gemini-3.5-flash-lite',
-        min_virality_score: parseInt(document.getElementById('seo-min-virality')?.value || '55'),
-        system_prompt: document.getElementById('seo-prompt')?.value || '',
-      },
-      verifikator: {
-        provider: document.getElementById('verifikator-provider')?.value || 'gemini',
-        endpoint: document.getElementById('verifikator-endpoint')?.value || 'https://generativelanguage.googleapis.com',
-        api_key: document.getElementById('verifikator-api-key')?.value || '',
-        model: document.getElementById('verifikator-model')?.value || 'gemini-3.5-flash-lite',
-        min_confidence_publish: parseInt(document.getElementById('verifikator-min-confidence')?.value || '60'),
-        block_hoax: document.getElementById('verifikator-block-hoax')?.checked !== false,
-        system_prompt: document.getElementById('verifikator-prompt')?.value || '',
-      },
-      skills: {
-        scout: document.getElementById('scout-skills-md')?.value || '',
-        analis: document.getElementById('analis-skills-md')?.value || '',
-        copywriter: document.getElementById('copywriter-skills-md')?.value || '',
-        designer: document.getElementById('designer-skills-md')?.value || '',
-        seo: document.getElementById('seo-skills-md')?.value || '',
-        verifikator: document.getElementById('verifikator-skills-md')?.value || '',
-      },
-    };
+    const payload = collectAgentConfigPayload();
 
     const res = await fetch('/api/agents/config', {
       method: 'POST',
@@ -2463,6 +2930,7 @@ async function saveAgentsConfigUI() {
 
     const data = await res.json();
     showToast(data.message || '✅ Konfigurasi 4 Agen AI berhasil disimpan & diterapkan!');
+    await loadAgentsConfigUI();
   } catch (err) {
     console.error('Error saving agent config:', err);
     showToast(`Gagal menyimpan: ${err.message}`);
@@ -2471,6 +2939,34 @@ async function saveAgentsConfigUI() {
       b.disabled = false;
       b.innerHTML = '<span>💾</span> <span>Simpan & Terapkan Perubahan</span>';
     });
+  }
+}
+
+async function testAgentSettings() {
+  const button = document.getElementById('btn-test-agent-config');
+  const status = document.getElementById('agent-test-status');
+  const agent = document.querySelector('.agent-nav-tab.active')?.dataset.agent || 'analis';
+  const full = collectAgentConfigPayload();
+  const keys = ['provider', 'endpoint', 'model', 'api_key', 'system_prompt'];
+  const config = agent === 'scout' ? { scout: full.scout } : Object.fromEntries([agent].map((name) => [
+    name,
+    Object.fromEntries(keys.map((key) => [key, full[name]?.[key]])),
+  ]));
+  if (status) status.textContent = `Menguji ${agent} tanpa menyimpan perubahan...`;
+  if (button) button.disabled = true;
+  try {
+    const response = await fetch('/api/agents/config/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agent, config, skills: full.skills, prompt: 'Return only JSON: {"ok":true,"agent":"' + agent + '"}' }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error((result.details || [result.error || `HTTP ${response.status}`]).join(' '));
+    if (status) status.textContent = `${agent}: ${result.status} · ${result.message}`;
+  } catch (error) {
+    if (status) status.textContent = `${agent}: gagal · ${error.message}`;
+  } finally {
+    if (button) button.disabled = false;
   }
 }
 
@@ -2528,6 +3024,7 @@ async function loadTrends() {
   container.innerHTML = '<div class="empty-state-mini">Memuat item trending…</div>';
 
   try {
+    await loadTrendHealth();
     const params = new URLSearchParams({ limit: '60' });
     if (activeTrendPlatform) params.set('platform', activeTrendPlatform);
     const res = await fetch(`/api/seo/trends?${params.toString()}`);
@@ -2539,6 +3036,28 @@ async function loadTrends() {
     console.error('Error loadTrends:', err);
     reportClientLog('error', 'loadTrends', err);
     container.innerHTML = `<div class="empty-state-mini" style="color: var(--down);">Gagal memuat trending: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+async function loadTrendHealth() {
+  const banner = document.getElementById('trend-health-banner');
+  const message = document.getElementById('trend-health-message');
+  const time = document.getElementById('trend-health-last-success');
+  if (!banner || !message) return;
+  try {
+    const response = await fetch('/api/seo/health');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const health = await response.json();
+    banner.classList.toggle('is-stale', health.stale);
+    const provider = health.x_api_configured ? 'X API' : health.rsshub_configured ? 'RSSHub → Google News' : 'Google News fallback';
+    message.textContent = health.stale
+      ? `Data trending stale · provider ${provider} · ${health.successful_sources}/${health.active_sources} sumber berhasil`
+      : `Provider ${provider} · ${health.successful_sources}/${health.active_sources} sumber berhasil`;
+    if (time) time.textContent = health.latest_success_at ? `Scan sukses ${formatTimeAgo(health.latest_success_at)}` : 'Belum ada scan sukses';
+  } catch (error) {
+    banner.classList.add('is-stale');
+    message.textContent = `Status sumber tidak dapat diverifikasi: ${error.message}`;
+    if (time) time.textContent = '';
   }
 }
 
@@ -2994,6 +3513,16 @@ async function verifyTopicNow(topicId, btn) {
   }
 }
 
+async function loadStudioSourceTopics() {
+  try {
+    const response = await fetch('/api/topics?status=scored&limit=100&sort=score');
+    if (!response.ok) throw new Error('Daftar sumber belum dapat dimuat.');
+    const topics = await response.json();
+    cachedTopics = topics;
+    populateStudioSourceTopics();
+  } catch (error) { showToast(error.message); }
+}
+
 window.togglePasswordVisibility = function (id) {
   const el = document.getElementById(id);
   if (el) {
@@ -3039,9 +3568,13 @@ let studioJobStream = null;
 
 async function submitStudioPrompt() {
   const input = document.getElementById('studio-prompt-input');
-  const modeEl = document.getElementById('studio-mode');
+  const topicId = Number.parseInt(document.getElementById('studio-source-topic')?.value || '', 10);
   const btn = document.getElementById('btn-studio-submit');
   if (!input || !btn) return;
+  if (!Number.isInteger(topicId)) {
+    showToast('Pilih topik Radar yang sudah lolos Analis dan memiliki sumber primer.');
+    return;
+  }
   const prompt = (input.value || '').trim();
   if (prompt.length < 10) {
     showToast('⚠️ Prompt minimal 10 karakter.');
@@ -3054,7 +3587,7 @@ async function submitStudioPrompt() {
     const res = await fetch('/api/studio/jobs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, mode: modeEl?.value || 'review' }),
+      body: JSON.stringify({ prompt, topic_id: topicId }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
@@ -3125,7 +3658,7 @@ function renderStudioJobs(jobs, focusJobId) {
       <div class="verif-card" id="studio-job-${job.id}">
         <div class="verif-head">
           <span class="verif-badge ${meta.cls}">${escapeHtml(meta.label)}</span>
-          <span class="verif-time">${escapeHtml(job.mode === 'auto_publish' ? 'auto publish' : 'review dulu')}</span>
+          <span class="verif-time">Review wajib</span>
           <span class="verif-time">${formatTimeAgo(job.created_at)}</span>
         </div>
         <div class="verif-title">${escapeHtml((job.prompt || '').slice(0, 140))}${(job.prompt || '').length > 140 ? '…' : ''}</div>
@@ -3133,8 +3666,8 @@ function renderStudioJobs(jobs, focusJobId) {
         ${planHtml}
         <div class="verif-footer" style="gap: 8px; flex-wrap: wrap;">
           ${plan && ['plan_review', 'failed'].includes(job.status) ? `<button type="button" class="btn-mini-ghost btn-studio-run" data-job-id="${job.id}">▶️ Produksi Sesuai Rencana</button>` : ''}
-          ${plan && ['plan_review', 'failed'].includes(job.status) ? `<button type="button" class="btn-mini-ghost btn-studio-save-plan" data-job-id="${job.id}">💾 Simpan Edit Rencana</button>` : ''}
-          ${plan && ['plan_review', 'failed'].includes(job.status) ? `<button type="button" class="btn-mini-ghost btn-studio-regen" data-job-id="${job.id}">♻️ Generate Ulang Rencana</button>` : ''}
+          ${plan && job.status === 'plan_review' ? `<button type="button" class="btn-mini-ghost btn-studio-save-plan" data-job-id="${job.id}">Simpan Edit Rencana</button>` : ''}
+          ${plan && job.status === 'plan_review' ? `<button type="button" class="btn-mini-ghost btn-studio-regen" data-job-id="${job.id}">Generate Ulang Rencana</button>` : ''}
           ${['queued', 'plan_review'].includes(job.status) ? `<button type="button" class="btn-mini-ghost btn-studio-cancel" data-job-id="${job.id}" style="color: var(--down);">✕ Batalkan</button>` : ''}
           ${job.draft_id ? `<button type="button" class="btn-mini-ghost btn-studio-open-draft" data-draft-id="${job.draft_id}">📂 Buka Draft #${job.draft_id}</button>` : ''}
           ${job.topic_id ? `<span class="verif-meta-line">Topik #${job.topic_id}</span>` : ''}
@@ -3188,10 +3721,9 @@ function streamStudioJob(jobId) {
     studioJobStream = null;
     // Fallback: polling ringan sampai job selesai (mis. SSE diblokir proxy).
     const poll = setInterval(async () => {
-      const { rows } = await fetch(`/api/studio/jobs/${jobId}`).then((r) => r.json()).catch(() => ({}));
-      const job = rows || {};
+      const job = await fetch(`/api/studio/jobs/${jobId}`).then((r) => r.json()).catch(() => ({}));
       updateStudioJobLive(jobId, { status: job.status, progress: job.progress });
-      if (['review','scheduled','published','failed','cancelled'].includes(job.status)) {
+      if (['plan_review','review','scheduled','published','failed','cancelled'].includes(job.status)) {
         clearInterval(poll);
         if (job.status === 'failed') showToast(`❌ Job #${jobId} gagal: ${job.error || 'lihat log'}`);
         else showToast(`✅ Job #${jobId} selesai (${job.status}).`);

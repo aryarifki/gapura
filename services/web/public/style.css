@@ -1,11 +1,11 @@
 /* ==============================================================================
    GAPURA MEDIA (Homeless Media Engine v2.0) - Studio Ruang Redaksi Stylesheet
    Dark Editorial Theme inspired by Ruang Redaksi & Studio Editor Reference:
-   - Deep Carbon Background: #0B0E14
-   - Sidebar Surface: #10141D
-   - Card Panels: #161B26
-   - Border Subtle: #232B3E
-   - Accent Neon Lime: #C6F234 (Signatures, Scores, Primary Actions)
+   - Deep Carbon Background: #0B100E
+   - Sidebar Surface: #101714
+   - Card Panels: #151E19
+   - Border Subtle: #29362E
+   - Restrained editorial green and warm white
    - Secondary Teal: #1F7E81
    - Secondary Amber: #D79344
    Fully Responsive (Desktop Sidebar + Mobile Touch Drawer / Bottom Nav)
@@ -13,19 +13,19 @@
 
 :root {
   /* Brand Dark Theme */
-  --bg: #0B0E14;
-  --sidebar-bg: #10141D;
-  --card-bg: #161B26;
-  --card-subtle: #1A202E;
-  --card-hover: #202737;
-  --border: #232B3E;
-  --border-light: #2A3449;
+  --bg: #0B100E;
+  --sidebar-bg: #101714;
+  --card-bg: #151E19;
+  --card-subtle: #1B2720;
+  --card-hover: #202F26;
+  --border: #29362E;
+  --border-light: #35463A;
 
   /* Neon Lime Accent (Signature Studio Color) */
-  --lime: #C6F234;
-  --lime-hover: #B5E025;
-  --lime-subtle: rgba(198, 242, 52, 0.12);
-  --lime-glow: rgba(198, 242, 52, 0.25);
+  --lime: #A7CF73;
+  --lime-hover: #B5DB82;
+  --lime-subtle: rgba(167, 207, 115, 0.12);
+  --lime-glow: rgba(167, 207, 115, 0.12);
 
   /* Corporate Colors */
   --navy: #102B45;
@@ -35,10 +35,10 @@
   --amber-light: rgba(215, 147, 68, 0.15);
 
   /* Agent Colors */
-  --agent-scout: #38BDF8;
-  --agent-analis: #A855F7;
-  --agent-copy: #EAB308;
-  --agent-designer: #EC4899;
+  --agent-scout: #74A89A;
+  --agent-analis: #B7C6B9;
+  --agent-copy: #D8A65F;
+  --agent-designer: #9CB878;
 
   /* Typography Colors */
   --ink: #F8FAFC;
@@ -99,6 +99,90 @@ a {
   display: flex;
   min-height: 100vh;
   width: 100%;
+}
+
+.ui-icon {
+  display: inline-block;
+  width: 1.15em;
+  height: 1.15em;
+  flex: 0 0 1.15em;
+  vertical-align: -0.2em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.nav-item-left > .ui-icon,
+.agent-icon-circle > .ui-icon,
+.agent-tab-icon > .ui-icon {
+  width: 18px;
+  height: 18px;
+  flex-basis: 18px;
+}
+
+.nav-item-left > span:first-child { display: inline-flex; align-items: center; }
+
+.access-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #0B100E;
+}
+.access-gate[hidden] { display: none; }
+
+.access-panel {
+  display: flex;
+  width: min(100%, 390px);
+  flex-direction: column;
+  gap: 12px;
+  padding: 28px;
+  border: 1px solid var(--border-light);
+  background: var(--card-bg);
+}
+
+.access-panel img { object-fit: contain; }
+.access-panel h1 { font: 700 24px/1.2 Inter, sans-serif; }
+.access-panel p { color: var(--muted); }
+.access-panel .access-kicker { color: var(--lime); font: 600 11px/1.4 Inter, sans-serif; }
+.access-panel label { margin-top: 8px; font-size: 12px; font-weight: 600; }
+.access-panel input { width: 100%; padding: 11px 12px; border: 1px solid var(--border-light); background: var(--bg); color: var(--ink); }
+#admin-access-message { min-height: 18px; color: var(--amber); font-size: 12px; }
+
+.topic-controls {
+  display: grid;
+  grid-template-columns: auto minmax(220px, 1fr) minmax(140px, 190px);
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.topic-search-label { color: var(--muted); font-size: 12px; font-weight: 600; }
+#btn-topics-load-more { display: block; margin: 16px auto 0; }
+
+.trend-health-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 11px 14px;
+  border: 1px solid var(--border-light);
+  background: var(--card-bg);
+  color: var(--ink-secondary);
+  font-size: 12px;
+}
+.trend-health-banner.is-stale { border-color: rgba(215, 147, 68, 0.7); color: #e5bd80; }
+.trend-health-indicator { width: 8px; height: 8px; border-radius: 50%; background: var(--up); }
+.trend-health-banner.is-stale .trend-health-indicator { background: var(--amber); }
+.trend-health-time { margin-left: auto; color: var(--muted); white-space: nowrap; }
+
+@media (max-width: 640px) {
+  .topic-controls { grid-template-columns: 1fr 140px; }
+  .topic-search-label { grid-column: 1 / -1; }
+  .access-panel { padding: 22px; }
 }
 
 /* Sidebar (Desktop) */
@@ -190,6 +274,11 @@ a {
 }
 
 .nav-item {
+  background: transparent;
+  border: 0;
+  width: 100%;
+  font-family: inherit;
+  text-align: left;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1182,6 +1271,13 @@ a {
   transform: translateY(0);
   opacity: 1;
 }
+
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid var(--lime); outline-offset: 3px; }
+.radar-card-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.agent-test-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+#agent-test-status { max-width: 280px; font-size: 12px; color: var(--muted); }
+.editor-review-confirmation { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border: 1px solid var(--border); margin-bottom: 14px; font-size: 12px; color: var(--ink-secondary); }
+.editor-review-confirmation input { accent-color: var(--lime); margin-top: 2px; }
 
 /* ==============================================================================
    RESPONSIVE DESIGN (Tablets & Mobile Screens)

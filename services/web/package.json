@@ -4,6 +4,10 @@
   "description": "Web Review Dashboard and Control Center for Homeless Media Engine",
   "main": "server.js",
   "type": "module",
+  "scripts": {
+    "test": "node --test test/access.test.js test/config-redaction.test.js test/editorial-gates.test.js test/icon-map.test.js test/navigation.test.js",
+    "test:integration": "bash test/run-server-tests.sh"
+  },
   "dependencies": {
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
