@@ -19,7 +19,7 @@ const JPEG_OPTIONS = Object.freeze({ quality: 92, chromaSubsampling: '4:4:4', mo
 
 /**
  * Writes slide_<n>.jpg beside every slide_<n>.png inside one draft directory.
- * Instagram and Threads accept JPEG only. Existing derivatives are never
+ * Instagram requires JPEG; other adapters reuse the derivative. Existing files are never
  * rewritten, and a corrupt PNG never blocks the rest of the batch.
  */
 export async function deriveJpegsInDir(dirPath) {

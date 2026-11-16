@@ -150,3 +150,9 @@ test('Threads marks threads_publish failures as uncertain and a permalink lookup
   assert.equal(await fetchPermalink(permalinkClient, 'threads-1'), 'https://www.threads.net/@gapuramedia/post/1');
   assert.equal(await fetchPermalink(permalinkClient, 'threads-2'), null);
 });
+
+test('Facebook looks up permalink_url while Instagram and Threads use permalink', async () => {
+  const client = recorder([{ permalink_url: 'https://www.facebook.com/1023_9' }]);
+  assert.equal(await fetchPermalink(client, '1023_9', { platform: 'facebook' }), 'https://www.facebook.com/1023_9');
+  assert.deepEqual(client.calls[0].query, { fields: 'permalink_url' });
+});

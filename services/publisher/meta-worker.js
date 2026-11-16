@@ -46,7 +46,7 @@ export function publicationConfigFromEnv(env = process.env) {
     signingSecret: env.GAPURA_ADMIN_TOKEN || '',
     graphBaseUrl: env.META_GRAPH_BASE_URL || 'https://graph.facebook.com',
     graphVersion: env.META_GRAPH_VERSION || 'v23.0',
-    threadsBaseUrl: env.THREADS_GRAPH_BASE_URL || 'https://graph.threads.net',
+    threadsBaseUrl: env.THREADS_GRAPH_BASE_URL || 'https://graph.threads.com',
     threadsVersion: env.THREADS_GRAPH_VERSION || 'v1.0',
     httpTimeoutMs: Math.max(1000, Math.min(Number(env.META_HTTP_TIMEOUT_MS) || 30000, 60000)),
     maxAttempts: Math.max(1, Math.min(Number(env.META_PUBLISH_MAX_ATTEMPTS) || 3, 5)),
@@ -266,7 +266,7 @@ export function createMetaPublisherWorker({ pool, config, fetchImpl = globalThis
             }
             publishAttempted = true;
           } });
-          permalink = await fetchPermalink(adapter.client, published.remoteId);
+          permalink = await fetchPermalink(adapter.client, published.remoteId, { platform: row.platform });
           await finalize(client, row, {
             status: 'published',
             remoteId: published.remoteId,

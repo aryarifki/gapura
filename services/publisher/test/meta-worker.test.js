@@ -85,6 +85,15 @@ test('defaults to shadow mode and disables platforms without credentials', () =>
   assert.throws(() => publicationConfigFromEnv({ META_PLATFORMS: 'tiktok' }), /tidak dikenal/);
 });
 
+test('Threads uses the documented graph.threads.com host and a separate Threads token', () => {
+  const config = publicationConfigFromEnv({ ...baseEnv, META_PLATFORMS: 'threads', META_THREADS_USER_ID: '99' });
+  assert.equal(config.threadsBaseUrl, 'https://graph.threads.com');
+  assert.equal(config.platforms.threads.enabled, false);
+  const active = publicationConfigFromEnv({ ...baseEnv, META_PLATFORMS: 'threads', META_THREADS_USER_ID: '99', META_THREADS_ACCESS_TOKEN: 'threads-token' });
+  assert.equal(active.platforms.threads.enabled, true);
+  assert.equal(active.platforms.threads.accessToken, 'threads-token');
+});
+
 test('shadow mode records what would be published without any Meta request', async () => {
   const pool = fakePool([claimRow()]);
   const { calls, fetchImpl } = graphFetch([]);

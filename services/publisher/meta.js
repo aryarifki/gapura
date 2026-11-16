@@ -3,7 +3,7 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 
 export const META_GRAPH_BASE = 'https://graph.facebook.com';
-export const THREADS_GRAPH_BASE = 'https://graph.threads.net';
+export const THREADS_GRAPH_BASE = 'https://graph.threads.com';
 
 export class MetaApiError extends Error {
   constructor(message, { status = 0, code = null, retryable = false, uncertain = false } = {}) {
@@ -238,11 +238,12 @@ export function createThreadsPublisher({ client, threadsUserId, pollDelay = slee
   return { platform: 'threads', accountId: account, publish };
 }
 
-export async function fetchPermalink(client, remoteId) {
+export async function fetchPermalink(client, remoteId, { platform } = {}) {
   if (!remoteId) return null;
   try {
-    const data = await client.request(remoteId, { query: { fields: 'permalink' } });
-    return typeof data?.permalink === 'string' ? data.permalink : null;
+    const field = platform === 'facebook' ? 'permalink_url' : 'permalink';
+    const data = await client.request(remoteId, { query: { fields: field } });
+    return typeof data?.[field] === 'string' ? data[field] : null;
   } catch {
     return null;
   }
