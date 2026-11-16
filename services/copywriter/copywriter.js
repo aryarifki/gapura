@@ -145,6 +145,12 @@ async function produce(topicOrId, database, options = {}) {
     const regeneration = options.regenerate ? drafts.find((draft) => String(draft.id) === String(options.regenerate)) : null;
     if (options.regenerate && !regeneration) throw new Error('draft_not_found');
     if (regeneration && !['draft', 'failed', 'rejected'].includes(regeneration.status)) throw new Error('draft_not_regenerable');
+    if (regeneration) {
+      const { rows: publicationTargets } = await client.query(
+        `SELECT 1 FROM publication_targets WHERE draft_id = $1
+         AND (status IN ('publishing','unknown','published') OR publish_attempted_at IS NOT NULL OR remote_id IS NOT NULL) LIMIT 1`, [regeneration.id]);
+      if (publicationTargets.length) throw new Error('draft_publication_requires_reconciliation');
+    }
     if (regeneration && !options.editorialBrief) {
       const { rows: audits } = await client.query(
         `SELECT entity_id, payload FROM audit_log WHERE entity = 'draft' AND entity_id = $1

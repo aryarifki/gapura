@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 
 mock.module('dotenv', { defaultExport: { config() {} } });
 mock.module('pg', { defaultExport: { Pool: class {} } });
+const callAgentLLM = mock.fn(async () => { throw new Error('No live LLM in unit tests'); });
 mock.module('../../common/llm.js', { namedExports: {
   loadAgentsConfig: () => ({ analis: { min_score_threshold: 76 } }), loadAgentSkills: () => '',
-  callAgentLLM: async () => { throw new Error('No live LLM in unit tests'); },
+  callAgentLLM,
 } });
 const { produceSingleTopicDraft, regenerateDraft } = await import('../copywriter.js');
 const topic = { id: 42, title: 'BPS merilis inflasi Oktober', summary: 'Inflasi Oktober mencapai 2,1%.', primary_source: 'BPS', url: 'https://www.bps.go.id/rilis/1', status: 'scored', verification_status: 'verified' };
@@ -22,6 +23,11 @@ function database(overrides = {}) {
       if (/FROM topic_scores\b/i.test(text)) return { rows: overrides.score === null ? [] : [{ score_total: 88, verdict: 'passed', ...overrides.score }] };
       if (/FROM verification_reports\b/i.test(text)) return { rows: overrides.verification === null ? [] : [{ id: 7, topic_id: topic.id, status: 'verified', confidence: 90, ...overrides.verification }] };
       if (/FROM drafts\b/i.test(text)) return { rows: overrides.existing || [] };
+      if (/FROM publication_targets\b/i.test(text)) {
+        assert.match(text, /WHERE draft_id = \$1\s+AND \(status IN \('publishing',\s*'unknown',\s*'published'\) OR publish_attempted_at IS NOT NULL OR remote_id IS NOT NULL\) LIMIT 1/i);
+        return { rows: (overrides.publicationTargets || []).filter((target) => String(target.draft_id) === String(values[0])
+          && (['publishing', 'unknown', 'published'].includes(target.status) || target.publish_attempted_at != null || target.remote_id != null)) };
+      }
       if (/FROM audit_log\b/i.test(text)) return { rows: overrides.audit || [] };
       if (/INSERT INTO drafts\b/i.test(text)) { inserted++; return { rows: [{ id: 80 + inserted }] }; }
       return { rows: [], rowCount: 1 };
@@ -134,6 +140,44 @@ test('regeneration updates format and rendered assets atomically and invalidates
   assert.match(update.text, /content_format = \$3/);
   assert.match(update.text, /needs_review = TRUE/);
   assert.ok(db.sql.some(({ text }) => /UPDATE scheduled_posts SET status = 'failed'/.test(text)));
+  assert.equal(db.sql.at(-1).text, 'COMMIT');
+});
+
+test('regeneration requires publication reconciliation before LLM, render or asset changes', async (t) => {
+  t.mock.method(console, 'warn', () => {});
+  const render = mockRender(t);
+  for (const status of ['draft', 'failed', 'rejected']) {
+    for (const target of [
+      { status: 'publishing' },
+      { status: 'unknown' },
+      { status: 'published' },
+      { status: 'failed', publish_attempted_at: '2026-11-16T00:00:00Z' },
+      { status: 'failed', remote_id: 'meta-post-12' },
+    ]) await t.test(`${status} draft with ${JSON.stringify(target)}`, async () => {
+      const llmCalls = callAgentLLM.mock.callCount();
+      const db = database({ existing: [{ id: 12, topic_id: 42, status }], publicationTargets: [{ draft_id: 12, ...target }] });
+      await assert.rejects(regenerateDraft(12, db.client), { message: 'draft_publication_requires_reconciliation' });
+      assert.equal(callAgentLLM.mock.callCount(), llmCalls);
+      assert.equal(render.mock.callCount(), 0);
+      assert.ok(!db.sql.some(({ text }) => /^\s*(UPDATE|INSERT|DELETE)\b/i.test(text)));
+      assert.equal(db.sql.at(-1).text, 'ROLLBACK');
+    });
+  }
+});
+
+test('regeneration allows targets without publication attempts and ignores other drafts targets', async (t) => {
+  t.mock.method(console, 'warn', () => {});
+  const render = mockRender(t);
+  const db = database({
+    existing: [{ id: 12, topic_id: 42, status: 'rejected' }],
+    publicationTargets: [
+      ...['pending', 'shadow', 'blocked', 'failed'].map((status) => ({ draft_id: 12, status, publish_attempted_at: null, remote_id: null })),
+      { draft_id: 99, status: 'unknown', publish_attempted_at: '2026-11-16T00:00:00Z', remote_id: 'meta-post-99' },
+    ],
+  });
+  const result = await regenerateDraft(12, db.client);
+  assert.equal(result.draft_id, 12);
+  assert.equal(render.mock.callCount(), 1);
   assert.equal(db.sql.at(-1).text, 'COMMIT');
 });
 
