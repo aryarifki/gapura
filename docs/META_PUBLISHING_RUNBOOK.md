@@ -60,6 +60,31 @@ diotorisasi ulang; implementasi ini belum melakukan refresh otomatis SUAT.
 Menyambungkan akun tidak mengubah `META_PUBLISH_MODE=shadow`, mengaktifkan
 platform baru, atau melonggarkan gate editorial.
 
+### Jika Finish menghasilkan error
+
+Pertukaran kode harus mengirim `redirect_uri` yang sama persis dengan URL pada
+awal login. Gapura mengirimnya kembali bersama Meta App ID, App Secret, dan
+kode otorisasi. Kode sekali pakai tidak boleh dicoba ulang setelah exchange;
+mulai koneksi baru melalui halaman `/integrations/meta/`.
+
+Kegagalan callback yang sudah ditangani memakai HTTP 400 agar pesan aplikasi
+tidak digantikan halaman Bad Gateway 502 dari proxy. Pesan menampilkan tahap
+tetap dan kode numerik Meta jika tersedia:
+
+| Tahap | Pemeriksaan |
+| --- | --- |
+| `token_exchange` | App Secret milik app yang benar, kode baru, redirect cocok persis |
+| `business_discovery` | Token hasil Unified Login/SUAT dan business portfolio |
+| `instagram_discovery` | Izin `instagram_basic` dan akun yang dibagikan |
+| `account_selection` | Instagram yang dibagikan cocok dengan akun Gapura yang dikonfigurasi |
+| `connection_storage` | File koneksi privat dapat ditulis oleh service |
+
+Journal mencatat tahap, HTTP status upstream, kode/subkode numerik, serta trace
+ID Meta yang valid. Pesan mentah upstream, request URL, kode login, token, dan
+App Secret tidak dicatat. Periksa dengan
+`journalctl -u hme-web --since '-10 min' --no-pager`; jangan membagikan URL
+callback lengkap karena query-nya dapat berisi kode otorisasi.
+
 ## Jalur lama: Facebook Login dan Page token
 
 1. Buka aplikasi yang benar di [Meta for Developers](https://developers.facebook.com/apps/).

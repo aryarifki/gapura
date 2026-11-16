@@ -12,11 +12,13 @@ const config = { appId: '1123019133826199', configId: '1848852586267233', appSec
 async function fixture(t, { override = {}, responses = [] } = {}) {
   const temp = await fs.mkdtemp('/tmp/opencode/gapura-meta-oauth-');
   const calls = [];
+  const logs = [];
   let now = 1000;
   const app = express();
   const connectionFile = path.join(temp, 'meta.json');
   app.use('/integrations/meta', createMetaIntegration({
     config: { ...config, connectionFile, ...override }, now: () => now,
+    logger: { warn(...values) { logs.push(values.join(' ')); } },
     fetchImpl: async (url, init) => {
       calls.push({ url, init });
       const response = responses.shift();
@@ -34,7 +36,7 @@ async function fixture(t, { override = {}, responses = [] } = {}) {
     const location = new URL(response.headers.get('location'));
     return { response, state: location.searchParams.get('state'), cookie: response.headers.get('set-cookie').split(';')[0], location };
   };
-  return { base, calls, start, connectionFile, advance() { now += 601000; } };
+  return { base, calls, logs, start, connectionFile, advance() { now += 601000; } };
 }
 
 test('Meta start binds random single-use state to a secure browser cookie and fixed callback', async (t) => {
@@ -101,6 +103,50 @@ test('valid Unified callback stores SUAT and asset IDs without returning credent
   assert.equal(JSON.stringify(status).includes('private-suat'), false);
 });
 
+test('code exchange sends the same redirect_uri that initiated the Meta authorization', async (t) => {
+  const f = await fixture(t, { responses: [{ access_token: 'private-suat' }, { client_business_id: '99' }, { data: [{ id: '1784', username: 'gapuramedia' }] }] });
+  const { state, cookie, location } = await f.start();
+  const response = await fetch(`${f.base}/callback?state=${state}&code=private-code`, { headers: { Cookie: cookie } });
+  assert.equal(response.status, 200);
+  const exchange = new URL(f.calls[0].url);
+  assert.equal(exchange.searchParams.get('redirect_uri'), location.searchParams.get('redirect_uri'));
+  assert.equal(exchange.searchParams.get('client_id'), config.appId);
+  assert.equal(exchange.searchParams.get('code'), 'private-code');
+});
+
+test('Meta token rejection shows a safe diagnostic stage instead of an opaque 502', async (t) => {
+  const f = await fixture(t, { responses: [Response.json({ error: { code: 100, error_subcode: 36008, fbtrace_id: 'trace-safe', message: 'private-app-secret private-code' } }, { status: 400 })] });
+  const { state, cookie } = await f.start();
+  const response = await fetch(`${f.base}/callback?state=${state}&code=private-code`, { headers: { Cookie: cookie } });
+  const text = await response.text();
+  assert.equal(response.status, 400);
+  assert.match(text, /token_exchange/);
+  assert.match(text, /100/);
+  assert.match(text, /36008/);
+  assert.equal(/private-app-secret|private-code/.test(text), false);
+  assert.match(f.logs[0], /"stage":"token_exchange"/);
+  assert.match(f.logs[0], /"http_status":400/);
+  assert.match(f.logs[0], /"meta_code":100/);
+  assert.equal(/private-app-secret|private-code|oauth\/access_token\?/.test(f.logs.join(' ')), false);
+  assert.equal(f.calls.length, 1);
+});
+
+test('business and Instagram discovery failures are distinguished from code exchange', async (t) => {
+  const cases = [
+    { stage: 'business_discovery', responses: [{ access_token: 'private-suat' }, Response.json({ error: { code: 100, message: 'private-suat' } }, { status: 400 })] },
+    { stage: 'instagram_discovery', responses: [{ access_token: 'private-suat' }, { client_business_id: '99' }, Response.json({ error: { code: 10 } }, { status: 403 })] },
+  ];
+  for (const item of cases) {
+    const f = await fixture(t, item);
+    const { state, cookie } = await f.start();
+    const response = await fetch(`${f.base}/callback?state=${state}&code=private-code`, { headers: { Cookie: cookie } });
+    assert.equal(response.status, 400);
+    assert.match(await response.text(), new RegExp(item.stage));
+    assert.match(f.logs[0], new RegExp(item.stage));
+    assert.equal(f.logs.join(' ').includes('private-suat'), false);
+  }
+});
+
 test('missing app secret gives setup guidance without calling Meta or issuing a login state', async (t) => {
   const f = await fixture(t, { override: { appSecret: '' } });
   const response = await fetch(`${f.base}/connect`, { redirect: 'manual' });
@@ -130,7 +176,7 @@ test('OAuth token lifetime and response errors never overwrite a working connect
     const f = await fixture(t, { responses: [tokenResponse, { client_business_id: '99' }, { data: [{ id: '1784', username: 'gapuramedia' }] }] });
     const { state, cookie } = await f.start();
     const response = await fetch(`${f.base}/callback?state=${state}&code=code`, { headers: { Cookie: cookie } });
-    assert.equal(response.status, 502);
+    assert.equal(response.status, 400);
     assert.equal(loadMetaConnection(f.connectionFile), null);
   }
 });
@@ -153,7 +199,7 @@ test('provider failures and a different Instagram account leave connection uncha
     const f = await fixture(sub, { responses });
     const { state, cookie } = await f.start();
     const response = await fetch(`${f.base}/callback?state=${state}&code=private-code`, { headers: { Cookie: cookie } });
-    assert.equal(response.status, 502);
+    assert.equal(response.status, 400);
     assert.equal(/private-suat|private-code|private-app-secret|<script>/.test(await response.text()), false);
     assert.equal(loadMetaConnection(f.connectionFile), null);
   });

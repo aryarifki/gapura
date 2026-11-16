@@ -8,6 +8,26 @@ const META_OAUTH_COOKIE = 'gapura_meta_oauth';
 const STATE_TTL_MS = 10 * 60 * 1000;
 const CONNECT_WINDOW_MS = 10 * 60 * 1000;
 const CONNECT_LIMIT = 10;
+const FAILURE_HINTS = {
+  token_exchange: 'Meta menolak pertukaran kode login. Mulai koneksi baru; periksa App Secret dan Redirect URL pada app Meta.',
+  business_discovery: 'Token diterima, tetapi business portfolio belum dapat dibaca. Pastikan konfigurasi Unified Login memakai System-user access token dan business portfolio yang benar.',
+  instagram_discovery: 'Token diterima, tetapi daftar akun Instagram belum dapat dibaca. Periksa izin instagram_basic dan akun yang dibagikan.',
+  account_selection: 'Akun Instagram Gapura yang dikonfigurasi tidak ditemukan pada akun yang dibagikan. Pilih akun Gapura ketika menghubungkan kembali.',
+  connection_storage: 'Kredensial belum dapat disimpan oleh server. Operator perlu memeriksa lokasi file koneksi dan izin tulisnya.',
+};
+
+function numericCode(value) {
+  return typeof value === 'number' && Number.isSafeInteger(value) ? value : null;
+}
+
+function providerFailure(response, data) {
+  const error = new Error('Meta response rejected');
+  error.httpStatus = response.status;
+  error.metaCode = numericCode(data?.error?.code);
+  error.metaSubcode = numericCode(data?.error?.error_subcode);
+  error.traceId = /^[A-Za-z0-9_-]{1,128}$/.test(data?.error?.fbtrace_id || '') ? data.error.fbtrace_id : null;
+  return error;
+}
 
 function html(message, status = 200, connect = false) {
   const safe = String(message).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
@@ -124,33 +144,44 @@ export function createMetaIntegration({ config = {}, fetchImpl = globalThis.fetc
     res.set('Set-Cookie', `${META_OAUTH_COOKIE}=; Path=/integrations/meta; HttpOnly; Secure; SameSite=Lax; Max-Age=0`);
     if (req.query.error) return res.status(400).type('html').send(html('Koneksi Meta dibatalkan.', 400).body);
     if (!code || !appId || !configId || !appSecret) return res.status(400).type('html').send(html('Callback Meta tidak lengkap.', 400).body);
+    let stage = 'token_exchange';
     try {
       const tokenUrl = new URL(`https://graph.facebook.com/${graphVersion}/oauth/access_token`);
       tokenUrl.searchParams.set('client_id', appId);
       tokenUrl.searchParams.set('client_secret', appSecret);
       tokenUrl.searchParams.set('code', code);
+      tokenUrl.searchParams.set('redirect_uri', redirectUri);
       const tokenResponse = await fetchImpl(tokenUrl, { headers: { Accept: 'application/json' }, redirect: 'error', signal: AbortSignal.timeout(20000) });
       const tokenData = await tokenResponse.json().catch(() => ({}));
-      if (!tokenResponse.ok || tokenData.error || typeof tokenData.access_token !== 'string' || !tokenData.access_token) throw new Error('Token exchange ditolak Meta.');
-      if (tokenData.expires_in !== undefined && (!Number.isFinite(Number(tokenData.expires_in)) || Number(tokenData.expires_in) <= 0)) throw new Error('Masa berlaku token Meta tidak valid.');
+      if (!tokenResponse.ok || tokenData.error || typeof tokenData.access_token !== 'string' || !tokenData.access_token) throw providerFailure(tokenResponse, tokenData);
+      if (tokenData.expires_in !== undefined && (!Number.isFinite(Number(tokenData.expires_in)) || Number(tokenData.expires_in) <= 0)) throw providerFailure(tokenResponse, tokenData);
       const accessToken = String(tokenData.access_token);
       const auth = { headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' }, redirect: 'error', signal: AbortSignal.timeout(20000) };
+      stage = 'business_discovery';
       const clientResponse = await fetchImpl(`https://graph.facebook.com/${graphVersion}/me?fields=client_business_id`, auth);
       const clientData = await clientResponse.json().catch(() => ({}));
-      if (!clientResponse.ok || clientData.error || !/^\d+$/.test(String(clientData.client_business_id || ''))) throw new Error('Business portfolio Meta tidak ditemukan.');
+      if (!clientResponse.ok || clientData.error || !/^\d+$/.test(String(clientData.client_business_id || ''))) throw providerFailure(clientResponse, clientData);
+      stage = 'instagram_discovery';
       const accountsResponse = await fetchImpl(`https://graph.facebook.com/${graphVersion}/me/assigned_instagram_accounts?fields=id,username`, auth);
       const accountsData = await accountsResponse.json().catch(() => ({}));
+      if (!accountsResponse.ok || accountsData.error || !Array.isArray(accountsData.data)) throw providerFailure(accountsResponse, accountsData);
       const accounts = Array.isArray(accountsData.data) ? accountsData.data : [];
+      stage = 'account_selection';
       const account = accounts.find((item) => String(item.id) === expectedInstagramId) || (expectedInstagramId || accounts.length !== 1 ? null : accounts[0]);
-      if (!accountsResponse.ok || accountsData.error || !account || !/^\d+$/.test(String(account.id)) || typeof account.username !== 'string') throw new Error('Akun Instagram Gapura tidak dibagikan ke konfigurasi Meta ini.');
+      if (!account || !/^\d+$/.test(String(account.id)) || typeof account.username !== 'string') throw new Error('Instagram account not found');
       const expiresAt = Number.isFinite(Number(tokenData.expires_in)) ? new Date(now() + Number(tokenData.expires_in) * 1000).toISOString() : null;
+      stage = 'connection_storage';
       saveMetaConnection({ access_token: accessToken, app_id: appId, config_id: configId, client_business_id: String(clientData.client_business_id), instagram_account_id: String(account.id), username: account.username, graph_version: graphVersion, connected_at: new Date(now()).toISOString(), expires_at: expiresAt }, connectionFile);
       res.set('Cache-Control', 'no-store');
       res.set('Referrer-Policy', 'no-referrer');
       return res.status(200).type('html').send(html(`Koneksi Meta berhasil untuk @${account.username}.`, 200).body);
     } catch (error) {
-      logger.warn?.('[Meta OAuth] koneksi gagal; periksa konfigurasi, izin, dan aset Meta.');
-      return res.status(502).type('html').send(html('Koneksi Meta gagal. Periksa konfigurasi, permission, dan akun yang dibagikan.', 502).body);
+      const diagnostic = { stage, http_status: numericCode(error.httpStatus), meta_code: numericCode(error.metaCode), meta_subcode: numericCode(error.metaSubcode), trace_id: error.traceId || null };
+      logger.warn?.(`[Meta OAuth] ${JSON.stringify(diagnostic)}`);
+      // Controlled callback failures should render application guidance. A 502
+      // is replaced by Cloudflare's error page and hides the useful message.
+      const code = diagnostic.meta_code === null ? '' : ` Meta code ${diagnostic.meta_code}${diagnostic.meta_subcode === null ? '' : `/${diagnostic.meta_subcode}`}.`;
+      return res.status(400).type('html').send(html(`${FAILURE_HINTS[stage]} Tahap: ${stage}.${code}`, 400).body);
     }
   });
 
