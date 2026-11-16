@@ -11,8 +11,19 @@
 
 set -euo pipefail
 
-BASE_DIR="/root/gapura"
+BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${BASE_DIR}"
+exec 9>"${GAPURA_PIPELINE_LOCK:-/tmp/opencode/gapura-pipeline.lock}"
+if ! flock -n 9; then
+  echo '[Gapura] Siklus lain masih berjalan; scan bertumpuk dilewati.'
+  exit 0
+fi
+if [[ -r /etc/gapura/admin-token.env ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source /etc/gapura/admin-token.env
+  set +a
+fi
 
 echo "=========================================================="
 echo " [HME v2.1] Menjalankan Pipeline Konten Homeless Media    "
@@ -44,7 +55,7 @@ echo ">>> [4/7] Menjalankan Agen Verifikator (Fact-Check & Konteks)..."
 if node services/verificator/verificator.js --batch 3; then
   echo "[Verifikator] Verifikasi batch selesai."
 else
-  echo "[Verifikator] PERINGATAN: verifikasi batch gagal; copywriter tetap berjalan dengan status 'belum terverifikasi'."
+  echo "[Verifikator] PERINGATAN: verifikasi batch gagal; hanya topik yang memiliki laporan verifikasi dapat diproduksi."
 fi
 
 # 5. Agen Copywriter: Produksi Teks Editorial & Render Carousel
@@ -52,15 +63,13 @@ echo ""
 echo ">>> [5/7] Menjalankan Agen Copywriter & Render Service..."
 node services/copywriter/copywriter.js
 
-# 6. Telegram Dispatcher: Kirim Draf Baru ke Admin
-echo ""
-echo ">>> [6/7] Menyiapkan Pengiriman Pratinjau Draf ke Telegram..."
-node -e "import('./services/telegram/bot.js').then(m => m.dispatchPendingDrafts().then(() => process.exit(0)))"
-
-# 7. Publisher Engine: Eksekusi Antrean Tayang (Auto Meta Graph / Reminder Manual)
-echo ""
-echo ">>> [7/7] Menjalankan Publisher Engine (Eksekusi Antrean Tayang)..."
-node services/publisher/publisher.js
+if [[ "${GAPURA_ENABLE_DELIVERY:-false}" == "true" ]]; then
+  echo '>>> [6/7] Mengirim draf review ke Telegram...'
+  node -e "import('./services/telegram/bot.js').then(m => m.dispatchPendingDrafts().then(() => process.exit(0)))"
+  echo '[Gapura] Publikasi terjadwal ditangani gapura-publisher.timer.'
+else
+  echo '[Gapura] Paket draf siap direview; pengiriman eksternal tidak diaktifkan.'
+fi
 
 echo ""
 echo "=========================================================="

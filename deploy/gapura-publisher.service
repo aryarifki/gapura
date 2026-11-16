@@ -1,0 +1,12 @@
+[Unit]
+Description=Gapura multi-platform Meta publisher (shadow by default)
+After=network-online.target postgresql.service hme-web.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/gapura
+EnvironmentFile=/etc/gapura/runtime.env
+EnvironmentFile=-/etc/gapura/admin-token.env
+ExecStart=/usr/bin/node services/publisher/meta-worker.js
+TimeoutStartSec=10min
+Nice=10

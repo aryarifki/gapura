@@ -1,0 +1,12 @@
+[Unit]
+Description=Run the Gapura Meta publisher every ten minutes
+After=network-online.target
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=10min
+AccuracySec=30s
+Unit=gapura-publisher.service
+
+[Install]
+WantedBy=timers.target

@@ -1,5 +1,5 @@
 # 📊 Status Fitur, Permasalahan, & Roadmap Pengembangan
-> **Repositori:** `aryarifki/gapura` · **Aplikasi:** Gapura Media Engine (GME v2.0)  
+> **Repositori:** `aryarifki/gapura` · **Diperbarui:** 16 November 2026
 > **Brand Identity:** `@gapuramedia` · **Portal Live:** [https://gapura.avenia.my.id](https://gapura.avenia.my.id)
 
 ---
@@ -16,14 +16,16 @@
 | **Regenerate AI On-The-Fly** | ✅ **Selesai & Aktif** | Tombol rancang ulang carousel via AI tanpa dialog konfirmasi yang memblokir, dengan invalidasi cache otomatis. |
 | **Slide Editor & Dynamic Layout** | ✅ **Selesai & Aktif** | Edit teks slide, ubah tata letak (cover, stat-grid, quote, dual-perspective, regulasi, takeaway), live preview, dan tombol simpan & render ulang seketika. |
 | **Studio Desain & Custom Draf** | ✅ **Selesai & Aktif** | Pembuatan postingan mandiri dari form Studio Desain dengan live preview dan export langsung ke Antrian Review. |
-| **Kustomisasi 4 Agen AI & Skills.md** | ✅ **Selesai & Aktif** | Pengaturan endpoint, API key, model, system prompt, dan berkas `skills.md` kustom per agen di `/root/gapura/config/skills/`. |
+| **Kustomisasi 7 Agen AI & Skills.md** | ✅ **Selesai & Aktif** | Pengaturan provider, endpoint, model, system prompt, dan berkas `skills.md` per agen. Pengujian sementara tidak menyimpan perubahan. |
+| **Katalog Provider & Model** | ✅ **Selesai & Aktif** | Registry Gemini/OpenAI-compatible/Anthropic, katalog model live, fallback lintas provider, dan key terpisah dari konfigurasi publik. MASB dan Xingchi tercatat dengan status kegagalan chat yang teramati. |
 | **Manajemen Sumber Berita Niche** | ✅ **Selesai & Aktif** | Menambah, mengedit, melihat status, dan menonaktifkan feed RSS / portal data otoritas (BPS, BI, OJK, MK, JDIH). |
 | **Bypass Cache CDN (Cloudflare)** | ✅ **Selesai & Aktif** | Middleware HTTP `no-store, no-cache`, query string bust unik `?t=...`, dan asset versioning `v=3.5.0` mencegah browser/CDN menyajikan file usang. |
 | **Audit Log & Activity Tracker** | ✅ **Selesai & Aktif** | Pencatatan setiap aksi editorial (create, edit_slide, approve, reject, regenerated_ai) ke tabel `audit_log` PostgreSQL. |
-| **Instagram Direct Publishing (Graph API)** | ⏳ **Belum Lengkap** | Saat ini workflow menghasilkan caption + hashtags + download PNG. Integrasi direct publish membutuhkan Meta App ID, Secret, & Long-Lived Token resmi akun Instagram Business. |
+| **Publisher Instagram / Facebook / Threads** | 🟡 **Shadow aktif** | Adapter dan worker tersedia; tabel `publication_targets` menyimpan status per akun/platform. Token Page dan akses baca IG tervalidasi. Live diblokir izin `instagram_content_publish` / `pages_manage_posts`; Threads belum memiliki token dan user ID tersendiri. |
+| **Scheduler native** | ✅ **Selesai & Aktif** | `gapura-pipeline.timer` menjalankan intake setiap 15 menit, `gapura-publisher.timer` terpisah setiap 10 menit. n8n dipertahankan sebagai canvas/fallback manual; workflow otomatisnya nonaktif. |
 | **Telegram Approval Bot** | ⏳ **Belum Dikonfigurasi** | Engine dan kode notifikasi Telegram telah siap, namun menunggu input token Bot Telegram (`TELEGRAM_BOT_TOKEN`) dan Chat ID admin dari owner agar bot dapat aktif di polling. |
-| **Kalender Konten Interaktif** | ⏳ **Belum Dikerjakan** | Tampilan kalender grid visual bulanan dengan fitur drag-and-drop jadwal postingan belum diimplementasikan (saat ini status jadwal berbasis form & n8n cron). |
-| **Multi-User Role & Autentikasi Login** | ⏳ **Belum Dikerjakan** | Dashboard saat ini bersifat single-admin internal tanpa form login/otentikasi sesi JWT/OAuth. Dilindungi di level network (Cloudflare/VPN). |
+| **Kalender Konten Interaktif** | ⏳ **Belum Dikerjakan** | Jadwal tersimpan di PostgreSQL; kalender visual dengan drag-and-drop belum tersedia. |
+| **Multi-User Role** | ⏳ **Belum Dikerjakan** | Akses single-admin sudah dilindungi token, cookie HttpOnly, serta validasi Origin. Akun pengguna dan pembagian role belum tersedia. |
 | **Visual Charting Saham Lanjutan** | ⏳ **Belum Dikerjakan** | Grafik bar chart dan bar comparison sudah aktif di Satori, namun grafik teknikal candlestick bursa interaktif belum diintegrasikan. |
 
 ---
@@ -73,20 +75,24 @@ Berikut adalah riwayat kendala teknis nyata yang dihadapi dan langkah solutif ya
 
 Berikut adalah rincian fungsionalitas yang masih dalam antrean pengembangan untuk fase berikutnya:
 
-### 1. Integrasi Langsung Meta Graph API (Instagram Auto-Publish)
-- **Kondisi Saat Ini:**
-  Aplikasi menyediakan tombol "Download Semua Slide (ZIP)" dan "Salin Caption + Hashtags", serta tombol "Sudah Diposting Manual" untuk menandai status draf.
-- **Kebutuhan untuk Penyelesaian:**
-  1. Akun Instagram Bisnis yang terhubung ke Facebook Page resmi Gapura Media.
-  2. Pendaftaran Meta Developer App (dengan izin `instagram_basic`, `instagram_content_publish`).
-  3. Konfigurasi kredensial di `.env`:
-     ```env
-     META_APP_ID=...
-     META_APP_SECRET=...
-     META_INSTAGRAM_ACCOUNT_ID=...
-     META_LONG_LIVED_ACCESS_TOKEN=...
-     ```
-  4. Implementasi endpoint `services/publisher/meta.js` yang mengunggah gambar ke container carousel Meta Graph API dan mempublikasikannya secara otomatis saat draf disetujui.
+### 1. Aktivasi Publikasi Meta Live
+
+Adapter berada di `services/publisher/meta.js`; worker terpisah di `services/publisher/meta-worker.js`. Page Gapura Media (`102321216076547`) dan Instagram `@gapuramedia` (`17841471438781611`) dapat dibaca menggunakan Page token yang tersimpan di `/etc/gapura/runtime.env` (mode `0600`). File `.env` proyek merupakan symlink ke berkas runtime tersebut.
+
+Mode operasional saat ini `META_PUBLISH_MODE=shadow`, `META_PLATFORMS=instagram,facebook`. Tidak ada posting live yang diuji. Dua draf historis berstatus `scheduled` belum mempunyai laporan verifikasi; empat target platformnya diblokir gate. Pengujian unit membuktikan jalur shadow dan publish menggunakan fixture, bukan publikasi nyata.
+
+Target terikat ke `schedule_id` dan hash konten yang disetujui. Worker hanya mengklaim akun aktif dengan jadwal yang sudah jatuh tempo, satu percobaan per target per siklus. Konten dan gate diperiksa kembali dalam row lock tepat sebelum publish; timeout atau kegagalan pencatatan setelah percobaan remote menghasilkan `unknown`. Publikasi foto Facebook tunggal mengikuti aturan yang sama. Publisher legacy menyerahkan pekerjaan ketika `META_PLATFORMS` terpasang, dan tidak dipanggil dari pipeline intake.
+
+Langkah yang masih diperlukan:
+
+1. Berikan `instagram_content_publish` dan `pages_manage_posts` pada aplikasi/token Meta yang benar. Token saat ini tidak memiliki kedua izin tersebut; pemeriksaan `content_publishing_limit` menghasilkan code 10.
+2. Redaktur meninjau dan menyetujui draf yang mempunyai laporan `verified`, confidence 80–100, serta sumber dan skor Analis yang memenuhi gate. Jangan membuat laporan verifikasi palsu atau mengubah status untuk melewati review.
+3. Setelah izin dan draf uji tersedia, jalankan satu target yang disetujui; simpan `remote_id` dan permalink sebelum mengaktifkan siklus live rutin. Status `unknown`/`publishing` membutuhkan rekonsiliasi manual dan tidak boleh direset secara otomatis.
+4. Threads membutuhkan `META_THREADS_USER_ID` dan `META_THREADS_ACCESS_TOKEN` tersendiri. Platform ini tetap nonaktif sampai kredensial dan akses resminya terverifikasi.
+
+PNG tetap digunakan untuk preview dan ZIP; JPEG publikasi sudah dibuat untuk 184 slide historis. URL JPEG bertanda tangan terbukti dapat diakses dari domain publik (HTTP 200 `image/jpeg`), sedangkan URL tanpa signature ditolak 403.
+
+Konfigurasi operasional dan unit systemd tersedia di [README](../README.md) dan direktori [deploy](../deploy/).
 
 ### 2. Aktivasi Bot Notifikasi & Approval Telegram
 - **Kondisi Saat Ini:**
@@ -102,11 +108,11 @@ Berikut adalah rincian fungsionalitas yang masih dalam antrean pengembangan untu
 - **Kebutuhan untuk Penyelesaian:**
   1. Integrasi library kalender visual (misal FullCalendar atau custom CSS Grid schedule).
   2. Fitur drag-and-drop kartu draf ke tanggal dan slot jam posting tertentu (09:00 WIB, 12:00 WIB, 19:00 WIB).
-  3. Endpoint backend untuk sinkronisasi jadwal ke cron job n8n.
+  3. Endpoint backend untuk mengubah jadwal PostgreSQL yang dikonsumsi timer publisher.
 
 ### 4. Sistem Autentikasi Pengguna & Hak Akses (Multi-Role Auth)
 - **Kondisi Saat Ini:**
-  Dashboard dapat diakses langsung oleh siapa saja yang memiliki tautan domain `https://gapura.avenia.my.id` (mengandalkan proteksi Cloudflare Access atau network firewall).
+  Dashboard meminta token admin dan menggunakan cookie HttpOnly serta validasi Origin untuk perubahan data. Multi-user dan pembagian role belum tersedia.
 - **Kebutuhan untuk Penyelesaian:**
   1. Penambahan tabel `users` dan skema password hashing (bcrypt/argon2).
   2. Implementasi login berbasis sesi/JWT atau integrasi Google SSO (`sign-in-with-google`).

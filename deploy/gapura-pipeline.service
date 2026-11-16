@@ -1,0 +1,13 @@
+[Unit]
+Description=Gapura news intake and editorial draft preparation
+After=network-online.target postgresql.service hme-render.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/gapura
+EnvironmentFile=/etc/gapura/runtime.env
+EnvironmentFile=-/etc/gapura/admin-token.env
+Environment=GAPURA_ENABLE_DELIVERY=false
+ExecStart=/root/gapura/scripts/run_pipeline.sh
+TimeoutStartSec=20min
+Nice=10

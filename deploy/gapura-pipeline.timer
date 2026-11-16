@@ -1,0 +1,11 @@
+[Unit]
+Description=Scan Gapura news sources every 15 minutes
+
+[Timer]
+OnCalendar=*:0/15
+Persistent=false
+RandomizedDelaySec=30
+Unit=gapura-pipeline.service
+
+[Install]
+WantedBy=timers.target
