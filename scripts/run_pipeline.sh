@@ -3,8 +3,9 @@
 # Homeless Media Engine (HME) v2.1 - End-to-End Content Pipeline Runner
 # File: /root/gapura/scripts/run_pipeline.sh
 #
-# Urutan: Scout -> SEO (tolerant) -> Analis -> Verifikator (tolerant) ->
-#         Copywriter -> Telegram -> Publisher
+# Urutan intake: Scout -> SEO (tolerant) -> Analis -> Verifikator (tolerant) ->
+#                Copywriter -> Telegram (hanya dengan opt-in delivery).
+# Publikasi memakai gapura-publisher.timer, terpisah dari siklus intake.
 # Langkah SEO & Verifikator bersifat tolerant: kegagalan (mis. kuota LLM atau
 # sumber trending tidak tersedia) tidak menghentikan pipeline utama.
 # ==============================================================================

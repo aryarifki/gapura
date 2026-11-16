@@ -21,8 +21,9 @@
 | **Manajemen Sumber Berita Niche** | ✅ **Selesai & Aktif** | Menambah, mengedit, melihat status, dan menonaktifkan feed RSS / portal data otoritas (BPS, BI, OJK, MK, JDIH). |
 | **Bypass Cache CDN (Cloudflare)** | ✅ **Selesai & Aktif** | Middleware HTTP `no-store, no-cache`, query string bust unik `?t=...`, dan asset versioning `v=3.5.0` mencegah browser/CDN menyajikan file usang. |
 | **Audit Log & Activity Tracker** | ✅ **Selesai & Aktif** | Pencatatan setiap aksi editorial (create, edit_slide, approve, reject, regenerated_ai) ke tabel `audit_log` PostgreSQL. |
+| **Audit skor historis & constraint (P2)** | ✅ **Selesai** | Snapshot 16 November 2026, 18:23:55 WIB: 1.062 baris hingga ID 1062; mismatch/rentang invalid/NULL masing-masing 0. Mapping identitas, 0 `UPDATE`; `convalidated=true` sebelum dan sesudah validasi eksplisit. [Laporan audit](P2_SCORE_INTEGRITY_AUDIT.md). |
 | **Publisher Instagram / Facebook / Threads** | 🟡 **Shadow aktif** | Adapter dan worker tersedia; tabel `publication_targets` menyimpan status per akun/platform. Token Page dan akses baca IG tervalidasi. Live diblokir izin `instagram_content_publish` / `pages_manage_posts`; Threads belum memiliki token dan user ID tersendiri. |
-| **Scheduler native** | ✅ **Selesai & Aktif** | `gapura-pipeline.timer` menjalankan intake setiap 15 menit, `gapura-publisher.timer` terpisah setiap 10 menit. n8n dipertahankan sebagai canvas/fallback manual; workflow otomatisnya nonaktif. |
+| **Scheduler native (P2)** | ✅ **Selesai & Aktif** | Unit systemd terpasang dan status runtime menjadi sumber kebenaran operasional. Intake kalender 15 menit dan publisher monotonic 10 menit terverifikasi `enabled`, `active (waiting)` pada 16 November 2026; template `deploy/` cocok dengan keempat unit terpasang. n8n tetap canvas/fallback manual. |
 | **Telegram Approval Bot** | ⏳ **Belum Dikonfigurasi** | Engine dan kode notifikasi Telegram telah siap, namun menunggu input token Bot Telegram (`TELEGRAM_BOT_TOKEN`) dan Chat ID admin dari owner agar bot dapat aktif di polling. |
 | **Kalender Konten Interaktif** | ⏳ **Belum Dikerjakan** | Jadwal tersimpan di PostgreSQL; kalender visual dengan drag-and-drop belum tersedia. |
 | **Multi-User Role** | ⏳ **Belum Dikerjakan** | Akses single-admin sudah dilindungi token, cookie HttpOnly, serta validasi Origin. Akun pengguna dan pembagian role belum tersedia. |
@@ -68,6 +69,55 @@ Berikut adalah riwayat kendala teknis nyata yang dihadapi dan langkah solutif ya
   - Pada `produceSingleTopicDraft`, fungsi memanggil `fetch(RENDER_SERVICE_URL)` tanpa path `/render`, mengakibatkan error HTTP 404 saat memproduksi topik baru dari radar.
 - **Solusi yang Diterapkan:**
   - Memperbaiki endpoint menjadi `${RENDER_SERVICE_URL}/render` sehingga produksi topik berjalan mulus.
+
+### 5. P2 — Sumber Kebenaran Scheduler Native (Selesai)
+
+Lingkup scheduler P2 selesai diverifikasi secara read-only pada 16 November
+2026. Definisi unit yang terpasang, drop-in, dan status runtime systemd menjadi
+acuan operasional. Keempat berkas [`deploy/`](../deploy/) adalah template
+terlacak untuk redeploy; pada pemeriksaan ini seluruhnya cocok dengan unit di
+`/etc/systemd/system/` dan tidak memiliki drop-in.
+
+| Jalur | Konfigurasi terverifikasi | Hasil pemeriksaan |
+| :--- | :--- | :--- |
+| Intake | `gapura-pipeline.timer`: `OnCalendar=*:0/15`, `Persistent=false`, `RandomizedDelaySec=30`. Oneshot `gapura-pipeline.service` menjalankan `scripts/run_pipeline.sh` dengan `GAPURA_ENABLE_DELIVERY=false`; `flock -n` mencegah eksekusi bertumpuk (default `/tmp/opencode/gapura-pipeline.lock`). | Timer `enabled`, `active (waiting)`; service terakhir `Result=success`, `ExecMainStatus=0`. |
+| Publisher | `gapura-publisher.timer`: `OnBootSec=3min`, `OnUnitActiveSec=10min`, `AccuracySec=30s`. Oneshot `gapura-publisher.service` menjalankan worker Meta; journal pemeriksaan P2 mengonfirmasi mode runtime `shadow`, yang tidak ditetapkan oleh timer. | Timer `enabled`, `active (waiting)`; service terakhir `Result=success`, `ExecMainStatus=0`. |
+
+`GET /api/workflow` membaca scheduler intake dari systemd melalui
+[`services/web/scheduler.js`](../services/web/scheduler.js), lalu mengembalikan
+status, jadwal berikutnya, pemicu terakhir, interval 15 menit, serta
+`delivery_enabled=false`. Endpoint dan toggle workflow dashboard hanya mencakup
+intake; status publisher diperiksa terpisah.
+
+n8n tetap tersedia sebagai canvas/fallback manual (`hme-n8n.service` teramati
+`active (running)`). `workflow.json`/ekspor workflow dan flag `active` database
+n8n hanya menjadi referensi canvas/riwayat. Workflow otomatis lama
+`d3j0Kr9koCQFlRIG` terverifikasi read-only pada snapshot P2 16 November 2026
+dengan `active=f` dan `execution_count=0`. Flag tersebut tidak menjadi bukti
+timer aktif.
+
+Acceptance lingkup scheduler P2:
+
+- [x] Dua timer native terverifikasi aktif; keempat unit terpasang cocok dengan template deploy.
+- [x] Perintah operasional mencakup `systemctl list-timers --all 'gapura-*'`, `status`, `show`, dan `journalctl`, termasuk `NextElapseUSecMonotonic` untuk publisher; lihat [README](../README.md).
+- [x] `inactive (dead)` pada service oneshot di antara eksekusi dijelaskan sebagai kondisi normal; hasil diperiksa melalui `Result`, `ExecMainStatus`, timestamp, dan journal.
+- [x] Penyelesaian scheduler memakai native timer yang sudah terpasang, tanpa menambahkan cron atau mengaktifkan workflow otomatis n8n.
+
+### 6. P2 — Audit Skor Historis & Validasi Constraint (Selesai)
+
+[Laporan audit P2](P2_SCORE_INTEGRITY_AUDIT.md) mencatat snapshot
+`2026-11-16T11:23:55Z` (18:23:55 WIB): 1.062 baris `topic_scores` hingga ID
+1062, dengan mismatch total, nilai di luar rentang, dan NULL masing-masing 0.
+Mapping produksi adalah identitas: seluruh nilai historis dipertahankan,
+termasuk verdict `passed` dan `rejected` pada skor 75; tidak ada koreksi atau
+`UPDATE` yang diterapkan.
+
+[SQL audit read-only](../database/audits/topic_scores_integrity.sql) mendahului
+[migrasi validasi eksplisit](../database/migrations/20261116_validate_topic_scores.sql)
+yang dapat diulang. `VALIDATE CONSTRAINT topic_scores_component_total` berhasil;
+`convalidated=true` sebelum dan sesudahnya. Migrasi menolak data invalid dengan
+SQLSTATE `23514` dan tidak memperbaiki skor otomatis. Mapping, checksum
+sebelum–sesudah, lokasi backup privat, dan bukti pengujian ada di laporan audit.
 
 ---
 

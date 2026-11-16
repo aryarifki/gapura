@@ -1,7 +1,7 @@
 # 🏛️ Gapura Media Engine (GME v2.1)
 > **Sistem Otomasi Konten Instagram Data-Editorial & Regulasi Finansial**  
 > Akun Instagram Resmi: **[`@gapuramedia`](https://instagram.com/gapuramedia)**  
-> Portal Dashboard: **[https://gapura.avenia.my.id](https://gapura.avenia.my.id)** · Orkestrasi Workflow: **[https://n8n.avenia.my.id](https://n8n.avenia.my.id)**
+> Portal Dashboard: **[https://gapura.avenia.my.id](https://gapura.avenia.my.id)** · Canvas / Fallback Manual n8n: **[https://n8n.avenia.my.id](https://n8n.avenia.my.id)**
 
 ---
 
@@ -47,7 +47,7 @@ Platform ini menggabungkan **7 agen** dengan pengawasan manusia (*Human-in-the-L
 
 1. **Dashboard Review Editorial Realtime**
    - Panel pemantauan metrik kurasi: jumlah item mentah, topik lolos analisis, draf siap review, dan postingan terbit.
-   - Status kesehatan layanan real-time (Web Dashboard, Render Engine, Database PostgreSQL, dan n8n).
+   - Status kesehatan layanan real-time (Web Dashboard, Render Engine, Database PostgreSQL, dan n8n). Kesehatan n8n menunjukkan ketersediaan canvas manual; status scheduler diperiksa dari timer systemd.
 2. **Radar Topik Niche & 1-Click Auto-Produce**
    - Agregasi berita otoritas resmi (BPS, Bank Indonesia, OJK, Mahkamah Konstitusi, JDIH, Bursa Efek Indonesia).
    - Filter topik: *Semua Topik*, *Lolos (≥76)*, *Gugur / Fast-Fail*, dan *Diproduksi*.
@@ -129,9 +129,9 @@ Panduan lengkap langkah demi langkah tersedia di:
 
 - **Backend & API Server:** Node.js v24 (ESM), Express.js
 - **Render Engine:** `@vercel/satori` (JSX to SVG) + `sharp` (SVG to PNG)
-- **Basis Data:** PostgreSQL 17 (Database `hme` untuk konten & `n8n` untuk orkestrasi)
+- **Basis Data:** PostgreSQL 17 (Database `hme` untuk konten & `n8n` untuk canvas/riwayat workflow manual)
 - **AI Models:** Registry multi-provider (`config/providers.json` + key per provider) — Gemini, OpenAI-compatible, Anthropic; model catalog live per provider
-- **Orkestrasi Alur Kerja:** Systemd timer native (`gapura-pipeline.timer` 15 menit, `gapura-publisher.timer` 10 menit); n8n Community Edition tetap berjalan sebagai kanvas/fallback manual, bukan penjadwal utama
+- **Orkestrasi Alur Kerja:** Systemd timer native (`gapura-pipeline.timer` kalender 15 menit, `gapura-publisher.timer` monotonic 10 menit); unit terpasang dan status runtime systemd menjadi sumber kebenaran operasional. n8n Community Edition tetap berjalan sebagai canvas/fallback manual
 - **Reverse Proxy & Edge:** Cloudflare Tunnel + Cloudflare Edge (`cloudflared`)
 - **Process Manager:** Systemd Linux Services (`hme-web.service`, `hme-render.service`, `hme-n8n.service`)
 
@@ -154,6 +154,8 @@ Dokumen evaluasi teknis, daftar permasalahan yang telah diselesaikan, dan fitur 
 - [x] Agen SEO (Radar Trending) dengan sumber X/Google Trends yang dapat dikustomisasi
 - [x] Agen Verifikator (fact-check, anti-miskonsepsi, gate hoaks)
 - [x] Katalog Provider & Model multi-provider (registry + fallback lintas provider + uji dari dashboard)
+- [x] P2 — [audit skor historis & validasi constraint](docs/P2_SCORE_INTEGRITY_AUDIT.md): 1.062 baris valid, 0 perubahan data; `topic_scores_component_total` tervalidasi
+- [x] P2 — scheduler native terverifikasi dan terdokumentasi: unit systemd terpasang menjadi sumber kebenaran; tanpa penambahan cron atau aktivasi workflow otomatis n8n
 - [x] Publisher Meta multi-platform (Instagram/Facebook/Threads) + timer `gapura-publisher.timer` *(mode shadow; publish live menunggu izin `instagram_content_publish` & `pages_manage_posts`)*
 - [ ] Aktivasi publish Meta live *(menunggu izin Meta App)*
 - [ ] Bot Notifikasi & Approval Telegram *(engine siap, menunggu `TELEGRAM_BOT_TOKEN`)*
@@ -164,6 +166,33 @@ Dokumen evaluasi teknis, daftar permasalahan yang telah diselesaikan, dan fitur 
 ---
 
 ## 💻 Operasional Layanan (Systemd Commands)
+
+**Sumber kebenaran scheduler adalah unit yang terpasang beserta status runtime
+systemd**, termasuk drop-in jika ada. Berkas terlacak di [`deploy/`](deploy/)
+merupakan template untuk redeploy; perubahan template belum mengubah unit yang
+sedang terpasang. Pemeriksaan read-only pada 16 November 2026 memastikan keempat
+unit di bawah cocok dengan template deploy dan tidak memiliki drop-in.
+
+| Unit terpasang | Jadwal / tugas | Snapshot verifikasi 16 November 2026 |
+| :--- | :--- | :--- |
+| [`gapura-pipeline.timer`](deploy/gapura-pipeline.timer) | Kalender `OnCalendar=*:0/15`, `Persistent=false`, `RandomizedDelaySec=30`; slot yang terlewat saat timer nonaktif tidak dikejar. | `enabled`, `active (waiting)` |
+| [`gapura-pipeline.service`](deploy/gapura-pipeline.service) | Oneshot `scripts/run_pipeline.sh`, `GAPURA_ENABLE_DELIVERY=false`; script memakai `flock -n` dengan default lock `/tmp/opencode/gapura-pipeline.lock` untuk melewati eksekusi bertumpuk. | Terakhir `Result=success`, `ExecMainStatus=0`; `inactive (dead)` setelah selesai |
+| [`gapura-publisher.timer`](deploy/gapura-publisher.timer) | Monotonic `OnBootSec=3min`, `OnUnitActiveSec=10min`, `AccuracySec=30s`; interval dihitung dari aktivasi service. | `enabled`, `active (waiting)` |
+| [`gapura-publisher.service`](deploy/gapura-publisher.service) | Oneshot `services/publisher/meta-worker.js`; mode publikasi mengikuti konfigurasi runtime, terkonfirmasi `shadow` pada journal pemeriksaan P2. | Terakhir `Result=success`, `ExecMainStatus=0`; `inactive (dead)` setelah selesai |
+
+`GET /api/workflow` mengembalikan status scheduler **intake** dari systemd:
+`kind`, `active`, `next_run`, `last_run`, `interval_minutes`, dan
+`delivery_enabled=false` (lihat [`scheduler.js`](services/web/scheduler.js)).
+API ini tidak melaporkan timer publisher; toggle workflow dashboard juga hanya
+mengendalikan timer intake. Publisher diperiksa tersendiri melalui systemd.
+
+n8n (`hme-n8n.service`) tetap `active (running)` untuk canvas/fallback manual.
+Berkas `workflow.json`/ekspor workflow dan flag `active` pada database n8n hanya
+menjadi referensi canvas/riwayat, bukan bukti scheduler operasional. Workflow
+otomatis lama `d3j0Kr9koCQFlRIG` terverifikasi read-only pada snapshot P2
+16 November 2026 dengan `active=f` dan `execution_count=0`.
+Penyelesaian lingkup scheduler P2 memakai native timer yang sudah terpasang,
+tanpa menambahkan cron atau mengaktifkan workflow otomatis n8n.
 
 ```bash
 # Cek status layanan
@@ -178,15 +207,37 @@ journalctl -u hme-web.service -f
 # Live monitoring log render service
 journalctl -u hme-render.service -f
 
-# Jadwal intake dan publisher (publisher saat ini shadow)
-systemctl list-timers 'gapura-*'
-journalctl -u gapura-publisher.service -n 30 --no-pager
+# Jadwal kalender dan monotonic, termasuk timer yang sedang nonaktif
+systemctl list-timers --all 'gapura-*'
+systemctl status gapura-pipeline.timer gapura-publisher.timer --no-pager
+
+# Definisi terpasang, termasuk drop-in
+systemctl cat gapura-pipeline.service gapura-pipeline.timer \
+  gapura-publisher.service gapura-publisher.timer --no-pager
+
+# Status dan waktu pemicu: cek realtime maupun monotonic
+systemctl show gapura-pipeline.timer gapura-publisher.timer \
+  --property=Id,LoadState,UnitFileState,ActiveState,SubState,FragmentPath,DropInPaths,TimersCalendar,TimersMonotonic,LastTriggerUSec,NextElapseUSecRealtime,NextElapseUSecMonotonic,AccuracyUSec,RandomizedDelayUSec,Persistent
+
+# Hasil terakhir service oneshot dan waktu eksekusinya
+systemctl status gapura-pipeline.service gapura-publisher.service --no-pager
+systemctl show gapura-pipeline.service gapura-publisher.service \
+  --property=Id,ActiveState,SubState,Result,ExecMainCode,ExecMainStatus,ExecMainStartTimestamp,ExecMainExitTimestamp
+journalctl -u gapura-pipeline.service -u gapura-publisher.service -n 50 --no-pager
 ```
+
+Service `Type=oneshot` normal berada pada `inactive (dead)` di antara eksekusi;
+`systemctl status` dapat mengembalikan exit code nonzero untuk kondisi tersebut.
+Nilai `Result`, `ExecMainStatus`, timestamp mulai/selesai, dan journal menentukan
+hasil eksekusi terakhir. Timer publisher memakai waktu monotonic, sehingga
+`NextElapseUSecRealtime` dapat kosong; periksa `NextElapseUSecMonotonic` dan
+`list-timers --all` sebelum menyimpulkan jadwal tidak aktif.
 
 Unit yang dapat dipasang ulang tersedia di [`deploy/`](deploy/). Secret runtime
 berada di `/etc/gapura/runtime.env` dan `/etc/gapura/admin-token.env` (`0600`),
 tidak dimasukkan ke Git. `META_PUBLISH_MODE=shadow` dan
-`META_PLATFORMS=instagram,facebook` adalah konfigurasi aktif. Publikasi live
+`META_PLATFORMS=instagram,facebook` adalah konfigurasi runtime aktif; journal
+pemeriksaan P2 mengonfirmasi `mode=shadow`. Mode shadow tidak ditetapkan oleh timer. Publikasi live
 menunggu izin `instagram_content_publish` dan `pages_manage_posts`, serta satu
 draf yang sudah diverifikasi dan disetujui redaktur. Threads membutuhkan token
 dan user ID tersendiri.
