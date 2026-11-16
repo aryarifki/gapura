@@ -8,6 +8,7 @@ import dotenv from 'dotenv';
 import pkg from 'pg';
 import { validateDraftApproval } from '../common/editorial.js';
 import { draftContentHash } from '../common/draft-revision.js';
+import { loadMetaConnection } from '../common/meta-connection-store.js';
 import { validatePublicSourceUrl } from '../common/sources.js';
 import { signedPublishImageUrls } from './media.js';
 import {
@@ -23,11 +24,25 @@ export function publicationConfigFromEnv(env = process.env) {
   const unknown = requested.filter((item) => !PLATFORM_KEYS.includes(item));
   if (unknown.length) throw new Error(`Platform publikasi tidak dikenal: ${unknown.join(', ')}.`);
   const pageToken = env.META_PAGE_ACCESS_TOKEN || '';
+  const instagram = {
+    accountId: env.META_INSTAGRAM_ACCOUNT_ID || '',
+    accessToken: env.META_INSTAGRAM_ACCESS_TOKEN || pageToken,
+  };
+  let connection = null;
+  try {
+    connection = loadMetaConnection(env.GAPURA_META_CONNECTION || '/etc/gapura/meta-unified.json');
+  } catch {}
+  if (connection && connection.app_id === env.META_APP_ID &&
+      connection.config_id === env.META_UNIFIED_CONFIG_ID &&
+      (!env.META_INSTAGRAM_ACCOUNT_ID || connection.instagram_account_id === env.META_INSTAGRAM_ACCOUNT_ID)) {
+    instagram.accountId = connection.instagram_account_id;
+    instagram.accessToken = connection.expires_at && Date.parse(connection.expires_at) <= Date.now()
+      ? '' : connection.access_token;
+    instagram.graphVersion = connection.graph_version || 'v27.0';
+    instagram.authType = 'unified_login';
+  }
   const platforms = {
-    instagram: {
-      accountId: env.META_INSTAGRAM_ACCOUNT_ID || '',
-      accessToken: pageToken,
-    },
+    instagram,
     facebook: {
       accountId: env.META_PAGE_ID || '',
       accessToken: pageToken,
@@ -135,7 +150,7 @@ export function createMetaPublisherWorker({ pool, config, fetchImpl = globalThis
     const client = createGraphClient({
       fetchImpl,
       accessToken: entry.accessToken,
-      version: platform === 'threads' ? config.threadsVersion : config.graphVersion,
+      version: platform === 'threads' ? config.threadsVersion : entry.graphVersion || config.graphVersion,
       baseUrl: platform === 'threads' ? config.threadsBaseUrl : config.graphBaseUrl,
       timeoutMs: config.httpTimeoutMs,
     });

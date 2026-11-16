@@ -6,6 +6,7 @@ PORT=3317
 TEST_TOKEN="$(openssl rand -hex 32)"
 GAPURA_DISABLE_WORKERS=true \
 GAPURA_ADMIN_TOKEN="$TEST_TOKEN" \
+META_APP_ID='' META_APP_SECRET='' META_UNIFIED_CONFIG_ID='' GAPURA_META_CONNECTION='/tmp/opencode/gapura-access-no-meta-connection.json' \
 PORT="$PORT" \
 NODE_ENV=test \
 node "$ROOT/services/web/server.js" > /tmp/gapura-web-test.log 2>&1 &

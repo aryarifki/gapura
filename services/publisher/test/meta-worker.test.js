@@ -1,16 +1,43 @@
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { captionHash, createMetaPublisherWorker, publicationConfigFromEnv } from '../meta-worker.js';
 import { draftContentHash } from '../../common/draft-revision.js';
 
+const configRoot = fs.mkdtempSync('/tmp/opencode/gapura-meta-worker-config-');
+after(() => fs.rmSync(configRoot, { recursive: true, force: true }));
+
 const baseEnv = {
+  GAPURA_META_CONNECTION: path.join(configRoot, 'missing.json'),
   META_PLATFORMS: 'instagram,facebook',
   META_PAGE_ACCESS_TOKEN: 'page-token',
   META_PAGE_ID: '102321216076547',
   META_INSTAGRAM_ACCOUNT_ID: '17841471438781611',
+  META_APP_ID: '1123019133826199',
+  META_UNIFIED_CONFIG_ID: '1848852586267233',
   APP_BASE_URL: 'https://gapura.example',
   GAPURA_ADMIN_TOKEN: 'a'.repeat(64),
 };
+
+function writeMetaConnection(t, overrides = {}) {
+  const root = fs.mkdtempSync('/tmp/opencode/gapura-meta-worker-');
+  const file = path.join(root, 'meta-unified.json');
+  fs.writeFileSync(file, JSON.stringify({
+    access_token: 'unified-suat',
+    app_id: '1123019133826199',
+    config_id: '1848852586267233',
+    client_business_id: '123',
+    instagram_account_id: '17841471438781611',
+    username: 'gapuramedia',
+    graph_version: 'v27.0',
+    connected_at: '2026-11-16T00:00:00.000Z',
+    expires_at: null,
+    ...overrides,
+  }));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  return file;
+}
 
 function claimRow(overrides = {}) {
   const row = {
@@ -65,7 +92,7 @@ function fakePool(rows, { inserted = 1, failPublishedOnce = false } = {}) {
 function graphFetch(responses) {
   const calls = [];
   const fetchImpl = async (url, init) => {
-    calls.push({ url, method: init.method });
+    calls.push({ url, method: init.method, authorization: init.headers.Authorization });
     const next = responses.shift();
     if (!next) throw new Error(`Unexpected Meta call: ${init.method} ${url}`);
     if (next instanceof Error) throw next;
@@ -78,11 +105,145 @@ function graphFetch(responses) {
 const liveConfig = () => ({ ...publicationConfigFromEnv({ ...baseEnv, META_PUBLISH_MODE: 'live' }), httpTimeoutMs: 2000 });
 
 test('defaults to shadow mode and disables platforms without credentials', () => {
-  const config = publicationConfigFromEnv({ META_PLATFORMS: 'instagram,threads' });
+  const config = publicationConfigFromEnv({
+    GAPURA_META_CONNECTION: baseEnv.GAPURA_META_CONNECTION,
+    META_PLATFORMS: 'instagram,threads',
+  });
   assert.equal(config.mode, 'shadow');
   assert.equal(config.platforms.instagram.enabled, false);
   assert.equal(config.platforms.threads.enabled, false);
   assert.throws(() => publicationConfigFromEnv({ META_PLATFORMS: 'tiktok' }), /tidak dikenal/);
+});
+
+test('uses a matching Unified Instagram connection while Facebook keeps its Page token', (t) => {
+  const file = writeMetaConnection(t);
+  const config = publicationConfigFromEnv({
+    ...baseEnv,
+    GAPURA_META_CONNECTION: file,
+    META_INSTAGRAM_ACCESS_TOKEN: 'legacy-instagram-token',
+    META_GRAPH_VERSION: 'v23.0',
+    META_PLATFORMS: 'instagram,facebook,threads',
+    META_THREADS_USER_ID: '99',
+    META_THREADS_ACCESS_TOKEN: 'threads-token',
+  });
+
+  assert.equal(config.platforms.instagram.accountId, '17841471438781611');
+  assert.equal(config.platforms.instagram.accessToken, 'unified-suat');
+  assert.equal(config.platforms.instagram.graphVersion, 'v27.0');
+  assert.equal(config.platforms.instagram.authType, 'unified_login');
+  assert.equal(config.platforms.instagram.enabled, true);
+  assert.equal(config.platforms.facebook.accessToken, 'page-token');
+  assert.equal(config.platforms.facebook.accountId, '102321216076547');
+  assert.deepEqual(config.platforms.threads, { accountId: '99', accessToken: 'threads-token', enabled: true });
+});
+
+test('falls back to the legacy Instagram token when no Unified connection exists', () => {
+  const config = publicationConfigFromEnv({
+    ...baseEnv,
+    META_INSTAGRAM_ACCESS_TOKEN: 'legacy-instagram-token',
+  });
+
+  assert.equal(config.platforms.instagram.accessToken, 'legacy-instagram-token');
+  assert.equal(config.platforms.instagram.accountId, baseEnv.META_INSTAGRAM_ACCOUNT_ID);
+  assert.equal(config.platforms.instagram.graphVersion, undefined);
+  assert.equal(config.platforms.instagram.authType, undefined);
+  assert.equal(config.platforms.facebook.accessToken, 'page-token');
+});
+
+test('accepts Unified tokens only for the configured app, config and Instagram account', (t) => {
+  for (const overrides of [
+    { app_id: '1123019133826100' },
+    { config_id: '1848852586267200' },
+    { instagram_account_id: '17841471438781000' },
+  ]) {
+    const file = writeMetaConnection(t, overrides);
+    const config = publicationConfigFromEnv({
+      ...baseEnv,
+      GAPURA_META_CONNECTION: file,
+      META_INSTAGRAM_ACCESS_TOKEN: 'legacy-instagram-token',
+    });
+
+    assert.equal(config.platforms.instagram.accessToken, 'legacy-instagram-token');
+    assert.equal(config.platforms.instagram.accountId, baseEnv.META_INSTAGRAM_ACCOUNT_ID);
+    assert.equal(config.platforms.instagram.graphVersion, undefined);
+    assert.equal(config.platforms.facebook.accessToken, 'page-token');
+  }
+  const file = writeMetaConnection(t);
+  for (const missing of ['META_APP_ID', 'META_UNIFIED_CONFIG_ID']) {
+    const config = publicationConfigFromEnv({ ...baseEnv, GAPURA_META_CONNECTION: file, [missing]: '' });
+    assert.equal(config.platforms.instagram.accessToken, 'page-token');
+  }
+});
+
+test('disables Instagram for an expired matching Unified connection without using a stale fallback token', (t) => {
+  const file = writeMetaConnection(t, { expires_at: '2000-01-01T00:00:00.000Z' });
+  const config = publicationConfigFromEnv({
+    ...baseEnv,
+    GAPURA_META_CONNECTION: file,
+    META_INSTAGRAM_ACCESS_TOKEN: 'legacy-instagram-token',
+  });
+
+  assert.equal(config.platforms.instagram.enabled, false);
+  assert.equal(config.platforms.instagram.accessToken, '');
+  assert.equal(config.platforms.instagram.accountId, baseEnv.META_INSTAGRAM_ACCOUNT_ID);
+  assert.equal(config.platforms.facebook.accessToken, 'page-token');
+});
+
+test('Unified Instagram works without a Page token or configured Instagram account and keeps shadow mode', (t) => {
+  const file = writeMetaConnection(t, { expires_at: new Date(Date.now() + 3600000).toISOString() });
+  const config = publicationConfigFromEnv({
+    ...baseEnv,
+    GAPURA_META_CONNECTION: file,
+    META_PAGE_ACCESS_TOKEN: '',
+    META_INSTAGRAM_ACCOUNT_ID: '',
+  });
+
+  assert.equal(config.platforms.instagram.enabled, true);
+  assert.equal(config.platforms.instagram.accountId, '17841471438781611');
+  assert.equal(config.platforms.instagram.accessToken, 'unified-suat');
+  assert.equal(config.platforms.instagram.graphVersion, 'v27.0');
+  assert.equal(config.platforms.facebook.enabled, false);
+  assert.equal(config.platforms.facebook.accessToken, '');
+  assert.equal(config.mode, 'shadow');
+  const unrequested = publicationConfigFromEnv({ ...baseEnv, GAPURA_META_CONNECTION: file, META_PLATFORMS: 'facebook' });
+  assert.equal(unrequested.platforms.instagram.enabled, false);
+});
+
+test('missing, malformed and unreadable Unified stores use legacy config without exposing file contents', (t) => {
+  const file = writeMetaConnection(t);
+  fs.writeFileSync(file, '{"access_token":"private-broken-token"');
+  for (const connectionFile of [file, path.dirname(file), `${file}.absent`]) {
+    let config;
+    assert.doesNotThrow(() => { config = publicationConfigFromEnv({ ...baseEnv, GAPURA_META_CONNECTION: connectionFile }); });
+    assert.equal(config.platforms.instagram.accessToken, 'page-token');
+    assert.equal(config.platforms.instagram.enabled, true);
+    assert.equal(config.platforms.facebook.accessToken, 'page-token');
+    assert.equal(JSON.stringify(config).includes('private-broken-token'), false);
+  }
+});
+
+test('Instagram and Facebook adapters use their own token and Graph version', async (t) => {
+  const file = writeMetaConnection(t, { graph_version: 'v28.0' });
+  const config = publicationConfigFromEnv({ ...baseEnv, GAPURA_META_CONNECTION: file, META_PUBLISH_MODE: 'live', META_GRAPH_VERSION: 'v24.0' });
+  const instagramPool = fakePool([claimRow()]);
+  const instagram = graphFetch([
+    { id: 'child-1' }, { id: 'child-2' }, { id: 'parent-1' }, { status_code: 'FINISHED' },
+    { id: 'media-9' }, { permalink: 'https://www.instagram.com/p/abc/' },
+  ]);
+  const instagramResult = await createMetaPublisherWorker({ pool: instagramPool, config, fetchImpl: instagram.fetchImpl }).runOnce();
+  assert.equal(instagramResult.published, 1);
+  assert.equal(instagram.calls.length, 6);
+  assert.ok(instagram.calls.every(({ url, authorization }) => new URL(url).pathname.startsWith('/v28.0/') && authorization === 'Bearer unified-suat'));
+
+  const facebookPool = fakePool([claimRow({ platform: 'facebook', account_id: baseEnv.META_PAGE_ID })]);
+  const facebook = graphFetch([
+    { id: 'photo-1' }, { id: 'photo-2' }, { id: 'facebook-post' },
+    { permalink_url: 'https://www.facebook.com/posts/abc' },
+  ]);
+  const facebookResult = await createMetaPublisherWorker({ pool: facebookPool, config, fetchImpl: facebook.fetchImpl }).runOnce();
+  assert.equal(facebookResult.published, 1);
+  assert.equal(facebook.calls.length, 4);
+  assert.ok(facebook.calls.every(({ url, authorization }) => new URL(url).pathname.startsWith('/v24.0/') && authorization === 'Bearer page-token'));
 });
 
 test('Threads uses the documented graph.threads.com host and a separate Threads token', () => {

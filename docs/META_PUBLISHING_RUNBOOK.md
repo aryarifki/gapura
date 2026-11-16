@@ -5,7 +5,62 @@ Status 16 November 2026: worker dan `gapura-publisher.timer` terpasang, mode
 Page Gapura Media dan Instagram sudah berhasil, tetapi token belum memiliki
 `instagram_content_publish` dan `pages_manage_posts`.
 
-## Izin dan token
+## Unified Login untuk app baru
+
+Meta merekomendasikan Instagram API with Unified Login untuk integrasi baru.
+Konfigurasi Gapura yang diberikan owner:
+
+```env
+META_APP_ID=1123019133826199
+META_UNIFIED_CONFIG_ID=1848852586267233
+META_UNIFIED_REDIRECT_URI=https://gapura.avenia.my.id/integrations/meta/callback
+META_UNIFIED_GRAPH_VERSION=v27.0
+```
+
+`META_APP_SECRET` adalah secret **Meta app** tersebut dan harus dipasang di
+`/etc/gapura/runtime.env` (`0600`) oleh operator. Jangan memakai Instagram App
+Secret atau Threads App Secret, dan jangan memasukkan secret dalam Git, URL,
+form dashboard publik, atau pesan. App ID dan config ID sendiri bukan secret.
+
+Setelah secret dipasang, restart `hme-web.service` dan buka
+`https://gapura.avenia.my.id/integrations/meta/`, lalu klik **Hubungkan Instagram**.
+Halaman ini adalah koneksi akun Meta, bukan halaman login dashboard.
+Jika konfigurasi belum lengkap, halaman menjelaskan prasyarat dan endpoint
+`/integrations/meta/connect` menolak dengan 503 tanpa mengirim pengguna ke Meta.
+
+Jangan membuka langsung URL template Meta dengan `state=<STATE>`. Gapura
+membuat state acak dan nonce cookie terpisah (`HttpOnly`, `Secure`,
+`SameSite=Lax`), berlaku 10 menit dan sekali pakai. Callback memvalidasi keduanya
+sebelum menukar code di server. Browser menerima konfirmasi tanpa token/code;
+header `no-referrer` dan `no-store` berlaku pada semua respons integrasi.
+Restart web membatalkan state yang masih berjalan; mulai ulang koneksi setelah
+restart. Rate limit koneksi 10 permintaan per 10 menit per alamat klien.
+Header `CF-Connecting-IP` yang valid hanya dipercaya dari peer loopback
+cloudflared; koneksi lain memakai alamat socket tanpa mempercayai header itu.
+
+Hasil Unified Login adalah **Business Integration System User Access Token**
+(SUAT), bukan Page token. Akun ditemukan melalui
+`GET /me/assigned_instagram_accounts?fields=id,username` dan business portfolio
+melalui `GET /me?fields=client_business_id`. Koneksi harus mencakup Instagram
+yang cocok dengan `META_INSTAGRAM_ACCOUNT_ID`; jika ID tidak diatur, hanya satu
+akun yang dibagikan dapat dipilih otomatis. Daftar akun yang terpotong karena
+paginasi tidak akan menyebabkan pemilihan akun lain; ulangi onboarding dengan
+akun tujuan yang benar jika akun tidak ditemukan.
+
+Koneksi disimpan terpisah di `/etc/gapura/meta-unified.json` (`0600`), berisi
+token, app/config ID, client business ID, akun/username Instagram, versi API,
+waktu koneksi, serta waktu kedaluwarsa bila Meta memberikannya. File tersebut
+tidak pernah disajikan oleh web atau dimasukkan ke Git. Endpoint
+`/integrations/meta/status` hanya mengembalikan metadata non-secret dan status.
+
+Worker Instagram memakai koneksi Unified yang cocok dengan app/config/account;
+Facebook tetap menggunakan Page token tersendiri, Threads menggunakan token
+Threads. Koneksi Unified yang kedaluwarsa menonaktifkan Instagram dan harus
+diotorisasi ulang; implementasi ini belum melakukan refresh otomatis SUAT.
+Menyambungkan akun tidak mengubah `META_PUBLISH_MODE=shadow`, mengaktifkan
+platform baru, atau melonggarkan gate editorial.
+
+## Jalur lama: Facebook Login dan Page token
 
 1. Buka aplikasi yang benar di [Meta for Developers](https://developers.facebook.com/apps/).
    Pastikan akun operator mempunyai akses ke Page Gapura Media dan Instagram
@@ -108,5 +163,7 @@ dipotong diam-diam.
 Diakses 16 November 2026:
 
 - [Instagram content publishing](https://developers.facebook.com/docs/instagram-platform/instagram-api-with-facebook-login/content-publishing/)
+- [Unified Login setup](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-unified-login/get-started)
+- [Unified Login authentication dan SUAT](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-unified-login/authentication)
 - [Facebook Page posts dan photos](https://developers.facebook.com/docs/pages-api/posts/)
 - [Threads posts, permission, dan media specification](https://developers.facebook.com/docs/threads/posts/)

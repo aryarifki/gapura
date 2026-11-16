@@ -28,6 +28,9 @@ try {
     AGENTS_CONFIG_PATH: path.join(temp, 'agents.json'), AGENT_SKILLS_DIR: path.join(temp, 'skills'),
     PROVIDERS_CONFIG_PATH: path.join(temp, 'providers.json'), MODELS_CACHE_PATH: path.join(temp, 'models.cache.json'),
     GAPURA_PROVIDER_SECRETS: path.join(temp, 'provider-keys.json'),
+    META_APP_ID: '', META_APP_SECRET: '', META_UNIFIED_CONFIG_ID: '', META_UNIFIED_REDIRECT_URI: '',
+    META_PAGE_ACCESS_TOKEN: '', META_INSTAGRAM_ACCESS_TOKEN: '', META_THREADS_ACCESS_TOKEN: '',
+    GAPURA_META_CONNECTION: path.join(temp, 'meta-unified.json'),
     STORAGE_PATH: path.join(temp, 'storage'), DESIGN_SYSTEM_PATH: path.join(temp, 'design-system'),
   };
   const migrations = ['database/schema.sql', 'database/migrations/20261111_seo_verifikator.sql', 'database/migrations/20261111_prompt_studio.sql',

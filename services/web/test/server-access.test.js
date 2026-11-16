@@ -72,3 +72,16 @@ test('server integration: publisher media URLs retain signature checks without a
     assert.equal(response.status, 403);
   }
 });
+
+test('server integration: Meta connection callback exists separately from dashboard access', async () => {
+  const landing = await fetch(`${BASE}/integrations/meta/`);
+  assert.equal(landing.status, 200);
+  assert.match(await landing.text(), /META_APP_SECRET/);
+  const callback = await fetch(`${BASE}/integrations/meta/callback?state=%3CSTATE%3E&code=private-code`);
+  assert.equal(callback.status, 400);
+  assert.equal(callback.headers.get('referrer-policy'), 'no-referrer');
+  assert.equal((await callback.text()).includes('private-code'), false);
+  const start = await fetch(`${BASE}/integrations/meta/connect`, { redirect: 'manual' });
+  assert.equal(start.status, 503);
+  assert.equal(start.headers.has('location'), false);
+});

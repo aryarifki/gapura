@@ -38,6 +38,7 @@ import { verifyTopic, getLatestVerification, listVerifications } from '../verifi
 import { createPlan, regeneratePlan, updatePlan, executeJob, processQueuedJobs, listJobs, getJob } from '../studio/studio.js';
 import { validateStudioTopic } from '../studio/validation.js';
 import { runtimeSecret } from '../common/runtime-secret.js';
+import { createMetaIntegration } from './meta-integration.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -70,6 +71,16 @@ const AGENTS_CONFIG_PATH = process.env.AGENTS_CONFIG_PATH || path.resolve(__dirn
 const PROVIDERS_CONFIG_PATH = process.env.PROVIDERS_CONFIG_PATH || path.resolve(__dirname, '../../config/providers.json');
 const RENDER_SERVICE_URL = process.env.RENDER_SERVICE_URL || 'http://127.0.0.1:3000';
 const RENDER_SECRET = runtimeSecret('RENDER_SECRET', { testValue: 'isolated-render-test' });
+const META_INTEGRATION_CONFIG = {
+  appId: process.env.META_APP_ID || '',
+  configId: process.env.META_UNIFIED_CONFIG_ID || '',
+  appSecret: process.env.META_APP_SECRET || '',
+  publicOrigin: process.env.GAPURA_PUBLIC_ORIGIN || process.env.APP_BASE_URL || '',
+  redirectUri: process.env.META_UNIFIED_REDIRECT_URI || '',
+  expectedInstagramId: process.env.META_INSTAGRAM_ACCOUNT_ID || '',
+  connectionFile: process.env.GAPURA_META_CONNECTION || '/etc/gapura/meta-unified.json',
+  graphVersion: process.env.META_UNIFIED_GRAPH_VERSION || 'v27.0',
+};
 
 const pool = new Pool({
   host: process.env.HME_DB_HOST || '127.0.0.1',
@@ -93,6 +104,8 @@ async function writeAudit(entity, entityId, action, actor = 'web_admin', payload
 }
 
 const scheduler = createScheduler();
+
+app.use('/integrations/meta', createMetaIntegration({ config: META_INTEGRATION_CONFIG }));
 
 // Cache-Control & Anti-CDN Stale Middleware (Global)
 app.use((req, res, next) => {
