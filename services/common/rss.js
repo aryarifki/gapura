@@ -97,9 +97,9 @@ export function parseFeed(xmlText) {
 }
 
 /** Ambil feed dengan User-Agent wajar & timeout. Mengembalikan { ok, items, error, status }. */
-export async function fetchFeed(url, { timeoutMs = 15000, accept = 'application/rss+xml, application/xml, text/xml, application/atom+xml, text/html' } = {}) {
+export async function fetchFeed(url, { timeoutMs = 15000, accept = 'application/rss+xml, application/xml, text/xml, application/atom+xml, text/html', fetchImpl = fetch } = {}) {
   try {
-    const res = await fetch(url, {
+    const res = await fetchImpl(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; GapuraMediaBot/2.1; +https://gapura.avenia.my.id)',
         Accept: accept,

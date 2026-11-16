@@ -1,0 +1,141 @@
+{
+  "providers": {
+    "gemini": {
+      "label": "Google Gemini",
+      "kind": "gemini",
+      "base_url": "https://generativelanguage.googleapis.com",
+      "api_key_env": "GEMINI_API_KEY",
+      "enabled": true,
+      "default_model": "gemini-3.5-flash-lite",
+      "max_tokens": 8192
+    },
+    "openai": {
+      "label": "OpenAI / ChatGPT",
+      "kind": "openai",
+      "base_url": "https://api.openai.com/v1",
+      "api_key_env": "OPENAI_API_KEY",
+      "enabled": true,
+      "max_tokens": 8192
+    },
+    "chatgpt": {
+      "label": "ChatGPT (alias OpenAI)",
+      "kind": "openai",
+      "base_url": "https://api.openai.com/v1",
+      "api_key_env": "OPENAI_API_KEY",
+      "enabled": true
+    },
+    "anthropic": {
+      "label": "Anthropic Claude",
+      "kind": "anthropic",
+      "base_url": "https://api.anthropic.com",
+      "api_key_env": "ANTHROPIC_API_KEY",
+      "enabled": true,
+      "max_tokens": 8192
+    },
+    "deepseek": {
+      "label": "DeepSeek",
+      "kind": "openai",
+      "base_url": "https://api.deepseek.com/v1",
+      "api_key_env": "DEEPSEEK_API_KEY",
+      "enabled": true,
+      "max_tokens": 8192
+    },
+    "grok": {
+      "label": "xAI Grok",
+      "kind": "openai",
+      "base_url": "https://api.x.ai/v1",
+      "api_key_env": "XAI_API_KEY",
+      "enabled": true,
+      "max_tokens": 8192
+    },
+    "openrouter": {
+      "label": "OpenRouter",
+      "kind": "openai",
+      "base_url": "https://openrouter.ai/api/v1",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "enabled": true,
+      "max_tokens": 8192,
+      "headers": {
+        "HTTP-Referer": "https://gapura.avenia.my.id",
+        "X-Title": "Gapura Media"
+      }
+    },
+    "nvidia": {
+      "label": "NVIDIA NIM",
+      "kind": "openai",
+      "base_url": "https://integrate.api.nvidia.com/v1",
+      "api_key_env": "NVIDIA_API_KEY",
+      "enabled": true,
+      "max_tokens": 8192
+    },
+    "masb": {
+      "label": "MASB Agent Router",
+      "kind": "openai",
+      "base_url": "https://ai.masb.web.id/v1",
+      "api_key_env": "MASB_API_KEY",
+      "enabled": true,
+      "max_tokens": 8192,
+      "headers": {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+      }
+    },
+    "xingchi": {
+      "label": "Xingchi API (grup nonaktif)",
+      "kind": "openai",
+      "base_url": "https://api.xingchiapi.com/v1",
+      "api_key_env": "XINGCHI_API_KEY",
+      "enabled": false,
+      "max_tokens": 8192,
+      "notes": "/models 200 tetapi chat 403 client_not_allowed: provider hanya mengizinkan aplikasi coding tertentu dan melarang SDK/skrip langsung. Jangan aktifkan untuk backend Gapura."
+    },
+    "meta": {
+      "label": "Meta Llama API",
+      "kind": "openai",
+      "base_url": "https://api.llama.com/v1",
+      "api_key_env": "META_AI_API_KEY",
+      "enabled": false,
+      "max_tokens": 8192,
+      "notes": "Inference Meta AI/Llama. Berbeda dari Graph API penerbitan Facebook/Instagram."
+    },
+    "9router": {
+      "label": "9Router",
+      "kind": "openai",
+      "base_url": "",
+      "api_key_env": "NINE_ROUTER_API_KEY",
+      "enabled": false,
+      "max_tokens": 8192,
+      "notes": "Isi Base URL dari dashboard 9Router, lalu aktifkan."
+    },
+    "agentrouter": {
+      "label": "Agent Router",
+      "kind": "openai",
+      "base_url": "",
+      "api_key_env": "AGENT_ROUTER_API_KEY",
+      "enabled": false,
+      "max_tokens": 8192,
+      "notes": "Isi Base URL dari dashboard Agent Router, lalu aktifkan."
+    },
+    "custom": {
+      "label": "Custom OpenAI-compatible",
+      "kind": "openai",
+      "base_url": "",
+      "api_key_env": "CUSTOM_API_KEY",
+      "enabled": true,
+      "max_tokens": 8192,
+      "notes": "Endpoint diisi per agen atau lewat katalog provider."
+    }
+  },
+  "routing": {
+    "fallback_chain": [
+      "gemini/gemini-3.5-flash-lite",
+      "gemini/gemini-2.5-flash",
+      "gemini/gemini-3.5-flash",
+      "gemini/gemini-2.5-flash-lite",
+      "masb/qwen3.8-27b",
+      "masb/deepseek-v4.1-flash",
+      "masb/kimi-k3.1-pro",
+      "masb/glm-5.3-flash",
+      "masb/Atria-Dawn"
+    ]
+  }
+}
