@@ -8,8 +8,10 @@ publikasi telah dikosongkan dengan backup/restore teruji. Timer intake dan
 publisher dijeda (`disabled`), worker Studio background dinonaktifkan, dashboard
 dan koneksi Instagram tetap tersedia. Perubahan desain/isi berikutnya mengikuti
 [blueprint editorial baru](docs/plans/07_EDITORIAL_REDESIGN_BLUEPRINT.md) dan
-[laporan reset](docs/EDITORIAL_WORKSPACE_RESET_20261116.md). Penghapusan
-Verifikator dan delapan perbaikan konten masih berstatus rencana, bukan selesai.
+[laporan reset](docs/EDITORIAL_WORKSPACE_RESET_20261116.md). Kontrak dan corpus
+sintetis [R1](docs/plans/08_R1_EDITORIAL_CONTRACT.md) sudah
+dibuat terpisah dari runtime produksi. Pengayaan artikel/foto, penulisan baru,
+dan penghapusan Verifikator masih tahap lanjutan; hasil baru belum diproduksi.
 
 ---
 
@@ -157,7 +159,7 @@ Dokumen evaluasi teknis, daftar permasalahan yang telah diselesaikan, dan fitur 
 
 ### Ringkasan Status Fitur:
 - [x] Workspace desain/konten bersih dan backup teruji untuk evaluasi ulang
-- [x] Blueprint pembaruan editorial enam desk tersusun; implementasi menunggu review rencana
+- [x] Blueprint pembaruan editorial enam desk tersusun; kontrak dan corpus R1 tersedia offline
 - [x] Web Review Dashboard Responsif (Desktop & Mobile)
 - [x] Microservice Render Satori + Sharp (1080x1350 px)
 - [x] Migrasi Identitas Penuh ke Brand Guidelines Gapura Media (`@gapuramedia`)

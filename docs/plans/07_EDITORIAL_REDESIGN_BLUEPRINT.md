@@ -1,12 +1,13 @@
 # Blueprint pembaruan editorial dan desain Gapura Media
 
-Versi 1.0 · 16 November 2026 · Status: rencana implementasi untuk ditinjau owner.
+Versi 1.1 · 17 November 2026 · Status: R0 selesai, kontrak R1 tersedia offline.
 
 Dokumen ini menjadi acuan perubahan konten berikutnya. Persyaratan baru owner
 menggantikan ketentuan lama tentang niche finansial sempit, single otomatis,
 caption petikan verbatim, dan kewajiban melewati Agen Verifikator. Perubahan
-produk belum diimplementasikan dalam penyusunan blueprint ini. Pembersihan
-workspace dan penjedaan otomatisasi sudah dilaksanakan; buktinya tercantum di
+produksi belum diterapkan; kontrak dan fixture sintetis [R1](08_R1_EDITORIAL_CONTRACT.md)
+ditambahkan terpisah dari runtime. Pembersihan workspace dan penjedaan
+otomatisasi sudah dilaksanakan; buktinya tercantum di
 [laporan reset](../EDITORIAL_WORKSPACE_RESET_20261116.md).
 
 ## 1. Keputusan produk dan tujuan
@@ -431,7 +432,7 @@ Semua perubahan kode dimulai dari tes merah yang mereproduksi masalah.
 | Tahap | Hasil | Gate sebelum lanjut |
 | --- | --- | --- |
 | R0 — Workspace bersih | Backup/restore teruji, konten kosong, timer dan worker otomatis dijeda | **Selesai**, lihat laporan reset; koneksi Meta tetap connected |
-| R1 — Kontrak editorial | Taxonomy enam desk, material/media contract, kebijakan hak/credit minimum, aturan headline/caption/carousel, corpus fixture | Semua delapan kebutuhan memiliki acceptance dan contoh buruk/baik; fixture foto memiliki dasar penggunaan |
+| R1 — Kontrak editorial | Taxonomy enam desk, material/media contract, kebijakan hak/credit minimum, aturan headline/caption/carousel, corpus fixture | **Tersedia offline**, lihat [kontrak R1](08_R1_EDITORIAL_CONTRACT.md); bukan acceptance foto berita live/visual owner |
 | R2 — Pengambilan materi | Feed body penuh yang tersedia, publisher article resolver, metadata, akses status, dedup peristiwa | Fixture artikel penuh/parsial/gagal dan tanggal benar; tidak mengarang body |
 | R3 — Foto end-to-end | Asset ID lokal, host policy tunggal, rights/credit, hydration, fallback/photo layout | Foto nyata tampil pada normal/fallback/regenerasi; semua kegagalan terlihat |
 | R4 — Sources dan Analis | Katalog tervalidasi enam desk, scoring kepentingan publik, query aktual | Fixture tiap desk lolos/gugur sesuai materi dan konteks; endpoint gagal nonaktif |
@@ -550,10 +551,12 @@ ditinjau tanpa mengklaim preferensi owner telah tervalidasi.
 
 ## 14. Langkah konkret berikutnya
 
-Setelah blueprint diterima, mulai **R1**: buat fixture berita lengkap dan foto
-yang dapat dipakai untuk enam desk, plus draft kontrak/acceptance tests. Baru
-lanjutkan pengayaan artikel dan foto; mengubah prompt saja tidak menyelesaikan
-akar masalah summary pendek, pemotongan isi, dan hilangnya aset.
+Kontrak dan corpus sintetis **R1** tersedia setelah mandat owner; lihat
+[hasil R1](08_R1_EDITORIAL_CONTRACT.md). Langkah berikutnya **R2** adalah
+pengayaan artikel dengan fixture RSS/HTML/JSON-LD yang diizinkan, metadata tanggal,
+URL kanonis, dan akses status; aset foto live diselesaikan R3. Mengubah prompt
+saja tidak menyelesaikan akar masalah summary pendek, pemotongan isi, dan
+hilangnya aset.
 
 Otomatisasi produksi/publish tetap dijeda sampai owner menyetujui sampel. Lihat
 [laporan reset](../EDITORIAL_WORKSPACE_RESET_20261116.md) untuk backup, keadaan

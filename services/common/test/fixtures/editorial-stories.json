@@ -1,0 +1,842 @@
+{
+  "version": 1,
+  "synthetic": true,
+  "stories": [
+    {
+      "id": "fixture-politik-piagam-layanan",
+      "category": "politik",
+      "synthetic": true,
+      "source": {
+        "id": "fixture-politik-piagam-layanan-source",
+        "publisher": "Kabar Lazuardi Fiktif",
+        "url": "https://example.org/gapura/r1/politik-piagam-layanan",
+        "discovery_provider": "fixture_rss",
+        "published_at": "2031-01-15T08:00:00.000Z"
+      },
+      "raw_title": "[Google News: X query fallback] Forum Kebijakan Sagara menyepakati uji coba Piagam Layanan Terbuka - Kabar Lazuardi Fiktif",
+      "headline": "Piagam Layanan Terbuka diuji di Kota Arunika",
+      "material": {
+        "version": 1,
+        "paragraphs": [
+          {
+            "id": "p1",
+            "text": "Pada 15 Januari 2031, Forum Kebijakan Sagara menyetujui uji coba Piagam Layanan Terbuka di Kota Arunika. Program ini berlaku selama tiga puluh hari pada empat loket layanan warga di Kecamatan Purnama. Keputusan diambil setelah dua pertemuan terbuka dan ditujukan untuk membuat waktu tunggu, perubahan jadwal, serta jalur keluhan dapat dilihat oleh warga.",
+            "source_url": "https://example.org/gapura/r1/politik-piagam-layanan",
+            "role": "reporting"
+          },
+          {
+            "id": "p2",
+            "text": "Dokumen piagam meminta setiap loket memasang Papan Layanan Terbuka yang memuat jam layanan, perkiraan waktu tunggu, jumlah permohonan berjalan, perubahan jadwal, dan cara mengajukan keluhan. Papan diperbarui setiap sore; sekretariat mengumpulkan rekap mingguan, sementara data pribadi pemohon tidak boleh ditampilkan.",
+            "source_url": "https://example.org/gapura/r1/politik-piagam-layanan",
+            "role": "document"
+          },
+          {
+            "id": "p3",
+            "text": "Rangkaian keputusan dimulai pada 8 Januari ketika usul disampaikan kepada forum. Pertemuan warga berlangsung 12 Januari di Balai Liris dan menghasilkan permintaan agar informasi tersedia dalam bentuk cetak. Pada 15 Januari, forum menyetujui masa uji tiga puluh hari serta evaluasi terbuka pada 20 Februari 2031.",
+            "source_url": "https://example.org/gapura/r1/politik-piagam-layanan",
+            "role": "reporting"
+          },
+          {
+            "id": "p4",
+            "text": "Ketua Forum Kebijakan Sagara, Raras Wening, menyatakan, \"Perubahan ini harus dapat dibaca warga dalam satu halaman dan diuji sebelum diterapkan.\" Ia menjelaskan bahwa masa tiga puluh hari dipakai untuk melihat apakah papan informasi membantu warga menemukan jawaban tanpa menambah antrean.",
+            "source_url": "https://example.org/gapura/r1/politik-piagam-layanan",
+            "role": "official_statement"
+          },
+          {
+            "id": "p5",
+            "text": "Empat loket di Kecamatan Purnama melayani warga dari Kampung Liris dan dua lingkungan sekitarnya. Kelompok lansia, pedagang kecil, dan warga tanpa akses internet menjadi pengguna yang diperhatikan dalam uji coba karena mereka sering bergantung pada informasi di lokasi. Dampak yang akan dicatat meliputi kemudahan menemukan jadwal, jumlah keluhan yang masuk, dan waktu tanggapan petugas.",
+            "source_url": "https://example.org/gapura/r1/politik-piagam-layanan",
+            "role": "reporting"
+          },
+          {
+            "id": "p6",
+            "text": "Sekretariat Forum Kebijakan Sagara dijadwalkan mengumpulkan catatan sampai 19 Februari dan mempresentasikan hasilnya pada 20 Februari 2031. Bahan evaluasi akan membandingkan papan dengan catatan loket, lalu memutuskan apakah format perlu diubah, masa uji diperpanjang, atau program tidak diteruskan. Belum ada keputusan perluasan ke wilayah lain.",
+            "source_url": "https://example.org/gapura/r1/politik-piagam-layanan",
+            "role": "official_statement"
+          }
+        ]
+      },
+      "draft": {
+        "format": "carousel",
+        "slides": [
+          {
+            "no": 1,
+            "role": "cover",
+            "layout": "cover-focus",
+            "teks": "Piagam layanan terbuka diuji di Kota Arunika",
+            "evidence_ids": ["p1"],
+            "data": {"asset_id": "fixture-politik-piagam-layanan-photo"}
+          },
+          {
+            "no": 2,
+            "role": "lead",
+            "layout": "big-statement",
+            "teks": "Empat loket warga menjalani uji coba selama tiga puluh hari.",
+            "evidence_ids": ["p1", "p2"],
+            "data": {}
+          },
+          {
+            "no": 3,
+            "role": "explanation",
+            "layout": "big-statement",
+            "teks": "Papan layanan memuat antrean, jadwal, perubahan, dan jalur keluhan.",
+            "evidence_ids": ["p2", "p3"],
+            "data": {}
+          },
+          {
+            "no": 4,
+            "role": "official_statement",
+            "layout": "big-statement",
+            "teks": "Uji coba dipakai untuk menguji informasi sebelum diperluas.",
+            "evidence_ids": ["p4"],
+            "data": {
+              "quote": "Perubahan ini harus dapat dibaca warga dalam satu halaman dan diuji sebelum diterapkan.",
+              "author": "Raras Wening"
+            }
+          },
+          {
+            "no": 5,
+            "role": "public_impact",
+            "layout": "big-statement",
+            "teks": "Warga tanpa akses internet dapat mengikuti informasi langsung di loket.",
+            "evidence_ids": ["p5"],
+            "data": {}
+          },
+          {
+            "no": 6,
+            "role": "close",
+            "layout": "big-statement",
+            "teks": "Evaluasi terbuka pada 20 Februari menentukan langkah berikutnya.",
+            "evidence_ids": ["p6"],
+            "data": {}
+          }
+        ],
+        "caption": "Forum Kebijakan Sagara menyetujui uji coba Piagam Layanan Terbuka di Kota Arunika pada 15 Januari 2031. Empat loket layanan warga di Kecamatan Purnama akan menjalankan skema ini selama tiga puluh hari. Informasi yang akan ditampilkan mencakup jam layanan, perkiraan waktu tunggu, jumlah permohonan berjalan, perubahan jadwal, dan jalur untuk menyampaikan keluhan. Data pribadi pemohon tidak boleh dimuat pada papan informasi.\n\nUsul awal disampaikan pada 8 Januari, lalu pertemuan warga di Balai Liris berlangsung pada 12 Januari. Warga meminta agar informasi tersedia dalam bentuk cetak. Pada 15 Januari, forum menyepakati masa uji dan evaluasi terbuka pada 20 Februari. Papan Layanan Terbuka diperbarui setiap sore; sekretariat mengumpulkan rekap mingguan dari catatan pelaksanaan.\n\nKetua Forum Kebijakan Sagara, Raras Wening, mengatakan, \"Perubahan ini harus dapat dibaca warga dalam satu halaman dan diuji sebelum diterapkan.\" Ia menjelaskan bahwa masa uji dipakai untuk melihat apakah papan membantu warga menemukan jawaban tanpa menambah antrean. Belum ada keputusan untuk memperluas program ke wilayah lain.\n\nEmpat loket melayani Kampung Liris dan dua lingkungan sekitarnya. Lansia, pedagang kecil, dan warga tanpa internet menjadi kelompok yang diperhatikan karena bergantung pada informasi di lokasi. Catatan uji mencakup kemudahan menemukan jadwal, jumlah keluhan, dan waktu tanggapan petugas. Sekretariat akan mengumpulkan catatan sampai 19 Februari dan mempresentasikannya pada 20 Februari 2031. Evaluasi membandingkan papan dengan catatan loket sebelum menentukan perubahan format, perpanjangan masa uji, atau penghentian program.",
+        "hashtags": ["#GapuraMedia", "#Politik"],
+        "caption_evidence_ids": ["p1", "p2", "p3", "p4", "p5", "p6"],
+        "media": {
+          "cover_asset_id": "fixture-politik-piagam-layanan-photo",
+          "assets": [
+            {
+              "id": "fixture-politik-piagam-layanan-photo",
+              "url": "https://media.example.org/fixture-politik-piagam-layanan.png",
+              "source_url": "https://example.org/gapura/r1/politik-piagam-layanan",
+              "credit": "Gapura R1 fixture — raster sintetis untuk pengujian",
+              "rights_basis": "owned",
+              "rights_reference": "fixture://gapura/r1/raster",
+              "rights_approved_by": "fixture-author",
+              "rights_approved_at": "2026-11-16T00:00:00.000Z",
+              "status": "downloaded",
+              "mime": "image/png",
+              "width": 360,
+              "height": 450,
+              "local_path": "services/common/test/fixtures/editorial-cover.png.base64",
+              "sha256": "600ca110bb4dfec0f67f81367ca25a780a11c87790515d130c843c45456a270e"
+            }
+          ]
+        },
+        "style": "statement"
+      }
+    },
+    {
+      "id": "fixture-sosial-klinik-keliling",
+      "category": "sosial",
+      "synthetic": true,
+      "source": {
+        "id": "fixture-sosial-klinik-keliling-source",
+        "publisher": "Berita Bening Fiktif",
+        "url": "https://example.org/gapura/r1/sosial-klinik-keliling",
+        "discovery_provider": "fixture_rss",
+        "published_at": "2031-02-07T09:30:00.000Z"
+      },
+      "raw_title": "[Google News: X query fallback] Klinik Keliling Sapa Warga membuka rute layanan di Kota Niskala - Berita Bening Fiktif",
+      "headline": "Klinik Keliling Sapa Warga membuka rute di Kota Niskala",
+      "material": {
+        "version": 1,
+        "paragraphs": [
+          {
+            "id": "p1",
+            "text": "Pada 7 Februari 2031, Badan Layanan Rembun membuka uji coba Klinik Keliling Sapa Warga di Kota Niskala. Sebuah kendaraan layanan akan mendatangi tiga titik di Kecamatan Pelangi Utara setiap Selasa dan Kamis selama enam minggu. Layanan dirancang untuk membantu warga mengurus kartu antrean kesehatan, mendaftar kelas baca, dan mencari informasi bantuan pangan dalam satu kunjungan.",
+            "source_url": "https://example.org/gapura/r1/sosial-klinik-keliling",
+            "role": "reporting"
+          },
+          {
+            "id": "p2",
+            "text": "Jadwal pada lembar layanan menetapkan dua rute. Kendaraan berada di Taman Sora setiap Selasa pukul 08.00–11.00 dan di Lapangan Niskala setiap Kamis pukul 13.00–16.00; satu Kamis terakhir tiap bulan dipakai untuk kunjungan ke Gang Purnama. Petugas membantu mengisi formulir dan menjelaskan syarat, tetapi keputusan bantuan tetap berada pada unit yang menerima permohonan.",
+            "source_url": "https://example.org/gapura/r1/sosial-klinik-keliling",
+            "role": "document"
+          },
+          {
+            "id": "p3",
+            "text": "Pemetaan awal Badan Layanan Rembun mencatat 126 rumah di tiga lingkungan yang berjarak lebih dari empat kilometer dari meja layanan tetap. Dari percakapan dengan warga, 47 keluarga menyebut jam kerja, biaya perjalanan, atau keterbatasan pendamping sebagai alasan menunda pengurusan. Catatan itu dipakai untuk memilih titik singgah, bukan untuk menetapkan siapa yang berhak menerima bantuan.",
+            "source_url": "https://example.org/gapura/r1/sosial-klinik-keliling",
+            "role": "reporting"
+          },
+          {
+            "id": "p4",
+            "text": "Koordinator Klinik Keliling, Mira Kencana, mengatakan, \"Layanan bergerak harus mengikuti waktu warga, bukan meminta warga menyesuaikan diri dengan meja yang jauh.\" Ia menjelaskan bahwa petugas membawa daftar syarat tercetak dan mencatat pertanyaan yang belum dapat dijawab di lokasi untuk diteruskan kepada unit terkait.",
+            "source_url": "https://example.org/gapura/r1/sosial-klinik-keliling",
+            "role": "official_statement"
+          },
+          {
+            "id": "p5",
+            "text": "Pada pekan pertama, 42 warga mendatangi dua titik layanan dan 29 di antaranya menyelesaikan pengisian formulir pada hari yang sama. Sebagian lainnya masih perlu dokumen tambahan. Angka tersebut dipakai sebagai catatan operasional awal; Badan Layanan Rembun belum menyimpulkan bahwa rute keliling telah menjangkau seluruh warga yang membutuhkan.",
+            "source_url": "https://example.org/gapura/r1/sosial-klinik-keliling",
+            "role": "reporting"
+          },
+          {
+            "id": "p6",
+            "text": "Uji coba dijadwalkan berakhir pada 21 Maret 2031. Badan Layanan Rembun akan menilai jarak tempuh, waktu tunggu, jenis pertanyaan, dan jumlah permohonan yang harus diteruskan sebelum menentukan rute berikutnya. Penyesuaian titik singgah dapat dilakukan selama uji coba jika catatan petugas menunjukkan lokasi atau jam yang dipilih tidak terjangkau warga.",
+            "source_url": "https://example.org/gapura/r1/sosial-klinik-keliling",
+            "role": "official_statement"
+          }
+        ]
+      },
+      "draft": {
+        "format": "carousel",
+        "slides": [
+          {
+            "no": 1,
+            "role": "cover",
+            "layout": "cover-focus",
+            "teks": "Klinik Keliling Sapa Warga membuka rute baru",
+            "evidence_ids": ["p1"],
+            "data": {"asset_id": "fixture-sosial-klinik-keliling-photo"}
+          },
+          {
+            "no": 2,
+            "role": "lead",
+            "layout": "big-statement",
+            "teks": "Satu kendaraan mendatangi tiga titik selama enam minggu.",
+            "evidence_ids": ["p1", "p2"],
+            "data": {}
+          },
+          {
+            "no": 3,
+            "role": "explanation",
+            "layout": "big-statement",
+            "teks": "Formulir kesehatan, kelas baca, dan informasi pangan tersedia di rute layanan.",
+            "evidence_ids": ["p2", "p3"],
+            "data": {}
+          },
+          {
+            "no": 4,
+            "role": "official_statement",
+            "layout": "big-statement",
+            "teks": "Rute disusun mengikuti waktu dan jarak tempuh warga.",
+            "evidence_ids": ["p4"],
+            "data": {
+              "quote": "Layanan bergerak harus mengikuti waktu warga, bukan meminta warga menyesuaikan diri dengan meja yang jauh.",
+              "author": "Mira Kencana"
+            }
+          },
+          {
+            "no": 5,
+            "role": "public_impact",
+            "layout": "big-statement",
+            "teks": "Empat puluh dua warga datang pada pekan pertama; sebagian masih melengkapi dokumen.",
+            "evidence_ids": ["p5"],
+            "data": {}
+          },
+          {
+            "no": 6,
+            "role": "close",
+            "layout": "big-statement",
+            "teks": "Evaluasi 21 Maret akan menentukan rute dan jam layanan berikutnya.",
+            "evidence_ids": ["p6"],
+            "data": {}
+          }
+        ],
+        "caption": "Badan Layanan Rembun membuka uji coba Klinik Keliling Sapa Warga di Kota Niskala pada 7 Februari 2031. Satu kendaraan layanan mendatangi tiga titik di Kecamatan Pelangi Utara setiap Selasa dan Kamis selama enam minggu. Warga dapat meminta bantuan mengurus kartu antrean kesehatan, mendaftar kelas baca, dan mencari informasi bantuan pangan dalam satu kunjungan.\n\nRute dibuat dengan mempertimbangkan jarak dan waktu. Kendaraan berada di Taman Sora setiap Selasa pukul 08.00–11.00, kemudian di Lapangan Niskala setiap Kamis pukul 13.00–16.00. Satu Kamis terakhir tiap bulan disediakan untuk Gang Purnama. Petugas membantu mengisi formulir dan menjelaskan syarat, sedangkan keputusan atas permohonan tetap berada pada unit yang menerima berkas.\n\nPemetaan awal mencatat 126 rumah di tiga lingkungan yang berjarak lebih dari empat kilometer dari meja layanan tetap. Dalam percakapan awal, 47 keluarga menyebut jam kerja, biaya perjalanan, atau kebutuhan pendamping sebagai alasan menunda pengurusan. Karena itu, ukuran keberhasilan uji coba bukan sekadar jumlah kunjungan, melainkan apakah titik singgah membuat proses awal lebih mudah dijangkau.\n\nKoordinator Klinik Keliling, Mira Kencana, mengatakan, \"Layanan bergerak harus mengikuti waktu warga, bukan meminta warga menyesuaikan diri dengan meja yang jauh.\" Pada pekan pertama, 42 warga datang ke dua titik dan 29 menyelesaikan pengisian formulir pada hari yang sama. Sebagian lainnya masih perlu dokumen tambahan. Catatan operasional akan diperiksa sampai 21 Maret 2031 bersama waktu tunggu, pertanyaan yang muncul, dan permohonan yang harus diteruskan. Rute berikutnya akan ditentukan setelah penilaian itu.",
+        "hashtags": ["#GapuraMedia", "#Sosial"],
+        "caption_evidence_ids": ["p1", "p2", "p3", "p4", "p5", "p6"],
+        "media": {
+          "cover_asset_id": "fixture-sosial-klinik-keliling-photo",
+          "assets": [
+            {
+              "id": "fixture-sosial-klinik-keliling-photo",
+              "url": "https://media.example.org/fixture-sosial-klinik-keliling.png",
+              "source_url": "https://example.org/gapura/r1/sosial-klinik-keliling",
+              "credit": "Gapura R1 fixture — raster sintetis untuk pengujian",
+              "rights_basis": "owned",
+              "rights_reference": "fixture://gapura/r1/raster",
+              "rights_approved_by": "fixture-author",
+              "rights_approved_at": "2026-11-16T00:00:00.000Z",
+              "status": "downloaded",
+              "mime": "image/png",
+              "width": 360,
+              "height": 450,
+              "local_path": "services/common/test/fixtures/editorial-cover.png.base64",
+              "sha256": "600ca110bb4dfec0f67f81367ca25a780a11c87790515d130c843c45456a270e"
+            }
+          ]
+        },
+        "style": "explainer"
+      }
+    },
+    {
+      "id": "fixture-hukum-jeda-pasar-senja",
+      "category": "hukum",
+      "synthetic": true,
+      "source": {
+        "id": "fixture-hukum-jeda-pasar-senja-source",
+        "publisher": "Ruang Putusan Contoh",
+        "url": "https://example.org/gapura/r1/hukum-jeda-pasar-senja",
+        "discovery_provider": "fixture_rss",
+        "published_at": "2031-03-21T11:00:00.000Z"
+      },
+      "raw_title": "[Google News: X query fallback] Majelis Penyelesaian Nirmala memerintahkan jeda pembongkaran Pasar Senja - Ruang Putusan Contoh",
+      "headline": "Majelis memberi jeda pembongkaran 38 kios Pasar Senja",
+      "material": {
+        "version": 1,
+        "paragraphs": [
+          {
+            "id": "p1",
+            "text": "Pada 21 Maret 2031, Majelis Penyelesaian Nirmala membacakan putusan sela dalam perkara Nomor 04/MPN/2031 di Kota Tanjung Kaca. Putusan itu memerintahkan penghentian sementara pembongkaran 38 kios di Pasar Senja sampai majelis menerima dokumen tata letak dan pemberitahuan pengelola. Putusan belum menentukan siapa pemegang hak akhir atas kios.",
+            "source_url": "https://example.org/gapura/r1/hukum-jeda-pasar-senja",
+            "role": "reporting"
+          },
+          {
+            "id": "p2",
+            "text": "Dokumen putusan berlaku empat belas hari sejak dibacakan dan meminta dua pihak menyerahkan peta lokasi, salinan pemberitahuan, serta daftar kios yang terdampak. Jeda hanya mengatur tindakan sementara selama pemeriksaan berlangsung; dokumen itu tidak membatalkan rencana penataan Pasar Senja dan tidak menjadi putusan akhir mengenai sengketa para pihak.",
+            "source_url": "https://example.org/gapura/r1/hukum-jeda-pasar-senja",
+            "role": "document"
+          },
+          {
+            "id": "p3",
+            "text": "Perkumpulan Pedagang Pasar Senja mengajukan permohonan pada 10 Maret 2031. Pengelola pasar, Koperasi Layar Timur, menyampaikan jawaban pada 15 Maret. Pemeriksaan dokumen dan keterangan berlangsung pada 19 Maret, lalu majelis membacakan putusan sela pada 21 Maret setelah menemukan perbedaan antara daftar kios dan peta yang diajukan.",
+            "source_url": "https://example.org/gapura/r1/hukum-jeda-pasar-senja",
+            "role": "reporting"
+          },
+          {
+            "id": "p4",
+            "text": "Sekretaris Majelis Penyelesaian Nirmala, Damar Prasetya, menjelaskan, \"Jeda ini menjaga keadaan tetap seperti saat perkara diperiksa, sementara majelis meminta dokumen yang belum lengkap.\" Ia menambahkan bahwa para pihak tetap dapat menyampaikan keberatan terhadap isi dokumen dalam sidang berikutnya.",
+            "source_url": "https://example.org/gapura/r1/hukum-jeda-pasar-senja",
+            "role": "official_statement"
+          },
+          {
+            "id": "p5",
+            "text": "Bagi 38 pemegang kios yang tercantum dalam daftar sementara, jeda memberi waktu untuk tetap berdagang sambil menyiapkan dokumen dan menunggu pemeriksaan lanjutan. Pengelola tetap diminta menjaga jalur keselamatan dan kebersihan pasar. Dampak akhirnya belum dapat ditentukan karena majelis belum memutus pokok sengketa atau bentuk penataan yang akan berlaku.",
+            "source_url": "https://example.org/gapura/r1/hukum-jeda-pasar-senja",
+            "role": "reporting"
+          },
+          {
+            "id": "p6",
+            "text": "Sidang berikutnya dijadwalkan pada 2 April 2031 untuk memeriksa peta lokasi, pemberitahuan pengelola, dan daftar kios yang telah diperbarui. Setelah bahan itu diperiksa, majelis dapat mempertahankan jeda, mengubah instruksi sementara, atau melanjutkan pemeriksaan perkara. Keputusan pada 21 Maret belum mengakhiri proses.",
+            "source_url": "https://example.org/gapura/r1/hukum-jeda-pasar-senja",
+            "role": "official_statement"
+          }
+        ]
+      },
+      "draft": {
+        "format": "carousel",
+        "slides": [
+          {
+            "no": 1,
+            "role": "cover",
+            "layout": "cover-focus",
+            "teks": "Jeda pembongkaran 38 kios Pasar Senja",
+            "evidence_ids": ["p1"],
+            "data": {"asset_id": "fixture-hukum-jeda-pasar-senja-photo"}
+          },
+          {
+            "no": 2,
+            "role": "lead",
+            "layout": "big-statement",
+            "teks": "Majelis memberi waktu untuk melengkapi dokumen sengketa.",
+            "evidence_ids": ["p1", "p2"],
+            "data": {}
+          },
+          {
+            "no": 3,
+            "role": "explanation",
+            "layout": "big-statement",
+            "teks": "Putusan sela berlaku empat belas hari dan bukan putusan akhir.",
+            "evidence_ids": ["p2", "p3"],
+            "data": {}
+          },
+          {
+            "no": 4,
+            "role": "official_statement",
+            "layout": "big-statement",
+            "teks": "Keadaan sementara dipertahankan sambil dokumen yang kurang diperiksa.",
+            "evidence_ids": ["p4"],
+            "data": {
+              "quote": "Jeda ini menjaga keadaan tetap seperti saat perkara diperiksa, sementara majelis meminta dokumen yang belum lengkap.",
+              "author": "Damar Prasetya"
+            }
+          },
+          {
+            "no": 5,
+            "role": "public_impact",
+            "layout": "big-statement",
+            "teks": "Pedagang dapat tetap berdagang sambil menunggu pemeriksaan lanjutan.",
+            "evidence_ids": ["p5"],
+            "data": {}
+          },
+          {
+            "no": 6,
+            "role": "close",
+            "layout": "big-statement",
+            "teks": "Sidang 2 April akan memeriksa peta, pemberitahuan, dan daftar kios.",
+            "evidence_ids": ["p6"],
+            "data": {}
+          }
+        ],
+        "caption": "Majelis Penyelesaian Nirmala membacakan putusan sela pada 21 Maret 2031 dalam perkara Nomor 04/MPN/2031 di Kota Tanjung Kaca. Putusan itu memerintahkan penghentian sementara pembongkaran 38 kios di Pasar Senja. Jeda berlaku ketika majelis meminta dokumen tata letak dan pemberitahuan pengelola yang masih perlu diperiksa.\n\nDokumen tersebut berlaku selama empat belas hari sejak dibacakan. Para pihak diminta menyerahkan peta lokasi, salinan pemberitahuan, dan daftar kios yang terdampak. Arti keputusan ini terbatas pada tindakan sementara: putusan tidak membatalkan rencana penataan Pasar Senja dan belum menentukan siapa pemegang hak akhir atas kios.\n\nUrutannya dimulai dari permohonan Perkumpulan Pedagang Pasar Senja pada 10 Maret. Koperasi Layar Timur sebagai pengelola menyampaikan jawaban pada 15 Maret. Pemeriksaan dokumen dan keterangan berlangsung 19 Maret, lalu majelis membaca putusan sela pada 21 Maret setelah menemukan perbedaan antara daftar kios dan peta yang diajukan.\n\nSekretaris Majelis Penyelesaian Nirmala, Damar Prasetya, menjelaskan, \"Jeda ini menjaga keadaan tetap seperti saat perkara diperiksa, sementara majelis meminta dokumen yang belum lengkap.\" Bagi 38 pemegang kios yang tercantum dalam daftar sementara, jeda memberi waktu untuk tetap berdagang sambil menyiapkan bahan pemeriksaan. Sidang berikutnya pada 2 April 2031 akan melihat dokumen yang diperbarui. Setelah itu, majelis dapat mempertahankan jeda, mengubah instruksi sementara, atau meneruskan pemeriksaan. Prosesnya belum berakhir pada putusan 21 Maret.",
+        "hashtags": ["#GapuraMedia", "#Hukum"],
+        "caption_evidence_ids": ["p1", "p2", "p3", "p4", "p5", "p6"],
+        "media": {
+          "cover_asset_id": "fixture-hukum-jeda-pasar-senja-photo",
+          "assets": [
+            {
+              "id": "fixture-hukum-jeda-pasar-senja-photo",
+              "url": "https://media.example.org/fixture-hukum-jeda-pasar-senja.png",
+              "source_url": "https://example.org/gapura/r1/hukum-jeda-pasar-senja",
+              "credit": "Gapura R1 fixture — raster sintetis untuk pengujian",
+              "rights_basis": "owned",
+              "rights_reference": "fixture://gapura/r1/raster",
+              "rights_approved_by": "fixture-author",
+              "rights_approved_at": "2026-11-16T00:00:00.000Z",
+              "status": "downloaded",
+              "mime": "image/png",
+              "width": 360,
+              "height": 450,
+              "local_path": "services/common/test/fixtures/editorial-cover.png.base64",
+              "sha256": "600ca110bb4dfec0f67f81367ca25a780a11c87790515d130c843c45456a270e"
+            }
+          ]
+        },
+        "style": "statement"
+      }
+    },
+    {
+      "id": "fixture-lingkungan-danau-embun",
+      "category": "lingkungan",
+      "synthetic": true,
+      "source": {
+        "id": "fixture-lingkungan-danau-embun-source",
+        "publisher": "Horizon Hijau Fiktif",
+        "url": "https://example.org/gapura/r1/lingkungan-danau-embun",
+        "discovery_provider": "fixture_rss",
+        "published_at": "2031-06-18T07:15:00.000Z"
+      },
+      "raw_title": "[Google News: X query fallback] Catatan Pusat Arus Hijau menandai kenaikan air Danau Embun Rata - Horizon Hijau Fiktif",
+      "headline": "Kenaikan air Danau Embun Rata memicu pemeriksaan lanjutan",
+      "material": {
+        "version": 1,
+        "paragraphs": [
+          {
+            "id": "p1",
+            "text": "Pada 18 Juni 2031, Pusat Arus Hijau menerbitkan catatan kondisi Danau Embun Rata di Lembah Kaca setelah mengamati kenaikan muka air di sisi utara. Catatan menyebut kenaikan rata-rata 18 sentimeter dibanding garis ukur 10 Juni dan menandai jalur pejalan kaki sepanjang 600 meter sebagai area yang perlu dijauhi sampai pemeriksaan lanjutan.",
+            "source_url": "https://example.org/gapura/r1/lingkungan-danau-embun",
+            "role": "reporting"
+          },
+          {
+            "id": "p2",
+            "text": "Dokumen pengamatan membatasi temuan pada sisi utara dan timur danau. Tiga alat ukur dipakai untuk mencatat tinggi air pada pagi hari, sedangkan kondisi seluruh lembah belum disimpulkan. Catatan juga meminta pengelola jalur memasang penanda sementara dan tidak mengubah aliran air sebelum pemeriksaan lapangan selesai.",
+            "source_url": "https://example.org/gapura/r1/lingkungan-danau-embun",
+            "role": "document"
+          },
+          {
+            "id": "p3",
+            "text": "Pada 10 Juni 2031, tim memasang tiga alat ukur di sisi utara dan timur Danau Embun Rata. Pada 14 Juni, hujan selama dua hari membuat jalur utara ditutup sementara karena permukaannya licin. Pembacaan pada 18 Juni kemudian dibandingkan dengan garis ukur awal, sehingga catatan memisahkan perubahan muka air dari kesimpulan tentang penyebabnya.",
+            "source_url": "https://example.org/gapura/r1/lingkungan-danau-embun",
+            "role": "reporting"
+          },
+          {
+            "id": "p4",
+            "text": "Koordinator Pusat Arus Hijau, Sinta Arum, menyatakan, \"Catatan ini menunjukkan perubahan air di satu kawasan dan belum menjelaskan keadaan seluruh lembah.\" Ia meminta warga tidak mengambil material dari tepian dan menunggu hasil pemeriksaan sebelum membuka kembali jalur yang ditutup.",
+            "source_url": "https://example.org/gapura/r1/lingkungan-danau-embun",
+            "role": "official_statement"
+          },
+          {
+            "id": "p5",
+            "text": "Penutupan jalur utara memengaruhi rute warga Dusun Sora menuju kebun dan mengurangi akses ke dua titik pengamatan yang biasa digunakan kelompok belajar alam. Pengelola membuka jalur memutar sepanjang 1,2 kilometer dan memasang papan peringatan. Tidak ada laporan kerusakan bangunan dalam catatan 18 Juni, tetapi kondisi tepian masih harus diperiksa.",
+            "source_url": "https://example.org/gapura/r1/lingkungan-danau-embun",
+            "role": "reporting"
+          },
+          {
+            "id": "p6",
+            "text": "Pemeriksaan bersama dijadwalkan pada 25 Juni 2031 untuk menguji ulang garis ukur, kondisi tepian, dan jalur air kecil di sisi timur. Pusat Arus Hijau akan memperbarui catatan pada 30 Juni setelah membandingkan pembacaan alat dan hasil lapangan. Sampai pembaruan itu tersedia, penanda sementara tetap berlaku di jalur utara.",
+            "source_url": "https://example.org/gapura/r1/lingkungan-danau-embun",
+            "role": "official_statement"
+          }
+        ]
+      },
+      "draft": {
+        "format": "carousel",
+        "slides": [
+          {
+            "no": 1,
+            "role": "cover",
+            "layout": "cover-focus",
+            "teks": "Kenaikan air Danau Embun Rata diperiksa",
+            "evidence_ids": ["p1"],
+            "data": {"asset_id": "fixture-lingkungan-danau-embun-photo"}
+          },
+          {
+            "no": 2,
+            "role": "lead",
+            "layout": "big-statement",
+            "teks": "Sisi utara naik 18 sentimeter dari garis ukur 10 Juni.",
+            "evidence_ids": ["p1", "p2"],
+            "data": {}
+          },
+          {
+            "no": 3,
+            "role": "explanation",
+            "layout": "big-statement",
+            "teks": "Temuan dibatasi pada sisi utara dan timur; penyebabnya belum disimpulkan.",
+            "evidence_ids": ["p2", "p3"],
+            "data": {}
+          },
+          {
+            "no": 4,
+            "role": "chronology",
+            "layout": "timeline",
+            "teks": "Empat tanggal menunjukkan urutan pengukuran, penutupan, laporan, dan pemeriksaan.",
+            "evidence_ids": ["p1", "p3", "p6"],
+            "data": {
+              "events": [
+                {
+                  "date": "2031-06-10",
+                  "text": "Tiga alat ukur dipasang di sisi utara dan timur Danau Embun Rata.",
+                  "evidence_ids": ["p3"]
+                },
+                {
+                  "date": "2031-06-14",
+                  "text": "Hujan selama dua hari membuat jalur utara ditutup sementara.",
+                  "evidence_ids": ["p3"]
+                },
+                {
+                  "date": "2031-06-18",
+                  "text": "Catatan kenaikan muka air diterbitkan setelah pembacaan dibandingkan.",
+                  "evidence_ids": ["p1", "p3"]
+                },
+                {
+                  "date": "2031-06-25",
+                  "text": "Pemeriksaan bersama dijadwalkan untuk menguji ulang garis ukur.",
+                  "evidence_ids": ["p6"]
+                }
+              ]
+            }
+          },
+          {
+            "no": 5,
+            "role": "public_impact",
+            "layout": "big-statement",
+            "teks": "Jalur memutar 1,2 kilometer dibuka bagi warga Dusun Sora.",
+            "evidence_ids": ["p5"],
+            "data": {}
+          },
+          {
+            "no": 6,
+            "role": "close",
+            "layout": "big-statement",
+            "teks": "Pembaruan catatan dijadwalkan setelah pemeriksaan 25 Juni.",
+            "evidence_ids": ["p6"],
+            "data": {}
+          }
+        ],
+        "caption": "Pusat Arus Hijau menerbitkan catatan kondisi Danau Embun Rata di Lembah Kaca pada 18 Juni 2031. Catatan itu menunjukkan kenaikan muka air rata-rata 18 sentimeter di sisi utara jika dibandingkan dengan garis ukur 10 Juni. Jalur pejalan kaki sepanjang 600 meter ditandai untuk dijauhi sampai pemeriksaan lanjutan selesai.\n\nTemuan tersebut dibatasi pada sisi utara dan timur danau. Tiga alat ukur dipakai untuk pembacaan pagi, sementara kondisi seluruh lembah belum disimpulkan. Pengelola jalur diminta memasang penanda sementara dan tidak mengubah aliran air sebelum tim menyelesaikan pemeriksaan lapangan. Batasan ini penting karena perubahan di satu kawasan belum cukup untuk menjelaskan penyebab seluruh keadaan danau.\n\nUrutannya dimulai pada 10 Juni ketika tim memasang alat ukur. Pada 14 Juni, hujan selama dua hari membuat jalur utara ditutup sementara karena permukaannya licin. Pembacaan pada 18 Juni lalu dibandingkan dengan garis ukur awal. Koordinator Pusat Arus Hijau, Sinta Arum, menyatakan, \"Catatan ini menunjukkan perubahan air di satu kawasan dan belum menjelaskan keadaan seluruh lembah.\"\n\nPenutupan jalur memengaruhi rute warga Dusun Sora menuju kebun dan akses ke dua titik pengamatan kelompok belajar alam. Pengelola membuka jalur memutar sepanjang 1,2 kilometer dan memasang papan peringatan. Pemeriksaan bersama pada 25 Juni 2031 akan menguji ulang garis ukur, tepian, dan jalur air kecil di sisi timur. Catatan akan diperbarui pada 30 Juni setelah hasil alat dan lapangan dibandingkan. Sampai saat itu, penanda sementara tetap berlaku di jalur utara.",
+        "hashtags": ["#GapuraMedia", "#Lingkungan"],
+        "caption_evidence_ids": ["p1", "p2", "p3", "p4", "p5", "p6"],
+        "media": {
+          "cover_asset_id": "fixture-lingkungan-danau-embun-photo",
+          "assets": [
+            {
+              "id": "fixture-lingkungan-danau-embun-photo",
+              "url": "https://media.example.org/fixture-lingkungan-danau-embun.png",
+              "source_url": "https://example.org/gapura/r1/lingkungan-danau-embun",
+              "credit": "Gapura R1 fixture — raster sintetis untuk pengujian",
+              "rights_basis": "owned",
+              "rights_reference": "fixture://gapura/r1/raster",
+              "rights_approved_by": "fixture-author",
+              "rights_approved_at": "2026-11-16T00:00:00.000Z",
+              "status": "downloaded",
+              "mime": "image/png",
+              "width": 360,
+              "height": 450,
+              "local_path": "services/common/test/fixtures/editorial-cover.png.base64",
+              "sha256": "600ca110bb4dfec0f67f81367ca25a780a11c87790515d130c843c45456a270e"
+            }
+          ]
+        },
+        "style": "chronology"
+      }
+    },
+    {
+      "id": "fixture-ekonomi-keranjang-pangan",
+      "category": "ekonomi",
+      "synthetic": true,
+      "source": {
+        "id": "fixture-ekonomi-keranjang-pangan-source",
+        "publisher": "Jurnal Rantau Contoh",
+        "url": "https://example.org/gapura/r1/ekonomi-keranjang-pangan",
+        "discovery_provider": "fixture_rss",
+        "published_at": "2031-04-10T06:45:00.000Z"
+      },
+      "raw_title": "[Google News: X query fallback] Keranjang Pangan Rantau Nirmala mencatat kenaikan pada Maret - Jurnal Rantau Contoh",
+      "headline": "Keranjang Pangan Rantau Nirmala naik 3,8 persen pada Maret",
+      "material": {
+        "version": 1,
+        "paragraphs": [
+          {
+            "id": "p1",
+            "text": "Pada 10 April 2031, Badan Angka Rantau menerbitkan Catatan Keranjang Pangan Rantau Nirmala untuk periode Maret. Nilai rata-rata keranjang tercatat 312.400 rupiah, naik dari 301.000 rupiah pada Februari atau 3,8 persen. Catatan itu menggambarkan perubahan harga enam kebutuhan yang dipantau dan bukan seluruh pengeluaran rumah tangga.",
+            "source_url": "https://example.org/gapura/r1/ekonomi-keranjang-pangan",
+            "role": "reporting"
+          },
+          {
+            "id": "p2",
+            "text": "Dokumen memasukkan beras ungu, tepung rawa, minyak biji, telur padang, kacang kering, dan sabun rumah ke dalam satu keranjang dengan jumlah tetap. Perbandingan Februari dan Maret memakai jenis serta ukuran yang sama. Badan Angka Rantau menyertakan tabel per komoditas agar pembaca dapat melihat bahwa kenaikan rata-rata tidak berarti semua barang bergerak dengan besaran yang sama.",
+            "source_url": "https://example.org/gapura/r1/ekonomi-keranjang-pangan",
+            "role": "document"
+          },
+          {
+            "id": "p3",
+            "text": "Kenaikan terbesar dalam catatan berasal dari tepung rawa dan minyak biji setelah pasokan dari Pelabuhan Kaca datang lebih lambat selama tiga pekan. Harga telur padang juga berubah, sedangkan sabun rumah hampir tetap. Catatan menghubungkan waktu pasokan dengan perubahan harga sebagai konteks distribusi, bukan sebagai kesimpulan bahwa satu faktor menjelaskan seluruh pergerakan.",
+            "source_url": "https://example.org/gapura/r1/ekonomi-keranjang-pangan",
+            "role": "reporting"
+          },
+          {
+            "id": "p4",
+            "text": "Peneliti Badan Angka Rantau, Naya Pramesti, berkata, \"Angka keranjang membantu membaca arah biaya, tetapi tidak menggambarkan pengeluaran setiap keluarga.\" Ia menyarankan pembaca memperhatikan ukuran barang, periode perbandingan, dan perbedaan harga antarwilayah ketika menggunakan tabel tersebut.",
+            "source_url": "https://example.org/gapura/r1/ekonomi-keranjang-pangan",
+            "role": "official_statement"
+          },
+          {
+            "id": "p5",
+            "text": "Perubahan keranjang dapat terasa berbeda bagi rumah tangga dan usaha makanan kecil di Rantau Nirmala. Rumah tangga yang lebih sering membeli tepung mungkin menghadapi perubahan lebih besar daripada rumah tangga yang tidak memakainya, sementara warung dapat menyesuaikan pembelian pada waktu yang berbeda. Catatan tidak mengukur pendapatan atau kemampuan belanja setiap kelompok.",
+            "source_url": "https://example.org/gapura/r1/ekonomi-keranjang-pangan",
+            "role": "reporting"
+          },
+          {
+            "id": "p6",
+            "text": "Badan Angka Rantau akan menerbitkan pembaruan periode April pada 30 Mei 2031 dengan komposisi keranjang yang sama, lalu meninjau apakah keterlambatan pasokan masih terlihat pada catatan berikutnya. Tabel per komoditas dan catatan metode akan tetap disertakan agar perubahan dapat dibandingkan dari bulan ke bulan.",
+            "source_url": "https://example.org/gapura/r1/ekonomi-keranjang-pangan",
+            "role": "official_statement"
+          }
+        ]
+      },
+      "draft": {
+        "format": "carousel",
+        "slides": [
+          {
+            "no": 1,
+            "role": "cover",
+            "layout": "cover-focus",
+            "teks": "Keranjang Pangan Rantau Nirmala naik 3,8 persen",
+            "evidence_ids": ["p1"],
+            "data": {"asset_id": "fixture-ekonomi-keranjang-pangan-photo"}
+          },
+          {
+            "no": 2,
+            "role": "lead",
+            "layout": "big-statement",
+            "teks": "Nilai enam kebutuhan naik dari 301.000 menjadi 312.400 rupiah.",
+            "evidence_ids": ["p1", "p2"],
+            "data": {}
+          },
+          {
+            "no": 3,
+            "role": "data",
+            "layout": "big-statement",
+            "teks": "Tepung rawa dan minyak biji mencatat kenaikan terbesar dalam catatan Maret.",
+            "evidence_ids": ["p2", "p3"],
+            "data": {}
+          },
+          {
+            "no": 4,
+            "role": "official_statement",
+            "layout": "big-statement",
+            "teks": "Angka keranjang menunjukkan arah biaya, bukan pengeluaran semua keluarga.",
+            "evidence_ids": ["p4"],
+            "data": {
+              "quote": "Angka keranjang membantu membaca arah biaya, tetapi tidak menggambarkan pengeluaran setiap keluarga.",
+              "author": "Naya Pramesti"
+            }
+          },
+          {
+            "no": 5,
+            "role": "public_impact",
+            "layout": "big-statement",
+            "teks": "Dampaknya berbeda menurut barang yang dibeli dan pola belanja warga.",
+            "evidence_ids": ["p5"],
+            "data": {}
+          },
+          {
+            "no": 6,
+            "role": "close",
+            "layout": "big-statement",
+            "teks": "Catatan April akan dibandingkan dengan komposisi keranjang yang sama.",
+            "evidence_ids": ["p6"],
+            "data": {}
+          }
+        ],
+        "caption": "Badan Angka Rantau menerbitkan Catatan Keranjang Pangan Rantau Nirmala untuk periode Maret pada 10 April 2031. Nilai rata-rata enam kebutuhan dalam keranjang tercatat 312.400 rupiah, naik dari 301.000 rupiah pada Februari atau 3,8 persen. Angka ini membaca perubahan pada barang dan ukuran yang telah ditetapkan, bukan seluruh pengeluaran rumah tangga.\n\nKeranjang berisi beras ungu, tepung rawa, minyak biji, telur padang, kacang kering, dan sabun rumah dengan jumlah tetap. Karena jenis serta ukuran dibuat sama, pembaca dapat membandingkan dua periode. Tabel per komoditas juga penting: kenaikan rata-rata tidak berarti setiap barang bergerak dengan nilai yang sama, dan perubahan satu keluarga belum tentu sama dengan angka keranjang.\n\nDalam catatan Maret, tepung rawa dan minyak biji mengalami perubahan terbesar setelah pasokan dari Pelabuhan Kaca datang lebih lambat selama tiga pekan. Harga telur padang turut berubah, sedangkan sabun rumah hampir tetap. Peneliti Badan Angka Rantau, Naya Pramesti, berkata, \"Angka keranjang membantu membaca arah biaya, tetapi tidak menggambarkan pengeluaran setiap keluarga.\" Ia meminta ukuran, periode, dan perbedaan antarwilayah tetap diperhatikan saat tabel dibaca.\n\nDampak perubahan dapat terasa berbeda. Rumah tangga yang sering membeli tepung mungkin menghadapi perubahan lebih besar daripada rumah tangga yang tidak memakainya. Warung dapat menyesuaikan pembelian pada waktu berbeda, tetapi catatan ini tidak mengukur pendapatan atau kemampuan belanja setiap kelompok. Badan Angka Rantau menjadwalkan pembaruan April pada 30 Mei 2031 dengan komposisi keranjang yang sama. Tabel dan catatan metode akan disertakan agar perubahan bulanan dapat dibandingkan.",
+        "hashtags": ["#GapuraMedia", "#Ekonomi"],
+        "caption_evidence_ids": ["p1", "p2", "p3", "p4", "p5", "p6"],
+        "media": {
+          "cover_asset_id": "fixture-ekonomi-keranjang-pangan-photo",
+          "assets": [
+            {
+              "id": "fixture-ekonomi-keranjang-pangan-photo",
+              "url": "https://media.example.org/fixture-ekonomi-keranjang-pangan.png",
+              "source_url": "https://example.org/gapura/r1/ekonomi-keranjang-pangan",
+              "credit": "Gapura R1 fixture — raster sintetis untuk pengujian",
+              "rights_basis": "owned",
+              "rights_reference": "fixture://gapura/r1/raster",
+              "rights_approved_by": "fixture-author",
+              "rights_approved_at": "2026-11-16T00:00:00.000Z",
+              "status": "downloaded",
+              "mime": "image/png",
+              "width": 360,
+              "height": 450,
+              "local_path": "services/common/test/fixtures/editorial-cover.png.base64",
+              "sha256": "600ca110bb4dfec0f67f81367ca25a780a11c87790515d130c843c45456a270e"
+            }
+          ]
+        },
+        "style": "explainer"
+      }
+    },
+    {
+      "id": "fixture-bursa-layar-karsa",
+      "category": "bursa",
+      "synthetic": true,
+      "source": {
+        "id": "fixture-bursa-layar-karsa-source",
+        "publisher": "Papan Pasar Contoh",
+        "url": "https://example.org/gapura/r1/bursa-layar-karsa",
+        "discovery_provider": "fixture_rss",
+        "published_at": "2031-05-09T10:20:00.000Z"
+      },
+      "raw_title": "[Google News: X query fallback] PT Layar Karsa membuka rencana fasilitas pemrosesan ulang di Bursa Cakrawala - Papan Pasar Contoh",
+      "headline": "PT Layar Karsa membuka rencana fasilitas pemrosesan ulang",
+      "material": {
+        "version": 1,
+        "paragraphs": [
+          {
+            "id": "p1",
+            "text": "Pada 9 Mei 2031, PT Layar Karsa Tbk menyampaikan keterbukaan informasi kepada Bursa Cakrawala tentang rencana bertahap membangun fasilitas pemrosesan ulang di Kawasan Rakit Biru. Dokumen menyebut nilai rencana 18,6 miliar rupiah dan target operasi percobaan pada Januari 2032, dengan keputusan tahap berikutnya menunggu rapat pemegang saham.",
+            "source_url": "https://example.org/gapura/r1/bursa-layar-karsa",
+            "role": "reporting"
+          },
+          {
+            "id": "p2",
+            "text": "Keterbukaan informasi memisahkan biaya pembangunan awal, pembelian peralatan, dan kebutuhan modal kerja. Tahap pertama bernilai 7,2 miliar rupiah dan akan menggunakan kas internal; sisa rencana bergantung pada hasil rapat pemegang saham serta pembaruan jadwal pengadaan. Dokumen juga menyebut fasilitas belum beroperasi dan belum menghasilkan pendapatan.",
+            "source_url": "https://example.org/gapura/r1/bursa-layar-karsa",
+            "role": "document"
+          },
+          {
+            "id": "p3",
+            "text": "Rangkaian peristiwa dimulai pada 28 April 2031 ketika direksi menyetujui studi lokasi. Pada 9 Mei, keterbukaan informasi disampaikan ke Bursa Cakrawala. Rapat pemegang saham dijadwalkan pada 20 Mei untuk membahas tahap berikutnya, sedangkan target operasi percobaan Januari 2032 tetap bergantung pada keputusan dan kesiapan pengadaan.",
+            "source_url": "https://example.org/gapura/r1/bursa-layar-karsa",
+            "role": "reporting"
+          },
+          {
+            "id": "p4",
+            "text": "Sekretaris Perusahaan PT Layar Karsa Tbk, Nara Wijaya, menyatakan, \"Rincian tahap ini disampaikan agar pemegang saham dapat membaca tujuan, jadwal, dan sumber pembiayaan dalam satu dokumen.\" Ia menjelaskan bahwa pembaruan material akan disampaikan jika rapat mengubah nilai, jadwal, atau rancangan fasilitas.",
+            "source_url": "https://example.org/gapura/r1/bursa-layar-karsa",
+            "role": "official_statement"
+          },
+          {
+            "id": "p5",
+            "text": "Informasi ini memberi pemegang saham gambaran tentang rencana penggunaan kas dan tahapan keputusan, sementara fasilitasnya sendiri belum beroperasi. Pekerja di Kawasan Rakit Biru juga belum dapat dihitung sebagai penerima dampak karena jumlah tenaga kerja dan jadwal produksi belum ditetapkan. Dokumen yang tersedia baru menjelaskan rencana, bukan hasil usaha.",
+            "source_url": "https://example.org/gapura/r1/bursa-layar-karsa",
+            "role": "reporting"
+          },
+          {
+            "id": "p6",
+            "text": "Rapat pada 20 Mei 2031 akan membahas tahap kedua, jadwal pengadaan, dan pembaruan penggunaan kas. Setelah keputusan itu, PT Layar Karsa Tbk dijadwalkan menyampaikan ringkasan hasil serta perubahan material melalui Bursa Cakrawala. Target operasi percobaan Januari 2032 hanya dapat dibaca bersama pembaruan tersebut.",
+            "source_url": "https://example.org/gapura/r1/bursa-layar-karsa",
+            "role": "official_statement"
+          }
+        ]
+      },
+      "draft": {
+        "format": "carousel",
+        "slides": [
+          {
+            "no": 1,
+            "role": "cover",
+            "layout": "cover-focus",
+            "teks": "PT Layar Karsa membuka rencana fasilitas baru",
+            "evidence_ids": ["p1"],
+            "data": {"asset_id": "fixture-bursa-layar-karsa-photo"}
+          },
+          {
+            "no": 2,
+            "role": "lead",
+            "layout": "big-statement",
+            "teks": "Rencana 18,6 miliar rupiah menunggu tahap keputusan berikutnya.",
+            "evidence_ids": ["p1", "p2"],
+            "data": {}
+          },
+          {
+            "no": 3,
+            "role": "explanation",
+            "layout": "big-statement",
+            "teks": "Fasilitas belum beroperasi; tahap pertama dipisahkan dari kebutuhan lanjutan.",
+            "evidence_ids": ["p2", "p3"],
+            "data": {}
+          },
+          {
+            "no": 4,
+            "role": "official_statement",
+            "layout": "big-statement",
+            "teks": "Rincian tujuan, jadwal, dan pembiayaan disampaikan dalam satu dokumen.",
+            "evidence_ids": ["p4"],
+            "data": {
+              "quote": "Rincian tahap ini disampaikan agar pemegang saham dapat membaca tujuan, jadwal, dan sumber pembiayaan dalam satu dokumen.",
+              "author": "Nara Wijaya"
+            }
+          },
+          {
+            "no": 5,
+            "role": "public_impact",
+            "layout": "big-statement",
+            "teks": "Informasi yang tersedia menjelaskan rencana, belum hasil usaha atau jumlah tenaga kerja.",
+            "evidence_ids": ["p5"],
+            "data": {}
+          },
+          {
+            "no": 6,
+            "role": "close",
+            "layout": "big-statement",
+            "teks": "Rapat 20 Mei akan membahas tahap kedua dan pembaruan penggunaan kas.",
+            "evidence_ids": ["p6"],
+            "data": {}
+          }
+        ],
+        "caption": "PT Layar Karsa Tbk menyampaikan keterbukaan informasi kepada Bursa Cakrawala pada 9 Mei 2031. Isinya adalah rencana bertahap membangun fasilitas pemrosesan ulang di Kawasan Rakit Biru. Nilai keseluruhan rencana disebut 18,6 miliar rupiah, dengan target operasi percobaan pada Januari 2032. Keputusan tahap berikutnya masih menunggu rapat pemegang saham.\n\nDokumen memisahkan biaya pembangunan awal, pembelian peralatan, dan kebutuhan modal kerja. Tahap pertama bernilai 7,2 miliar rupiah dan direncanakan menggunakan kas internal. Sisa rencana bergantung pada hasil rapat serta pembaruan jadwal pengadaan. Fasilitas belum beroperasi dan belum menghasilkan pendapatan, sehingga informasi yang tersedia masih menjelaskan rencana dan tahapan keputusan.\n\nUrutannya dimulai pada 28 April ketika direksi menyetujui studi lokasi. Keterbukaan disampaikan pada 9 Mei, lalu rapat pemegang saham dijadwalkan 20 Mei untuk membahas tahap berikutnya. Sekretaris Perusahaan PT Layar Karsa Tbk, Nara Wijaya, menyatakan, \"Rincian tahap ini disampaikan agar pemegang saham dapat membaca tujuan, jadwal, dan sumber pembiayaan dalam satu dokumen.\" Jika nilai, jadwal, atau rancangan berubah, perusahaan menyatakan akan menyampaikan pembaruan material.\n\nBagi pemegang saham, dokumen ini memberi gambaran tentang rencana penggunaan kas dan urutan keputusan. Dampak terhadap pekerja di Kawasan Rakit Biru belum dapat dihitung karena jumlah tenaga kerja dan jadwal produksi belum ditetapkan. Rapat 20 Mei 2031 akan membahas tahap kedua, jadwal pengadaan, dan pembaruan kas. Setelah itu, ringkasan hasil serta perubahan material dijadwalkan disampaikan melalui Bursa Cakrawala. Target operasi percobaan Januari 2032 perlu dibaca bersama pembaruan tersebut.",
+        "hashtags": ["#GapuraMedia", "#Bursa"],
+        "caption_evidence_ids": ["p1", "p2", "p3", "p4", "p5", "p6"],
+        "media": {
+          "cover_asset_id": "fixture-bursa-layar-karsa-photo",
+          "assets": [
+            {
+              "id": "fixture-bursa-layar-karsa-photo",
+              "url": "https://media.example.org/fixture-bursa-layar-karsa.png",
+              "source_url": "https://example.org/gapura/r1/bursa-layar-karsa",
+              "credit": "Gapura R1 fixture — raster sintetis untuk pengujian",
+              "rights_basis": "owned",
+              "rights_reference": "fixture://gapura/r1/raster",
+              "rights_approved_by": "fixture-author",
+              "rights_approved_at": "2026-11-16T00:00:00.000Z",
+              "status": "downloaded",
+              "mime": "image/png",
+              "width": 360,
+              "height": 450,
+              "local_path": "services/common/test/fixtures/editorial-cover.png.base64",
+              "sha256": "600ca110bb4dfec0f67f81367ca25a780a11c87790515d130c843c45456a270e"
+            }
+          ]
+        },
+        "style": "statement"
+      }
+    }
+  ]
+}

@@ -1,12 +1,14 @@
 # 📊 Status Fitur, Permasalahan, & Roadmap Pengembangan
-> **Repositori:** `aryarifki/gapura` · **Diperbarui:** 16 November 2026
+> **Repositori:** `aryarifki/gapura` · **Diperbarui:** 17 November 2026
 > **Brand Identity:** `@gapuramedia` · **Portal Live:** [https://gapura.avenia.my.id](https://gapura.avenia.my.id)
 
 **Status terbaru: evaluasi desain/editorial.** Hasil produksi dan antrean lokal
 sudah kosong, intake/publisher otomatis dijeda, dan worker Studio background
 dinonaktifkan. Dashboard, render, n8n manual, sumber/config dan koneksi Instagram
 tetap tersedia. [Blueprint baru](plans/07_EDITORIAL_REDESIGN_BLUEPRINT.md)
-mencakup delapan permintaan owner; hanya reset/jeda yang sudah dieksekusi.
+mencakup delapan permintaan owner. Reset/jeda dan kontrak offline
+[R1](plans/08_R1_EDITORIAL_CONTRACT.md) selesai; pipeline produksi belum memakai
+kontrak baru dan Verifikator runtime belum dihapus.
 [Bukti reset dan backup](EDITORIAL_WORKSPACE_RESET_20261116.md).
 
 ---
@@ -32,7 +34,8 @@ mencakup delapan permintaan owner; hanya reset/jeda yang sudah dieksekusi.
 | **Publisher Instagram / Facebook / Threads** | 🟡 **Dijeda untuk evaluasi** | Instagram Unified `@gapuramedia` terhubung; pemeriksaan quota publikasi berhasil sebelum reset. Publisher tetap shadow dengan timer disabled. Facebook Page dan Threads perlu pemeriksaan/koneksi tersendiri. |
 | **Scheduler native (P2)** | 🟡 **Terpasang, sengaja dijeda** | Intake/publisher `disabled/inactive` selama evaluasi hasil baru. Snapshot P2 aktif di bawah tetap historis; unit runtime dan drop-in web adalah acuan keadaan terbaru. n8n tetap canvas/fallback manual. |
 | **Reset draf/desain** | ✅ **Selesai** | 142 draf, 269 slide, seluruh jadwal/target/job Studio dan 556 berkas hasil dibersihkan setelah backup restore teruji. Sumber/config/token tetap utuh. |
-| **Blueprint pembaruan editorial** | 🟡 **Siap review owner** | Carousel-first, foto nyata, headline/caption bersih, enam desk nasional, sumber lebih kuat, dan penghapusan seluruh Verifikator dijabarkan beserta urutan R0–R8. |
+| **Blueprint pembaruan editorial** | 🟡 **Implementasi bertahap** | Carousel-first, foto nyata, headline/caption bersih, enam desk nasional, sumber lebih kuat, dan penghapusan seluruh Verifikator mengikuti R0–R8. R1 sudah dimulai atas mandat owner; acceptance visual tetap R7. |
+| **R1 — Kontrak editorial** | ✅ **Offline tersedia** | Enam desk, normalizer headline, referensi materi unik, kontrak media/rights, carousel 3–9, caption/tag assembler; enam fixture sintetis berisi 36 paragraf/36 slide dan raster lokal. Belum dipasang ke produksi. [Kontrak R1](plans/08_R1_EDITORIAL_CONTRACT.md). |
 | **Telegram Approval Bot** | ⏳ **Belum Dikonfigurasi** | Engine dan kode notifikasi Telegram telah siap, namun menunggu input token Bot Telegram (`TELEGRAM_BOT_TOKEN`) dan Chat ID admin dari owner agar bot dapat aktif di polling. |
 | **Kalender Konten Interaktif** | ⏳ **Belum Dikerjakan** | Jadwal tersimpan di PostgreSQL; kalender visual dengan drag-and-drop belum tersedia. |
 | **Multi-User Role** | ⏳ **Belum Dikerjakan** | Dashboard dibuka langsung tanpa login/token admin atas permintaan owner. Validasi Origin dan redaksi API key tetap aktif; akun pengguna dan pembagian role belum tersedia. |
