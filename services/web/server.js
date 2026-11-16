@@ -13,7 +13,7 @@ import pkg from 'pg';
 const { Pool } = pkg;
 import yaml from 'js-yaml';
 import { exec } from 'child_process';
-import { createWriteGuard, isAdminTokenConfigured, mergeAgentConfig, presentedAdminToken, redactAgentConfig, setAdminCookie, verifyAdminToken } from './access.js';
+import { createOriginGuard, mergeAgentConfig, redactAgentConfig } from './access.js';
 import { isValidSignedStorageRequest } from '../common/storage-signature.js';
 import { renderPayload } from '../common/images.js';
 import { validatePublicSourceUrl, parsePublicSourceUrl } from '../common/sources.js';
@@ -47,7 +47,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 const app = express();
 app.use(express.json());
 const accessGuardOptions = { publicOrigin: process.env.GAPURA_PUBLIC_ORIGIN || '' };
-app.use('/api', createWriteGuard(process.env.GAPURA_ADMIN_TOKEN || '', accessGuardOptions));
+app.use('/api', createOriginGuard(accessGuardOptions));
 app.use('/api', (req, res, next) => {
   if (Object.values(req.query).some((value) => typeof value !== 'string')) return res.status(400).json({ error: 'Parameter query harus berupa teks tunggal.' });
   return next();
@@ -59,12 +59,6 @@ app.param('id', (_req, res, next, value) => {
 app.param('agent', (_req, res, next, value) => {
   if (!AGENT_KEYS.includes(value)) return res.status(400).json({ error: 'Nama agen tidak valid.' });
   return next();
-});
-const storageAccessGuard = createWriteGuard(process.env.GAPURA_ADMIN_TOKEN || '', accessGuardOptions);
-app.use('/storage', (req, res, next) => {
-  const requestPath = String(req.originalUrl || '').split('?')[0];
-  if (isValidSignedStorageRequest(requestPath, req.query.expires, req.query.signature, process.env.GAPURA_ADMIN_TOKEN || '')) return next();
-  return storageAccessGuard(req, res, next);
 });
 
 const PORT = parseInt(process.env.PORT || '3005', 10);
@@ -111,6 +105,7 @@ app.use((req, res, next) => {
 
 // Serve static assets with explicit no-cache
 app.use('/storage', (req, res, next) => {
+  if (!/^\/drafts\/[1-9]\d*\/slide_[1-9]\d*\.(png|jpg)$/.test(req.path)) return res.status(404).end();
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.set('Pragma', 'no-cache');
   res.set('Expires', '0');
@@ -138,19 +133,6 @@ if (process.env.NODE_ENV === 'test') {
     setImmediate(() => server.close(() => process.exit(0)));
   });
 }
-
-app.get('/api/access/status', (_req, res) => {
-  res.json({ admin_token_configured: isAdminTokenConfigured(process.env.GAPURA_ADMIN_TOKEN || '') });
-});
-
-app.post('/api/access/verify', (req, res) => {
-  const token = presentedAdminToken(req);
-  if (!verifyAdminToken(token, process.env.GAPURA_ADMIN_TOKEN || '')) {
-    return res.status(isAdminTokenConfigured(process.env.GAPURA_ADMIN_TOKEN || '') ? 401 : 503).json({ error: 'Token admin tidak valid atau belum dikonfigurasi.' });
-  }
-  setAdminCookie(res, token, process.env.NODE_ENV === 'production');
-  return res.json({ status: 'success' });
-});
 
 app.get('/media/drafts/:draftId/slide_:slideNo.png', async (req, res) => {
   const draftId = Number.parseInt(req.params.draftId, 10);

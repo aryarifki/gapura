@@ -18,15 +18,11 @@ let editorLivePreviewDebounceTimer = null;
 let designStudioDebounceTimer = null;
 let designStudioInitialized = false;
 let appNavigation = null;
-let adminAccessReady = false;
 let createNavigationController = null;
-
-const nativeFetch = window.fetch.bind(window);
 
 // Logging terpusat: setiap klik tombol dan error frontend dikirim ke audit_log.
 // Logging bersifat best-effort agar kegagalan logger tidak memblokir UI.
 function reportClientLog(level, action, error = null, meta = {}) {
-  if (!adminAccessReady) return Promise.resolve();
   const payload = {
     level,
     action,
@@ -180,68 +176,12 @@ document.addEventListener('DOMContentLoaded', () => {
   Promise.all([import('./navigation.js'), import('./icon-map.js')])
     .then(([navigation]) => {
       createNavigationController = navigation.createNavigationController;
-      bootstrapAdminAccess();
+      initializeApp();
     })
-    .catch((error) => showAccessGate(`Dashboard gagal memuat aset UI: ${error.message}`));
+    .catch((error) => showToast(`Dashboard gagal memuat aset UI: ${error.message}`));
 });
 
-async function bootstrapAdminAccess() {
-  try {
-    const response = await nativeFetch('/api/access/status');
-    const status = await response.json();
-    if (!status.admin_token_configured) {
-      showAccessGate('Akses admin belum dikonfigurasi di environment service.');
-      return;
-    }
-    const verify = await nativeFetch('/api/access/verify', { method: 'POST' });
-    if (verify.ok) return initializeAdminApp();
-    showAccessGate();
-  } catch (error) {
-    showAccessGate(`Tidak dapat memeriksa akses admin: ${error.message}`);
-  }
-}
-
-function showAccessGate(message = '') {
-  const gate = document.getElementById('admin-access-gate');
-  const app = document.querySelector('.app-container');
-  if (gate) gate.hidden = false;
-  if (app) app.inert = true;
-  const status = document.getElementById('admin-access-message');
-  if (status) status.textContent = message;
-  const form = document.getElementById('admin-access-form');
-  if (form) form.onsubmit = async (event) => {
-    event.preventDefault();
-    const input = document.getElementById('admin-access-token');
-    const submit = form.querySelector('button[type="submit"]');
-    if (!input?.value) return;
-    if (submit) submit.disabled = true;
-    try {
-      const response = await nativeFetch('/api/access/verify', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${input.value}` },
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error || 'Token admin tidak valid.');
-      input.value = '';
-      initializeAdminApp();
-    } catch (error) {
-      if (status) status.textContent = error.message;
-    } finally {
-      if (submit) submit.disabled = false;
-    }
-  };
-}
-
-function initializeAdminApp() {
-  if (adminAccessReady) return;
-  adminAccessReady = true;
-  window.adminAccessReadyFlag = true;
-  const gate = document.getElementById('admin-access-gate');
-  const app = document.querySelector('.app-container');
-  if (gate) gate.hidden = true;
-  if (app) app.inert = false;
-  const mobileBar = document.querySelector('.mobile-top-bar');
-  if (mobileBar) mobileBar.hidden = false;
+function initializeApp() {
   appNavigation = createNavigationController({
     window,
     onNavigate: renderRoute,

@@ -9,7 +9,7 @@ const PUBLIC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../pu
 const ROOT = path.resolve(PUBLIC, '../../..');
 const enabled = Boolean(process.env.PLAYWRIGHT_PATH);
 
-test('Chromium: newsroom navigation, fresh draft review, Radar actions, and edited agent settings', { skip: !enabled, timeout: 60000 }, async (t) => {
+test('Chromium: newsroom opens without login, navigation, fresh draft review, Radar actions, and edited agent settings', { skip: !enabled, timeout: 60000 }, async (t) => {
   const { chromium } = await import(pathToFileURL(process.env.PLAYWRIGHT_PATH).href);
   const server = http.createServer(async (req, res) => {
     try {
@@ -26,6 +26,7 @@ test('Chromium: newsroom navigation, fresh draft review, Radar actions, and edit
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium', headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
   t.after(async () => { await browser.close(); server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); });
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  await page.route('**/*', (route) => new URL(route.request().url()).origin === base ? route.continue() : route.abort());
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   const config = JSON.parse(await fs.readFile(path.join(ROOT, 'config/agents.json'), 'utf8'));
@@ -35,20 +36,18 @@ test('Chromium: newsroom navigation, fresh draft review, Radar actions, and edit
   const draft = { id: '21', topic_id: '42', topic_title: topic.title, caption: topic.summary, hashtags: ['#GapuraMedia'], primary_source: 'BPS', source_url: topic.url, status: 'draft', score_total: 88, created_at: stamp, rendered_slides: [{ slide_no: 1, layout: 'cover-focus', text: topic.title, data: { title: topic.title }, image_url: '/assets/logo.png' }] };
   let detailDraft = { ...draft, caption: 'Fresh detail caption for review', revision: 'fixture-reviewed-revision' };
   const requests = [];
-  let authenticated = false;
+  const credentialedRequests = [];
   await page.route('**/api/**', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     const body = request.postData() ? JSON.parse(request.postData()) : {};
     requests.push({ path: url.pathname, query: url.search, body, method: request.method() });
+    const requestHeaders = await request.allHeaders();
+    if (requestHeaders.authorization || requestHeaders.cookie) credentialedRequests.push(url.pathname);
     let data = [];
     let status = 200;
     const headers = { 'Content-Type': 'application/json' };
     switch (url.pathname) {
-      case '/api/access/status': data = { admin_token_configured: true }; break;
-      case '/api/access/verify':
-        authenticated ||= request.headers().authorization === 'Bearer fixture-admin-token';
-        status = authenticated ? 200 : 401; data = { status: authenticated ? 'success' : 'invalid' }; break;
       case '/api/stats': data = { raw_items: 2, scores: { passed: 1 }, drafts: { draft: 1 }, services: { database: true, render: true, n8n: true } }; break;
       case '/api/drafts': data = [draft]; break;
       case '/api/drafts/21': data = detailDraft; break;
@@ -81,10 +80,10 @@ test('Chromium: newsroom navigation, fresh draft review, Radar actions, and edit
     await route.fulfill({ status, headers, body: status === 204 ? '' : JSON.stringify(data) });
   });
   await page.goto(base);
-  await page.locator('#admin-access-gate:not([hidden])').waitFor();
-  await page.locator('#admin-access-token').fill('fixture-admin-token');
-  await page.locator('#admin-access-form button').click();
-  await page.waitForFunction(() => document.querySelector('.app-container').inert === false);
+  assert.equal(await page.locator('#admin-access-gate, #admin-access-form, #admin-access-token, .access-gate, .access-panel').count(), 0, 'The newsroom must not contain admin login markup');
+  assert.equal(await page.locator('.app-container').evaluate((app) => app.inert), false, 'The newsroom must be interactive immediately');
+  await page.waitForFunction(() => document.querySelector('#ov-raw-val').textContent === '2');
+  assert.deepEqual(requests.filter((entry) => entry.path.startsWith('/api/access/')), [], 'Startup must not request admin access endpoints');
   await page.locator('[data-view="view-topics"]').click();
   await page.locator('[data-verify-topic="42"]').waitFor();
   await page.locator('[data-verify-topic="42"]').click();
@@ -157,7 +156,15 @@ test('Chromium: newsroom navigation, fresh draft review, Radar actions, and edit
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('#btn-toggle-sidebar').click();
   await page.locator('[data-view="view-topics"]').click();
+  await page.waitForURL('**/#view-topics');
+  await page.locator('#view-topics').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('#app-sidebar').evaluate((sidebar) => sidebar.classList.contains('mobile-open')), false);
   await page.screenshot({ path: '/tmp/opencode/gapura-evidence/radar-mobile.png', fullPage: true });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'mobile page must not overflow horizontally');
+  assert.equal(await page.locator('.app-container').evaluate((app) => app.inert), false);
+  assert.deepEqual(requests.filter((entry) => entry.path.startsWith('/api/access/')), [], 'Navigation and reload must not request admin access endpoints');
+  assert.deepEqual(credentialedRequests, [], 'API requests must work without tokens or cookies');
+  assert.deepEqual(await page.context().cookies(), [], 'The newsroom must not bootstrap an admin cookie');
+  assert.ok(requests.some((entry) => entry.path === '/api/client-log' && entry.body.action === 'ui.click'), 'Best-effort click logging must remain active');
   assert.deepEqual(errors, []);
 });

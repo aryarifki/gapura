@@ -124,35 +124,6 @@ a {
 
 .nav-item-left > span:first-child { display: inline-flex; align-items: center; }
 
-.access-gate {
-  position: fixed;
-  inset: 0;
-  z-index: 10000;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background: #0B100E;
-}
-.access-gate[hidden] { display: none; }
-
-.access-panel {
-  display: flex;
-  width: min(100%, 390px);
-  flex-direction: column;
-  gap: 12px;
-  padding: 28px;
-  border: 1px solid var(--border-light);
-  background: var(--card-bg);
-}
-
-.access-panel img { object-fit: contain; }
-.access-panel h1 { font: 700 24px/1.2 Inter, sans-serif; }
-.access-panel p { color: var(--muted); }
-.access-panel .access-kicker { color: var(--lime); font: 600 11px/1.4 Inter, sans-serif; }
-.access-panel label { margin-top: 8px; font-size: 12px; font-weight: 600; }
-.access-panel input { width: 100%; padding: 11px 12px; border: 1px solid var(--border-light); background: var(--bg); color: var(--ink); }
-#admin-access-message { min-height: 18px; color: var(--amber); font-size: 12px; }
-
 .topic-controls {
   display: grid;
   grid-template-columns: auto minmax(220px, 1fr) minmax(140px, 190px);
@@ -182,7 +153,6 @@ a {
 @media (max-width: 640px) {
   .topic-controls { grid-template-columns: 1fr 140px; }
   .topic-search-label { grid-column: 1 / -1; }
-  .access-panel { padding: 22px; }
 }
 
 /* Sidebar (Desktop) */

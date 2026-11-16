@@ -7,7 +7,7 @@ import pkg from 'pg';
 const enabled = Boolean(process.env.GAPURA_TEST_BASE);
 const pool = enabled ? new pkg.Pool({ host: process.env.HME_DB_HOST, port: process.env.HME_DB_PORT, user: process.env.HME_DB_USER, password: process.env.HME_DB_PASSWORD, database: process.env.HME_DB_NAME }) : null;
 const base = process.env.GAPURA_TEST_BASE;
-const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.GAPURA_ADMIN_TOKEN}` };
+const headers = { 'Content-Type': 'application/json' };
 const post = (url, body) => fetch(`${base}${url}`, { method: 'POST', headers, body: JSON.stringify(body) });
 const detail = async (id) => {
   const response = await fetch(`${base}/api/drafts/${id}`, { headers });
@@ -62,6 +62,13 @@ test('database integration: edited drafts cancel stale schedules and cannot be a
   assert.equal(bytes.readUInt32LE(0), 0x04034b50);
   assert.ok(bytes.includes(Buffer.from('caption.txt')));
   assert.ok(bytes.includes(Buffer.from('slide_1.png')));
+  const preview = await fetch(`${base}/storage/drafts/${draft.id}/slide_1.png`);
+  assert.equal(preview.status, 200);
+  assert.match(preview.headers.get('content-type'), /image\/png/);
+  const { mkdir, writeFile } = await import('node:fs/promises');
+  await mkdir(`${process.env.GAPURA_TEST_STORAGE}/n8n`, { recursive: true });
+  await writeFile(`${process.env.GAPURA_TEST_STORAGE}/n8n/private-fixture.txt`, 'Internal storage must not be served');
+  assert.equal((await fetch(`${base}/storage/n8n/private-fixture.txt`)).status, 404);
 });
 
 test('database integration: stale browser approval after editing is rejected and fresh review succeeds', { skip: !enabled }, async (t) => {

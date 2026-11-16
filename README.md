@@ -123,6 +123,11 @@ Panduan lengkap langkah demi langkah tersedia di:
 7. Sesuaikan teks jika diperlukan, lalu klik **`🔄 Simpan & Render Ulang Slide`**.
 8. Salin caption melalui tombol **`📋 Salin Caption & Hashtags`** atau unduh seluruh gambar melalui **`📥 Download Semua Slide (ZIP)`**.
 
+Dashboard langsung terbuka tanpa login atau token admin. API dashboard juga
+tersedia tanpa autentikasi. Validasi Origin, redaksi API key, dan gate review
+sebelum publikasi tetap berlaku. Secret server untuk signature media dan akses
+layanan internal bukan kredensial login dashboard.
+
 ---
 
 ## 🛠️ Stack Teknologi

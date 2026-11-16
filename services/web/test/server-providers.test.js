@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 
 const BASE = process.env.GAPURA_TEST_BASE || `http://127.0.0.1:${process.env.PORT}`;
 const ORIGIN = new URL(BASE).origin;
-const TOKEN = process.env.GAPURA_ADMIN_TOKEN;
-const headers = { Cookie: `gapura_admin=${TOKEN}`, Origin: ORIGIN, 'Content-Type': 'application/json' };
+const headers = { Origin: ORIGIN, 'Content-Type': 'application/json' };
 
-test('provider catalog requires admin authentication', async () => {
+test('provider catalog is available without login and never returns provider keys', async () => {
   const anonymous = await fetch(`${BASE}/api/providers`);
-  assert.equal(anonymous.status, 401);
+  assert.equal(anonymous.status, 200);
+  assert.equal(JSON.stringify(await anonymous.json()).includes('fixture-key'), false);
 });
 
 test('provider catalog exposes presets, key status, and routing without leaking keys', async () => {

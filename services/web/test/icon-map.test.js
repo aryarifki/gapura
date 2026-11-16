@@ -21,6 +21,13 @@ test('does not treat unknown glyphs as a Lucide icon', () => {
   assert.equal(iconNameForGlyph(''), null);
 });
 
+test('newsroom markup opens directly without admin login or an inert app', () => {
+  assert.doesNotMatch(html, /admin-access-|access-gate|access-panel|Akses Admin|Token admin/);
+  const app = html.match(/<div\b[^>]*class="app-container"[^>]*>/)?.[0];
+  assert.ok(app);
+  assert.doesNotMatch(app, /\binert\b/, 'The newsroom must be interactive before JavaScript initializes');
+});
+
 test('static dashboard markup has no decorative emoji or arrow glyphs', () => {
   const glyphs = decodeNumericEntities(html).match(/[\p{Extended_Pictographic}☰◀▶●✕←↗→•❮❯\uFE0F]/gu) || [];
   assert.deepEqual([...new Set(glyphs)], [], 'Use explicit Lucide SVGs instead of static decorative glyphs');

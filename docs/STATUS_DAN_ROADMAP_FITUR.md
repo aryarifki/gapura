@@ -26,7 +26,7 @@
 | **Scheduler native (P2)** | ✅ **Selesai & Aktif** | Unit systemd terpasang dan status runtime menjadi sumber kebenaran operasional. Intake kalender 15 menit dan publisher monotonic 10 menit terverifikasi `enabled`, `active (waiting)` pada 16 November 2026; template `deploy/` cocok dengan keempat unit terpasang. n8n tetap canvas/fallback manual. |
 | **Telegram Approval Bot** | ⏳ **Belum Dikonfigurasi** | Engine dan kode notifikasi Telegram telah siap, namun menunggu input token Bot Telegram (`TELEGRAM_BOT_TOKEN`) dan Chat ID admin dari owner agar bot dapat aktif di polling. |
 | **Kalender Konten Interaktif** | ⏳ **Belum Dikerjakan** | Jadwal tersimpan di PostgreSQL; kalender visual dengan drag-and-drop belum tersedia. |
-| **Multi-User Role** | ⏳ **Belum Dikerjakan** | Akses single-admin sudah dilindungi token, cookie HttpOnly, serta validasi Origin. Akun pengguna dan pembagian role belum tersedia. |
+| **Multi-User Role** | ⏳ **Belum Dikerjakan** | Dashboard dibuka langsung tanpa login/token admin atas permintaan owner. Validasi Origin dan redaksi API key tetap aktif; akun pengguna dan pembagian role belum tersedia. |
 | **Visual Charting Saham Lanjutan** | ⏳ **Belum Dikerjakan** | Grafik bar chart dan bar comparison sudah aktif di Satori, namun grafik teknikal candlestick bursa interaktif belum diintegrasikan. |
 
 ---
@@ -162,7 +162,7 @@ Konfigurasi operasional dan unit systemd tersedia di [README](../README.md) dan 
 
 ### 4. Sistem Autentikasi Pengguna & Hak Akses (Multi-Role Auth)
 - **Kondisi Saat Ini:**
-  Dashboard meminta token admin dan menggunakan cookie HttpOnly serta validasi Origin untuk perubahan data. Multi-user dan pembagian role belum tersedia.
+  Dashboard dibuka langsung tanpa halaman login, token admin, atau cookie sesi. API dashboard dapat diakses tanpa autentikasi; validasi Origin tetap aktif dan key provider tetap disembunyikan dari respons. Multi-user dan pembagian role belum tersedia.
 - **Kebutuhan untuk Penyelesaian:**
   1. Penambahan tabel `users` dan skema password hashing (bcrypt/argon2).
   2. Implementasi login berbasis sesi/JWT atau integrasi Google SSO (`sign-in-with-google`).
