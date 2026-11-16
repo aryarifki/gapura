@@ -9,6 +9,7 @@ import path from 'path';
 import yaml from 'js-yaml';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
+import { runtimeSecret } from '../common/runtime-secret.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,7 +18,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const TOKENS_PATH = path.resolve(__dirname, '../../design-system/tokens.yaml');
 const RENDER_SERVICE_URL = 'http://127.0.0.1:3000';
-const RENDER_SECRET = process.env.RENDER_SECRET || 'dev_render_secret_hme';
+const RENDER_SECRET = runtimeSecret('RENDER_SECRET', { testValue: 'isolated-render-test' });
 
 /**
  * AI Design Director: Menerima arahan admin dan mengusulkan variasi tokens.yaml
@@ -50,10 +51,10 @@ ${currentYaml}
 Berikan HANYA berkas tokens.yaml baru yang valid sesuai arahan di atas tanpa penjelasan lain.`;
 
       const resp = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite'}:generateContent`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
           }),
