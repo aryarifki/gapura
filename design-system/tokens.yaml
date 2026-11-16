@@ -8,6 +8,9 @@ canvas:
   aspect_ratio: '4:5'
 palette:
   bg: '#f7f5f0'
+  cover_bg: '#12241b'
+  cover_ink: '#f3f4e9'
+  cover_accent: '#a6ce69'
   card_bg: '#ffffff'
   ink: '#102b45'
   ink_secondary: '#1f7e81'

@@ -9,6 +9,58 @@ import path from 'path';
 import yaml from 'js-yaml';
 import satori from 'satori';
 import sharp from 'sharp';
+import { validateDraftId, validateSlides, validatePreview } from './validation.js';
+
+// ponytail: this queue coordinates one process; multiple workers still need the
+// database draft lock held by the web boundary.
+const draftRenders = new Map();
+
+const JPEG_OPTIONS = Object.freeze({ quality: 92, chromaSubsampling: '4:4:4', mozjpeg: true });
+
+/**
+ * Writes slide_<n>.jpg beside every slide_<n>.png inside one draft directory.
+ * Instagram and Threads accept JPEG only. Existing derivatives are never
+ * rewritten, and a corrupt PNG never blocks the rest of the batch.
+ */
+export async function deriveJpegsInDir(dirPath) {
+  let files;
+  try {
+    files = await fs.promises.readdir(dirPath);
+  } catch {
+    return 0;
+  }
+  let created = 0;
+  for (const file of files) {
+    const match = /^slide_(\d+)\.png$/.exec(file);
+    if (!match) continue;
+    const jpegName = `slide_${match[1]}.jpg`;
+    if (files.includes(jpegName)) continue;
+    try {
+      const buffer = await fs.promises.readFile(path.join(dirPath, file));
+      await sharp(buffer).jpeg(JPEG_OPTIONS).toFile(path.join(dirPath, jpegName));
+      created += 1;
+    } catch {
+      // A corrupt or partially written PNG must not stop the backfill.
+    }
+  }
+  return created;
+}
+
+/** Backfills JPEG derivatives for every draft that predates them. */
+export async function ensureJpegDerivatives(draftsRoot) {
+  let entries;
+  try {
+    entries = await fs.promises.readdir(draftsRoot, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  let created = 0;
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+    created += await deriveJpegsInDir(path.join(draftsRoot, entry.name));
+  }
+  return created;
+}
 
 // ------------------------------------------------------------------------------
 // Auto-fit typography helpers.
@@ -161,9 +213,9 @@ export class RenderEngine {
     const shell = {
       width: '1080px',
       height: '1350px',
-      backgroundColor: palette.bg || '#F8F6F0',
+      backgroundColor: variant === 'cover' ? (palette.cover_bg || palette.ink || '#12241B') : (palette.bg || '#F8F6F0'),
       fontFamily: 'Inter',
-      color: palette.ink || '#102B45',
+      color: variant === 'cover' ? (palette.cover_ink || '#F3F4E9') : (palette.ink || '#102B45'),
     };
 
     const wordmark = {
@@ -174,7 +226,7 @@ export class RenderEngine {
           {
             type: 'div',
             props: {
-              style: { fontFamily: 'Archivo Black', fontSize: '22px', letterSpacing: '1.5px', color: palette.ink || '#102B45' },
+              style: { fontFamily: 'Archivo Black', fontSize: '22px', letterSpacing: '1.5px', color: variant === 'cover' ? (palette.cover_ink || '#F3F4E9') : (palette.ink || '#102B45') },
               children: 'GAPURA',
             },
           },
@@ -186,7 +238,7 @@ export class RenderEngine {
                 fontWeight: 700,
                 fontSize: '17px',
                 letterSpacing: '4px',
-                color: palette.accent || '#1F7E81',
+                color: variant === 'cover' ? (palette.cover_accent || '#A6CE69') : (palette.accent || '#1F7E81'),
                 paddingTop: '3px',
               },
               children: 'MEDIA',
@@ -345,20 +397,21 @@ export class RenderEngine {
       .replace(/\s+/g, ' ')
       .trim();
     const hasStat = Boolean(statVal);
+    const hasPhoto = Boolean(data.image_data);
 
     const headlineSize = fitFontSize(headline, {
-      max: hasStat ? 48 : 104,
-      min: hasStat ? 34 : 40,
+      max: hasStat ? 64 : hasPhoto ? 74 : 104,
+      min: 32,
       width: CONTENT_WIDTH,
       ratio: CHAR_RATIO.display,
-      maxLines: hasStat ? 4 : 6,
+      maxLines: hasPhoto ? (hasStat ? 4 : 5) : 6,
       step: 2,
     });
     const balancedHeadline = balanceLines(headline, {
       fontSize: headlineSize,
       width: CONTENT_WIDTH,
       ratio: CHAR_RATIO.display,
-      maxLines: hasStat ? 4 : 6,
+      maxLines: hasPhoto ? (hasStat ? 4 : 5) : 6,
     });
     const headlineLines = balancedHeadline ? balancedHeadline.split('\n') : [headline];
 
@@ -366,16 +419,26 @@ export class RenderEngine {
       {
         type: 'div',
         props: {
-          style: { display: 'flex', flexDirection: 'column', gap: hasStat ? '40px' : '34px', width: '100%' },
+          style: { display: 'flex', flexDirection: 'column', gap: hasStat ? '32px' : '28px', width: '100%' },
           children: [
+            data.image_data
+              ? {
+                  type: 'img',
+                  props: {
+                    src: data.image_data,
+                    width: CONTENT_WIDTH,
+                    height: 390,
+                    style: { width: `${CONTENT_WIDTH}px`, height: '390px', objectFit: 'cover', borderRadius: '4px' },
+                  },
+                }
+              : null,
             {
               type: 'div',
               props: {
                 style: {
                   width: '72px',
                   height: '8px',
-                  backgroundColor: palette.highlight || '#D79344',
-                  borderRadius: '4px',
+                  backgroundColor: palette.cover_accent || '#A6CE69',
                 },
               },
             },
@@ -390,7 +453,7 @@ export class RenderEngine {
                       fontSize: `${headlineSize}px`,
                       lineHeight: '1.14',
                       letterSpacing: '-1px',
-                      color: palette.ink || '#102B45',
+                      color: palette.cover_ink || '#F3F4E9',
                     },
                       children: headlineLines.map((line, index) => ({
                         type: 'div',
@@ -409,13 +472,13 @@ export class RenderEngine {
                     style: { display: 'flex', alignItems: 'flex-end', gap: '18px', marginTop: '4px' },
                     children: [
                       {
-                        type: 'div',
+                            type: 'div',
                         props: {
                           style: {
                             fontFamily: 'Archivo Black',
                             fontSize: statVal.length > 12 ? '62px' : '82px',
                             lineHeight: '1',
-                            color: palette.accent || '#1F7E81',
+                            color: palette.cover_accent || '#A6CE69',
                           },
                           children: statVal,
                         },
@@ -428,7 +491,7 @@ export class RenderEngine {
                                 fontSize: '19px',
                                 fontWeight: 700,
                                 letterSpacing: '0.8px',
-                                color: palette.muted || '#5A6B7C',
+                                color: palette.cover_ink || '#F3F4E9',
                                 paddingBottom: '10px',
                                 maxWidth: '380px',
                                 lineHeight: '1.3',
@@ -901,18 +964,18 @@ export class RenderEngine {
                       gap: '12px',
                     },
                     children: [
-                      {
+                      slide.data?.quote ? {
                         type: 'div',
                         props: {
                           style: {
                             fontFamily: 'Archivo Black',
                             fontSize: '48px',
-                            color: palette.highlight || '#D79344',
+                            color: palette.accent || '#1F7E81',
                             lineHeight: '1',
                           },
                           children: '“',
                         },
-                      },
+                      } : null,
                       {
                         type: 'div',
                         props: {
@@ -927,10 +990,10 @@ export class RenderEngine {
                             letterSpacing: '0.8px',
                             textTransform: 'uppercase',
                           },
-                          children: 'PERNYATAAN RESMI',
+                          children: slide.data?.quote ? 'KUTIPAN SUMBER' : (slide.data?.title || 'KONTEKS'),
                         },
                       },
-                    ],
+                    ].filter(Boolean),
                   },
                 },
                 {
@@ -943,10 +1006,10 @@ export class RenderEngine {
                       fontWeight: 700,
                       color: palette.ink || '#102B45',
                     },
-                    children: `“${slide.teks}”`,
+                    children: slide.data?.quote ? `“${slide.data.quote}”` : slide.teks,
                   },
                 },
-                slide.data?.author
+                slide.data?.quote && slide.data?.author
                   ? {
                       type: 'div',
                       props: {
@@ -1750,7 +1813,7 @@ export class RenderEngine {
                           style: {
                             fontSize: px(18),
                             fontWeight: 700,
-                            color: palette.accent || '#1F7E81',
+                            color: palette.cover_accent || palette.accent || '#A6CE69',
                             textTransform: 'uppercase',
                             letterSpacing: '0.8px',
                           },
@@ -2174,56 +2237,91 @@ export class RenderEngine {
 
   // Render Single Slide to PNG Buffer (supports overrideTokens for live realtime preview)
   async renderSlideToBuffer(slide, slideIndex, totalSlides, overrideTokens = null) {
-    const originalTokens = this.tokens;
-    if (overrideTokens && typeof overrideTokens === 'object') {
-      this.tokens = {
+    validatePreview(slide, slideIndex, totalSlides, overrideTokens);
+    // Layout methods read this.tokens synchronously. A private context keeps a
+    // preview's overrides out of other renders and token reloads across awaits.
+    const context = Object.create(this);
+    context.tokens = overrideTokens
+      ? {
         ...this.tokens,
         ...overrideTokens,
         brand: { ...(this.tokens.brand || {}), ...(overrideTokens.brand || {}) },
         palette: { ...(this.tokens.palette || {}), ...(overrideTokens.palette || {}) },
         typography: { ...(this.tokens.typography || {}), ...(overrideTokens.typography || {}) },
-      };
-    }
-    try {
-      const vdom = this.resolveLayout(slide, slideIndex, totalSlides);
-      const svg = await satori(vdom, {
-        width: 1080,
-        height: 1350,
-        fonts: this.fonts,
-      });
-      return await sharp(Buffer.from(svg)).png({ quality: 95 }).toBuffer();
-    } finally {
-      if (overrideTokens) {
-        this.tokens = originalTokens;
       }
-    }
+      : this.tokens;
+    const vdom = context.resolveLayout(slide, slideIndex, totalSlides);
+    const svg = await satori(vdom, {
+      width: 1080,
+      height: 1350,
+      fonts: this.fonts,
+    });
+    return sharp(Buffer.from(svg)).png({ quality: 95 }).toBuffer();
   }
 
   // Batch Render Carousel to Disk
   async renderCarouselToDisk(draftId, slides, outputDir) {
-    const dir = path.join(outputDir, String(draftId));
-    fs.mkdirSync(dir, { recursive: true });
+    const id = validateDraftId(draftId);
+    validateSlides(slides);
+    const root = path.resolve(outputDir);
+    const dir = path.join(root, id);
+    const previous = draftRenders.get(dir) || Promise.resolve();
+    let release;
+    const turn = new Promise((resolve) => { release = resolve; });
+    draftRenders.set(dir, turn);
+    await previous;
 
-    const totalSlides = slides.length;
-    const results = [];
-
-    for (let i = 0; i < totalSlides; i++) {
-      const slide = slides[i];
-      const slideNo = slide.no || i + 1;
-      const startTime = Date.now();
-      const pngBuffer = await this.renderSlideToBuffer(slide, slideNo, totalSlides);
-      const filePath = path.join(dir, `slide_${slideNo}.png`);
-      fs.writeFileSync(filePath, pngBuffer);
-      const renderTimeMs = Date.now() - startTime;
-
-      results.push({
-        slide_no: slideNo,
-        layout: slide.layout || 'cover-stat',
-        file_path: filePath,
-        render_time_ms: renderTimeMs,
-      });
+    let staging;
+    let backup;
+    let savedPrevious = false;
+    try {
+      fs.mkdirSync(root, { recursive: true });
+      staging = fs.mkdtempSync(path.join(root, `.${id}.render-`));
+      backup = `${staging}.previous`;
+      const results = [];
+      for (let i = 0; i < slides.length; i++) {
+        const entry = slides[i];
+        const slideNo = i + 1;
+        const startTime = Date.now();
+        const pngBuffer = await this.renderSlideToBuffer(entry, slideNo, slides.length);
+        fs.writeFileSync(path.join(staging, `slide_${slideNo}.png`), pngBuffer);
+        results.push({
+          slide_no: slideNo,
+          layout: entry.layout || 'cover-stat',
+          file_path: path.join(dir, `slide_${slideNo}.png`),
+          render_time_ms: Date.now() - startTime,
+        });
+      }
+      // Synchronous renames keep the publish/rollback window free of other
+      // in-process requests. No final file is touched before every slide exists.
+      if (fs.existsSync(dir)) {
+        fs.renameSync(dir, backup);
+        savedPrevious = true;
+      }
+      try {
+        fs.renameSync(staging, dir);
+      } catch (error) {
+        if (savedPrevious) {
+          fs.renameSync(backup, dir);
+          savedPrevious = false;
+        }
+        throw error;
+      }
+      if (savedPrevious) {
+        fs.rmSync(backup, { recursive: true, force: true });
+        savedPrevious = false;
+      }
+      // JPEG derivatives are generated after promotion from the PNG files, so a
+      // conversion problem can never abort a render that already succeeded.
+      await deriveJpegsInDir(dir);
+      return results;
+    } finally {
+      try {
+        if (staging) fs.rmSync(staging, { recursive: true, force: true });
+      } finally {
+        release();
+        if (draftRenders.get(dir) === turn) draftRenders.delete(dir);
+      }
     }
-
-    return results;
   }
 }

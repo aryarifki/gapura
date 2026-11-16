@@ -14,7 +14,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const DESIGN_SYSTEM_PATH = path.resolve(__dirname, '../../../design-system');
-const OUTPUT_TEST_DIR = path.resolve(__dirname, '../../../storage/test_output');
 
 const sampleSlides = [
   {
@@ -116,22 +115,39 @@ const sampleSlides = [
 async function runTest() {
   console.log('--- Memulai Uji Coba Render Engine HME v2.0 ---');
   const engine = new RenderEngine(DESIGN_SYSTEM_PATH);
+  const outputTestDir = fs.mkdtempSync('/tmp/opencode/render-layouts-');
+  try {
+    const startTotal = Date.now();
+    const results = await engine.renderCarouselToDisk(1, sampleSlides, outputTestDir);
+    const totalTime = Date.now() - startTotal;
 
-  const startTotal = Date.now();
-  const results = await engine.renderCarouselToDisk('test_9_layouts', sampleSlides, OUTPUT_TEST_DIR);
-  const totalTime = Date.now() - startTotal;
+    console.log(`\nBerhasil merender ${results.length} slide dalam ${totalTime} ms (Rata-rata: ${Math.round(totalTime / results.length)} ms/slide):`);
 
-  console.log(`\nBerhasil merender ${results.length} slide dalam ${totalTime} ms (Rata-rata: ${Math.round(totalTime / results.length)} ms/slide):`);
-
-  for (const res of results) {
-    const metadata = await sharp(res.file_path).metadata();
-    console.log(`[PASS] Slide #${res.slide_no} [${res.layout}]: ${metadata.width}x${metadata.height}px (${res.render_time_ms} ms) -> ${path.basename(res.file_path)}`);
-    if (metadata.width !== 1080 || metadata.height !== 1350) {
-      throw new Error(`Dimensi tidak valid pada slide ${res.slide_no}: ${metadata.width}x${metadata.height}`);
+    for (const res of results) {
+      const metadata = await sharp(res.file_path).metadata();
+      console.log(`[PASS] Slide #${res.slide_no} [${res.layout}]: ${metadata.width}x${metadata.height}px (${res.render_time_ms} ms) -> ${path.basename(res.file_path)}`);
+      if (metadata.width !== 1080 || metadata.height !== 1350) {
+        throw new Error(`Dimensi tidak valid pada slide ${res.slide_no}: ${metadata.width}x${metadata.height}`);
+      }
     }
-  }
 
-  console.log('\n--- SEMUA 9 TEMPLATE LAYOUT TERUJI & LULUS VERIFIKASI (1080x1350 4:5 Feed) ---');
+    const photoCover = await engine.renderSlideToBuffer({
+      no: 1,
+      layout: 'cover-focus',
+      teks: 'BPS mencatat inflasi 2,1%',
+      data: {
+        title: 'BPS mencatat inflasi 2,1%',
+        image_data: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/FrcAAAAASUVORK5CYII=',
+      },
+    }, 1, 1);
+    const photoMetadata = await sharp(photoCover).metadata();
+    if (photoMetadata.width !== 1080 || photoMetadata.height !== 1350) throw new Error('Cover with source image has invalid dimensions.');
+    console.log('[PASS] Editorial cover with source image renders at 1080x1350px.');
+
+    console.log('\n--- SEMUA 9 TEMPLATE LAYOUT TERUJI & LULUS VERIFIKASI (1080x1350 4:5 Feed) ---');
+  } finally {
+    fs.rmSync(outputTestDir, { recursive: true, force: true });
+  }
 }
 
 runTest().catch((err) => {

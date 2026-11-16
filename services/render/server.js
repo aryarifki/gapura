@@ -7,7 +7,9 @@ import express from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { RenderEngine } from './engine.js';
+import { RenderEngine, ensureJpegDerivatives } from './engine.js';
+import { validateRenderRequest } from './validation.js';
+import { runtimeSecret } from '../common/runtime-secret.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,7 +22,7 @@ app.use(express.json({ limit: '10mb' }));
 
 const PORT = process.env.RENDER_PORT || 3000;
 const HOST = process.env.RENDER_HOST || '127.0.0.1';
-const RENDER_SECRET = process.env.RENDER_SECRET || 'dev_render_secret_hme';
+const RENDER_SECRET = runtimeSecret('RENDER_SECRET', { testValue: 'isolated-render-test' });
 const STORAGE_PATH = process.env.STORAGE_PATH || path.resolve(__dirname, '../../storage');
 const DESIGN_SYSTEM_PATH = process.env.DESIGN_SYSTEM_PATH || path.resolve(__dirname, '../../design-system');
 
@@ -50,14 +52,10 @@ app.get('/health', (req, res) => {
 
 // 2. Batch Render Full Carousel Draf
 app.post('/render', authenticate, async (req, res) => {
-  const { draft_id, slides } = req.body;
-
-  if (!draft_id || !Array.isArray(slides) || slides.length === 0) {
-    return res.status(400).json({ error: 'Invalid payload: draft_id and non-empty slides array required' });
-  }
-
   const startTime = Date.now();
   try {
+    validateRenderRequest(req.body);
+    const { draft_id, slides } = req.body;
     const draftsOutputDir = path.join(STORAGE_PATH, 'drafts');
     const renderedSlides = await engine.renderCarouselToDisk(draft_id, slides, draftsOutputDir);
     const totalTimeMs = Date.now() - startTime;
@@ -69,31 +67,29 @@ app.post('/render', authenticate, async (req, res) => {
       total_time_ms: totalTimeMs,
     });
   } catch (err) {
-    console.error(`[Render API] Error rendering draft ${draft_id}:`, err);
-    res.status(500).json({ error: err.message });
+    if (err.status === 400) return res.status(400).json({ error: err.message });
+    console.error('[Render API] Error rendering draft:', err);
+    res.status(500).json({ error: 'Rendering failed' });
   }
 });
 
 // 3. Single Slide Preview (Returns PNG image buffer directly, supports override tokens)
 app.post('/render/preview', authenticate, async (req, res) => {
-  const { slide, slide_no, total_slides, tokens } = req.body;
-
-  if (!slide || !slide.teks) {
-    return res.status(400).json({ error: 'Invalid payload: slide object with teks is required' });
-  }
-
   try {
+    validateRenderRequest(req.body, true);
+    const { slide, slide_no, total_slides, tokens } = req.body;
     const pngBuffer = await engine.renderSlideToBuffer(
       slide,
-      slide_no || 1,
-      total_slides || 1,
-      tokens || null
+      slide_no ?? 1,
+      total_slides ?? 1,
+      tokens ?? null
     );
     res.set('Content-Type', 'image/png');
     res.send(pngBuffer);
   } catch (err) {
+    if (err.status === 400) return res.status(400).json({ error: err.message });
     console.error('[Render API] Error rendering preview:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Rendering failed' });
   }
 });
 
@@ -107,6 +103,18 @@ app.post('/tokens/reload', authenticate, (req, res) => {
   }
 });
 
-app.listen(PORT, HOST, () => {
+// JSON parser failures must not expose Express stack traces or request content.
+app.use((err, req, res, next) => {
+  const status = err.status === 413 ? 413 : 400;
+  res.status(status).json({ error: status === 413 ? 'Payload too large' : 'Invalid JSON payload' });
+});
+
+app.listen(PORT, HOST, async () => {
   console.log(`[hme-render-service] Running deterministically on http://${HOST}:${PORT}`);
+  try {
+    const created = await ensureJpegDerivatives(path.join(STORAGE_PATH, 'drafts'));
+    if (created) console.log(`[hme-render-service] Backfilled ${created} JPEG publication derivative(s).`);
+  } catch (error) {
+    console.warn(`[hme-render-service] JPEG backfill skipped: ${error.message}`);
+  }
 });
