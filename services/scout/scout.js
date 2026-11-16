@@ -6,7 +6,10 @@
 
 import pkg from 'pg';
 const { Pool } = pkg;
-import { XMLParser } from 'fast-xml-parser';
+import { XMLParser, XMLValidator } from 'fast-xml-parser';
+import { cleanText, fetchXAccount, fetchXQuery, normalizeArticleUrl, normalizeFeedItem, safeDate } from './sources.js';
+import { mapLimit } from '../common/concurrency.js';
+import { loadAgentsConfig } from '../common/llm.js';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -31,170 +34,132 @@ const xmlParser = new XMLParser({
   attributeNamePrefix: '@_',
 });
 
-// Normalisasi URL (hapus tracking query params)
-function normalizeUrl(rawUrl) {
-  try {
-    const parsed = new URL(rawUrl.trim());
-    const trackingParams = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'ref', 'fbclid'];
-    trackingParams.forEach((param) => parsed.searchParams.delete(param));
-    return parsed.toString();
-  } catch {
-    return rawUrl.trim();
-  }
-}
-
 // SHA-256 Hash URL
 function hashUrl(url) {
   return crypto.createHash('sha256').update(url).digest('hex');
 }
 
-// Bersihkan teks HTML jika ada di summary
-function stripHtml(html) {
-  if (!html) return '';
-  return String(html)
-    .replace(/<[^>]*>?/gm, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .trim();
-}
-
-export async function runScout() {
-  const client = await pool.connect();
+export async function runScout({ force = false, client: suppliedClient, config = loadAgentsConfig() } = {}) {
+  const client = suppliedClient || await pool.connect();
   const startTime = Date.now();
   console.log('[Scout] Memulai siklus pemantauan sumber niche...');
-
+  const cfg = config.scout || {};
+  const configuredMax = Number(cfg.max_items_per_source ?? 15);
+  const maxItems = Number.isInteger(configuredMax) && configuredMax >= 1 && configuredMax <= 1000 ? configuredMax : 15;
+  const configuredDedup = Number(cfg.dedup_similarity_threshold ?? 0.7);
+  const dedupThreshold = Number.isFinite(configuredDedup) && configuredDedup >= 0 && configuredDedup <= 1 ? configuredDedup : 0.7;
   let totalFetched = 0;
   let totalNew = 0;
   let totalDuplicates = 0;
+  const sourceResults = [];
 
   try {
     // 1. Ambil daftar sumber aktif
-    const { rows: sources } = await client.query('SELECT * FROM sources WHERE is_active = TRUE ORDER BY id ASC');
+    const { rows: sources } = await client.query(
+      `SELECT * FROM sources
+       WHERE is_active = TRUE
+         AND ($1::boolean OR last_scanned_at IS NULL
+              OR last_scanned_at < NOW() - make_interval(mins => COALESCE(poll_interval_mins, 30)))
+       ORDER BY id ASC`, [force]
+    );
     console.log(`[Scout] Ditemukan ${sources.length} sumber aktif.`);
 
-    for (const src of sources) {
-      console.log(`[Scout] Polling: ${src.name} (${src.url_or_query})`);
-
-      let feedText = '';
+    const fetchedBySource = await mapLimit(sources, 4, async (src) => {
       try {
+        if (src.type === 'x_account') return { src, items: await fetchXAccount(src.url_or_query), error: null };
+        if (src.type === 'x_query') return { src, items: await fetchXQuery(src.url_or_query), error: null };
+        if (src.type !== 'rss') throw new Error(`Tipe sumber ${src.type} belum didukung; gunakan rss, x_account, atau x_query.`);
         const response = await fetch(src.url_or_query, {
           headers: {
-            'User-Agent': 'HomelessMediaEngine/2.0 (+https://instagram.com/homelessmedia; ScoutBot)',
-            Accept: 'application/rss+xml, application/xml, text/xml, application/atom+xml, text/html',
+            'User-Agent': 'GapuraMediaScout/3.0 (+https://gapura.avenia.my.id)',
+            Accept: 'application/rss+xml, application/xml, text/xml, application/atom+xml',
           },
-          signal: AbortSignal.timeout(15000), // timeout 15 detik
+          signal: AbortSignal.timeout(12000),
+          redirect: 'error',
         });
-
-        if (!response.ok) {
-          console.warn(`[Scout] Gagal fetch ${src.name}: HTTP ${response.status}`);
-          continue;
-        }
-
-        feedText = await response.text();
-      } catch (fetchErr) {
-        console.warn(`[Scout] Error koneksi saat polling ${src.name}:`, fetchErr.message);
-        continue;
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const xml = await response.text();
+        if (XMLValidator.validate(xml) !== true) throw new Error('XML feed tidak valid.');
+        const parsed = xmlParser.parse(xml);
+        if (!parsed || (!Object.hasOwn(parsed, 'rss') && !Object.hasOwn(parsed, 'feed'))) throw new Error('Respons bukan RSS/Atom.');
+        const items = parsed?.rss?.channel?.item || parsed?.feed?.entry || [];
+        return { src, items: Array.isArray(items) ? items : [items], error: null };
+      } catch (error) {
+        return { src, items: [], error };
       }
+    });
 
-      // Parsing XML RSS / Atom
-      let items = [];
+    for (const result of fetchedBySource) {
+      const src = result.src;
+      console.log(`[Scout] Polling: ${src.name} (${src.url_or_query})`);
+      const diagnostic = { source_id: src.id, status: 'success', seen: 0, inserted: 0, duplicates: 0, invalid: 0, providers: [], error: null };
       try {
-        const parsed = xmlParser.parse(feedText);
-        // Cek struktur RSS 2.0 (<rss><channel><item>)
-        if (parsed?.rss?.channel?.item) {
-          items = Array.isArray(parsed.rss.channel.item) ? parsed.rss.channel.item : [parsed.rss.channel.item];
-        }
-        // Cek struktur Atom (<feed><entry>)
-        else if (parsed?.feed?.entry) {
-          items = Array.isArray(parsed.feed.entry) ? parsed.feed.entry : [parsed.feed.entry];
-        }
-      } catch (parseErr) {
-        console.warn(`[Scout] Gagal parse XML dari ${src.name}:`, parseErr.message);
-        continue;
-      }
-
-      for (const rawItem of items) {
-        totalFetched++;
-
-        // Ekstrak URL, Judul, Tanggal, Summary
-        const rawUrl = rawItem.link?.['#text'] || rawItem.link?.['@_href'] || rawItem.link || rawItem.guid?.['#text'] || rawItem.guid || '';
-        const title = rawItem.title?.['#text'] || rawItem.title || '';
-        const rawContent = rawItem.description?.['#text'] || rawItem.description || rawItem.content?.['#text'] || rawItem.content || '';
-        const pubDateStr = rawItem.pubDate || rawItem.published || rawItem.updated || null;
-
-        if (!rawUrl || !title) continue;
-
-        const cleanUrl = normalizeUrl(rawUrl);
-        const urlHash = hashUrl(cleanUrl);
-        const cleanTitle = stripHtml(title);
-        const cleanSummary = stripHtml(rawContent).slice(0, 1000);
-        let publishedAt = null;
-        if (pubDateStr) {
+        if (result.error) throw result.error;
+        for (const rawItem of result.items.slice(0, maxItems)) {
+          totalFetched++;
+          diagnostic.seen++;
+          const item = src.type === 'rss' ? normalizeFeedItem(rawItem) : rawItem;
+          if (item?.type && !diagnostic.providers.includes(item.type)) diagnostic.providers.push(item.type);
+          const url = normalizeArticleUrl(item?.url);
+          const title = cleanText(item?.title);
+          if (!url || !title) { diagnostic.invalid++; continue; }
+          const hash = hashUrl(url);
+          const existing = await client.query('SELECT id FROM raw_items WHERE url_hash = $1', [hash]);
+          const similar = existing.rows.length ? existing : await client.query(
+            `SELECT id FROM raw_items WHERE fetched_at > NOW() - INTERVAL '7 days'
+               AND similarity(title, $1) > $2 LIMIT 1`, [title, dedupThreshold]
+          );
+          if (similar.rows.length) { totalDuplicates++; diagnostic.duplicates++; continue; }
+          const content = cleanText(item.content).slice(0, 1000);
+          const publisherUrl = normalizeArticleUrl(item.publisher_url);
+          await client.query('BEGIN');
           try {
-            publishedAt = new Date(pubDateStr);
-          } catch {
-            publishedAt = null;
+            const raw = await client.query(
+              `INSERT INTO raw_items (source_id, url, url_hash, title, content_raw, published_at, image_url, publisher_url)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (url_hash) DO NOTHING RETURNING id`,
+              [src.id, url, hash, title, content, safeDate(item.published_at), item.image_url || null, publisherUrl]
+            );
+            if (raw.rows.length) {
+              await client.query(
+                `INSERT INTO topics (raw_item_id, title, summary, url, primary_source, status, source_kind, image_url, publisher_url)
+                 VALUES ($1,$2,$3,$4,$5,'new',$6,$7,$8)`,
+                [raw.rows[0].id, title, content, url, cleanText(item.source || src.name).slice(0, 100), item.type === 'x_api' ? 'x' : item.type || 'rss', item.image_url || null, publisherUrl]
+              );
+            }
+            await client.query('COMMIT');
+            if (raw.rows.length) { totalNew++; diagnostic.inserted++; }
+            else { totalDuplicates++; diagnostic.duplicates++; }
+          } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
           }
         }
-
-        // --- DEDUP LAPIS 1: Hash URL Unik ---
-        const { rows: existingHash } = await client.query('SELECT id FROM raw_items WHERE url_hash = $1', [urlHash]);
-        if (existingHash.length > 0) {
-          totalDuplicates++;
-          continue;
-        }
-
-        // --- DEDUP LAPIS 2: Kemiripan Judul Semantik (pg_trgm > 0.70 dalam 7 hari) ---
-        const { rows: similarItems } = await client.query(
-          `SELECT id, title, similarity(title, $1) AS sm
-           FROM raw_items
-           WHERE fetched_at > NOW() - INTERVAL '7 days'
-             AND similarity(title, $1) > 0.70
-           ORDER BY sm DESC
-           LIMIT 1`,
-          [cleanTitle]
-        );
-
-        if (similarItems.length > 0) {
-          totalDuplicates++;
-          console.log(`[Scout] Duplikat semantik terdeteksi (${Math.round(similarItems[0].sm * 100)}% mirip): "${cleanTitle}" vs "${similarItems[0].title}"`);
-          continue;
-        }
-
-        // --- SIMPAN ITEM LOLOS DEDUP KE RAW_ITEMS & TOPICS ---
-        const insertRaw = await client.query(
-          `INSERT INTO raw_items (source_id, url, url_hash, title, content_raw, published_at)
-           VALUES ($1, $2, $3, $4, $5, $6)
-           RETURNING id`,
-          [src.id, cleanUrl, urlHash, cleanTitle, cleanSummary, publishedAt]
-        );
-
-        const rawItemId = insertRaw.rows[0].id;
-
-        await client.query(
-          `INSERT INTO topics (raw_item_id, title, summary, url, primary_source, status)
-           VALUES ($1, $2, $3, $4, $5, 'new')`,
-          [rawItemId, cleanTitle, cleanSummary, cleanUrl, src.name]
-        );
-
-        totalNew++;
-        console.log(`[Scout] [TOPIK BARU] #${rawItemId}: ${cleanTitle}`);
+      } catch (err) {
+        diagnostic.status = 'error';
+        diagnostic.error = String(err.message).slice(0, 500);
+        console.warn(`[Scout] Sumber ${src.name} gagal: ${diagnostic.error}`);
       }
+      sourceResults.push(diagnostic);
+      await client.query(
+        `UPDATE sources SET last_scanned_at = NOW(), last_error = $2,
+           last_success_at = CASE WHEN $2::text IS NULL THEN NOW() ELSE last_success_at END,
+           last_scan_diagnostics = $3::jsonb, updated_at = NOW() WHERE id = $1`,
+        [src.id, diagnostic.error, JSON.stringify(diagnostic)]
+      );
     }
 
     // Catat Telemetri Agen Scout
     const durationMs = Date.now() - startTime;
     await client.query(
       `INSERT INTO agent_runs (agent, started_at, completed_at, status, model, tokens_input, tokens_output, est_cost_idr)
-       VALUES ('scout', NOW(), NOW(), 'success', 'rss-poller-deterministic', 0, 0, 0.00)`
+       VALUES ('scout', NOW(), NOW(), $1, 'rss-poller-deterministic', 0, 0, 0.00)`,
+      [sourceResults.some((source) => source.status === 'error') ? 'error' : 'success']
     );
 
     console.log(`\n[Scout] Selesai: ${totalFetched} item dipindai, ${totalDuplicates} duplikat diabaikan, ${totalNew} topik baru berhasil dimasukkan ke pipeline.`);
-    return { totalFetched, totalDuplicates, totalNew, durationMs };
+    return { totalFetched, totalDuplicates, totalNew, durationMs, sourceResults };
   } finally {
-    client.release();
+    if (!suppliedClient) client.release();
   }
 }
 

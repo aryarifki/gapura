@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS sources (
     url_or_query TEXT NOT NULL,
     category VARCHAR(50) NOT NULL, -- 'data_bps', 'bi_moneter', 'idx_pasar', 'ojk_regulasi', 'jdih_hukum', 'news_pasar'
     poll_interval_mins INT DEFAULT 30,
+    last_scanned_at TIMESTAMPTZ,
+    last_error TEXT,
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
@@ -49,6 +51,7 @@ CREATE TABLE IF NOT EXISTS raw_items (
     title TEXT NOT NULL,
     content_raw TEXT,
     published_at TIMESTAMPTZ,
+    image_url TEXT,
     fetched_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_raw_items_fetched_at ON raw_items(fetched_at);
@@ -62,6 +65,7 @@ CREATE TABLE IF NOT EXISTS topics (
     summary TEXT,
     url TEXT,
     primary_source VARCHAR(100),
+    image_url TEXT,
     status topic_status DEFAULT 'new',
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
@@ -91,6 +95,7 @@ CREATE TABLE IF NOT EXISTS drafts (
     id BIGSERIAL PRIMARY KEY,
     topic_id BIGINT NOT NULL REFERENCES topics(id) ON DELETE RESTRICT,
     slides JSONB NOT NULL, -- Array of slide objects (no, layout, teks, data)
+    content_format VARCHAR(10) NOT NULL DEFAULT 'carousel',
     caption TEXT NOT NULL,
     hashtags TEXT[] DEFAULT '{}',
     disclaimer_type VARCHAR(20), -- 'keuangan', 'hukum', NULL

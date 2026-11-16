@@ -18,8 +18,9 @@ import { fileURLToPath } from 'url';
 import pkg from 'pg';
 const { Pool } = pkg;
 import dotenv from 'dotenv';
-import { fetchFeed, googleNewsRssUrl, domainOf } from '../common/rss.js';
+import { googleNewsRssUrl, domainOf } from '../common/rss.js';
 import { callAgentLLM, loadAgentsConfig } from '../common/llm.js';
+import { fetchSourceFeed as fetchFeed, normalizeArticleUrl, safeDate } from '../scout/sources.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -79,19 +80,70 @@ function countHits(text, words) {
 }
 
 function sourceTier(url, sourceName) {
-  const domain = domainOf(url);
-  const name = String(sourceName || '').toLowerCase();
+  const safeUrl = normalizeArticleUrl(url);
+  const domain = safeUrl ? domainOf(safeUrl).toLowerCase().replace(/\.$/, '') : '';
 
-  if (domain.endsWith('.go.id') || domain.endsWith('.gov') || name.includes('kementerian') || name.includes('otoritas')) {
+  if (domain.endsWith('.go.id') || domain.endsWith('.gov') || domain === 'idx.co.id' || domain.endsWith('.idx.co.id')) {
     return { tier: 'resmi', label: 'Sumber resmi / pemerintah', points: 45, domain };
   }
   if (MAJOR_MEDIA.some((d) => domain === d || domain.endsWith(`.${d}`))) {
-    return { tier: 'media_utama', label: 'Media utama terverifikasi', points: 30, domain };
+    return { tier: 'media_utama', label: 'Domain media utama; klaim belum diperiksa', points: 30, domain };
   }
   if (domain) {
     return { tier: 'tidak_dikenal', label: 'Domain tidak terklasifikasi', points: 12, domain };
   }
   return { tier: 'tanpa_url', label: 'Tidak ada URL sumber', points: 5, domain: '' };
+}
+
+function publisherGroup(url) {
+  const { domain } = sourceTier(url);
+  if (!domain || ['news.google.com', 'google.com', 'x.com', 'twitter.com'].includes(domain)) return '';
+  const known = MAJOR_MEDIA.find((root) => domain === root || domain.endsWith(`.${root}`));
+  if (known) return known;
+  const parts = domain.split('.');
+  return parts.slice(/\.(co|go|or|ac)\.id$/.test(domain) ? -3 : -2).join('.');
+}
+
+const STOP_WORDS = new Set(['dan', 'yang', 'dari', 'untuk', 'dengan', 'pada', 'di', 'ke', 'ini', 'itu', 'hari', 'terbaru', 'resmi', 'menurut', 'akan', 'sebuah']);
+function terms(text) {
+  return [...new Set(normalizeText(text).toLowerCase().match(/[\p{L}\p{N}]+/gu) || [])].filter((word) => word.length > 1 && !STOP_WORDS.has(word));
+}
+
+function relevantTo(claim, text) {
+  const expected = terms(claim);
+  const actual = new Set(terms(text));
+  const hits = expected.filter((term) => actual.has(term)).length;
+  return expected.length >= 2 && hits >= Math.min(3, expected.length) && hits / expected.length >= 0.6;
+}
+
+function matchingNumbers(claim, text) {
+  const expected = extractNumbers(claim);
+  const actual = new Set(extractNumbers(text));
+  return expected.every((number) => actual.has(number));
+}
+
+function coversClaim(claim, text) {
+  const expected = terms(claim);
+  const actual = new Set(terms(text));
+  return expected.length >= 3 && expected.every((word) => actual.has(word)) && matchingNumbers(claim, text);
+}
+
+function excerptSupports(claim, quote, item) {
+  const expected = terms(claim);
+  const actual = new Set(terms(quote));
+  const headline = new Set(terms(`${item.title} ${item.publisher} ${item.domain}`));
+  const newTerms = [...actual].filter((word) => !headline.has(word));
+  const negation = /\b(tidak|bukan|belum|membantah|dibantah|hoaks|hoax|palsu)\b/i;
+  return expected.length >= 3 && expected.every((word) => actual.has(word))
+    && negation.test(claim) === negation.test(quote)
+    && newTerms.length >= 2 && matchingNumbers(claim, quote);
+}
+
+function independentPublishers(topic, corroboration, local) {
+  const primary = publisherGroup(topic.publisher_url || topic.url);
+  return new Set([...corroboration.items, ...local]
+    .filter((item) => item.relevant && item.publisher_group && item.publisher_group !== primary)
+    .map((item) => item.publisher_group));
 }
 
 // ------------------------------------------------------------------------------
@@ -106,7 +158,7 @@ function collectSignals(topic) {
   const misinfoHits = countHits(text, MISINFO_MARKERS);
   const numbers = extractNumbers(text);
 
-  const publishedAt = topic.published_at ? new Date(topic.published_at) : topic.created_at ? new Date(topic.created_at) : null;
+  const publishedAt = safeDate(topic.published_at || topic.created_at);
   const ageHours = publishedAt ? Math.max(0, (Date.now() - publishedAt.getTime()) / 36e5) : null;
 
   return {
@@ -143,33 +195,40 @@ async function googleNewsCorroboration(topic) {
     return { query, items: [], distinct_domains: 0, numeric_overlap: 0, error: feed.error || 'gagal mengambil Google News' };
   }
 
-  const sourceDomain = domainOf(topic.url);
+  const sourceGroup = publisherGroup(topic.publisher_url || topic.url);
   const numbers = extractNumbers(`${topic.title} ${topic.summary || ''}`);
 
-  const items = feed.items.slice(0, 10).map((it) => {
+  const items = feed.items.slice(0, 10).map((it, index) => {
     const publisher = normalizeText(it.extra?.sourceName) || normalizeText(it.author);
     // Link Google News selalu news.google.com; domain penerbit ada di extra.sourceUrl.
-    const domain = domainOf(it.extra?.sourceUrl) || domainOf(it.link);
+    const publisherUrl = normalizeArticleUrl(it.extra?.sourceUrl) || normalizeArticleUrl(it.link);
+    const domain = sourceTier(publisherUrl).domain;
     const text = `${it.title} ${it.description || ''}`;
-    const overlap = numbers.filter((n) => text.toLowerCase().includes(n)).length;
+    const overlap = numbers.filter((n) => extractNumbers(text).includes(n)).length;
     return {
+      evidence_id: `news:${index}`,
       title: normalizeText(it.title),
-      url: it.extra?.sourceUrl || it.link,
+      excerpt: normalizeText(it.description),
+      url: normalizeArticleUrl(it.link),
+      publisher_url: publisherUrl,
       google_news_url: it.link,
       domain,
       publisher,
-      published_at: it.pubDate,
+      publisher_group: publisherGroup(publisherUrl),
+      source_tier: sourceTier(publisherUrl).tier,
+      relevant: relevantTo(topic.title, it.title),
+      published_at: safeDate(it.pubDate)?.toISOString() || null,
       numeric_overlap: overlap,
     };
   });
 
-  const domains = new Set(items.map((i) => i.domain).filter((d) => d && d !== sourceDomain));
+  const domains = new Set(items.filter((item) => item.relevant && item.publisher_group !== sourceGroup).map((i) => i.publisher_group).filter(Boolean));
 
   return {
     query,
     items,
     distinct_domains: domains.size,
-    numeric_overlap: items.reduce((max, i) => Math.max(max, i.numeric_overlap), 0),
+    numeric_overlap: items.filter((item) => item.relevant).reduce((max, i) => Math.max(max, i.numeric_overlap), 0),
     error: null,
   };
 }
@@ -187,7 +246,9 @@ async function localCorroboration(client, topic) {
        LIMIT 5`,
       [String(topic.title || ''), topic.id]
     );
-    return rows.map((r) => ({ topic_id: r.id, title: r.title, source: r.primary_source, url: r.url, similarity: Number(r.sim.toFixed(2)) }));
+    return rows.map((r) => ({ topic_id: r.id, title: r.title, source: r.primary_source, url: r.url,
+      publisher_group: publisherGroup(r.url), relevant: relevantTo(topic.title, r.title),
+      similarity: Number.isFinite(Number(r.sim)) ? Number(Number(r.sim).toFixed(2)) : 0 }));
   } catch (err) {
     return [];
   }
@@ -197,46 +258,16 @@ async function localCorroboration(client, topic) {
 // 3. Penilaian heuristik (fallback jujur)
 // ------------------------------------------------------------------------------
 function heuristicVerdict(topic, signals, corroboration, local) {
-  const supporting = corroboration.distinct_domains + local.length;
-  const tier = signals.tier.tier;
-  let status;
-  let confidence;
-
-  if (signals.misinfo.score >= 2 && supporting === 0) {
-    status = 'misleading';
-    confidence = 45;
-  } else if (signals.opinion.score >= 2 && tier !== 'resmi') {
-    status = 'opinion';
-    confidence = 65;
-  } else if (tier === 'resmi' && supporting >= 1) {
-    status = 'verified';
-    confidence = Math.min(92, 82 + supporting * 2);
-  } else if (tier === 'resmi') {
-    status = 'mostly_verified';
-    confidence = 78;
-  } else if (supporting >= 2) {
-    status = 'mostly_verified';
-    confidence = Math.min(85, 55 + supporting * 6 + (corroboration.numeric_overlap > 0 ? 5 : 0));
-  } else if (signals.clickbait.score >= 2 && supporting === 0) {
-    status = 'misleading';
-    confidence = 48;
-  } else if (supporting === 1) {
-    status = 'needs_context';
-    confidence = 52;
-  } else {
-    status = 'unverified';
-    confidence = 25;
-  }
+  const supporting = independentPublishers(topic, corroboration, local).size;
+  const status = supporting ? 'needs_context' : 'unverified';
+  const confidence = supporting ? Math.min(60, 35 + supporting * 5) : 25;
 
   return {
     status,
     confidence,
     method: 'heuristic',
     claim: normalizeText(topic.title),
-    summary:
-      status === 'verified' || status === 'mostly_verified'
-        ? `Klaim utama selaras dengan ${supporting} sumber pembanding yang ditemukan otomatis.`
-        : 'Belum cukup bukti otomatis untuk menyatakan klaim ini valid sepenuhnya.',
+    summary: `${supporting} kelompok penerbit dengan judul terkait ditemukan. Klaim utama belum diperiksa terhadap kutipan pendukung.`,
     deep_explanation:
       'Pemeriksaan otomatis ini hanya memakai sinyal yang dapat diukur: tier sumber, kecocokan angka, dan jumlah domain pembanding. ' +
       'Status ini bukan putusan akhir. Redaksi perlu membaca sumber primer dan menambahkan konteks sebelum konten dipublikasikan.',
@@ -250,6 +281,43 @@ function heuristicVerdict(topic, signals, corroboration, local) {
     ],
     claims: [],
   };
+}
+
+// Headline counts and a model's assertions are not claim checks. Accept a
+// supported assessment only when its quoted text exists in supplied excerpts.
+function capVerdict(result, topic, corroboration, local) {
+  const related = independentPublishers(topic, corroboration, local).size;
+  const evidence = new Map(corroboration.items.map((item) => [item.evidence_id, item]));
+  let mainClaimSupported = false;
+  result.claims = (result.claims || []).filter((claim) => claim && typeof claim === 'object' && !Array.isArray(claim)).map((claim) => {
+    const claimText = normalizeText(claim?.claim);
+    const ids = Array.isArray(claim?.evidence_ids) ? claim.evidence_ids : [];
+    const quotes = Array.isArray(claim?.quotes) ? claim.quotes.map(normalizeText) : [];
+    const supports = ids.flatMap((id, index) => {
+      const item = evidence.get(id);
+      const quote = quotes[index];
+      if (!item?.relevant || !quote || quote.length < 20 || !['resmi', 'media_utama'].includes(item.source_tier)
+        || !normalizeText(item.excerpt).includes(quote) || normalizeText(item.excerpt) === item.title
+        || !excerptSupports(claimText, quote, item)) return [];
+      return [item];
+    });
+    const groups = new Set(supports.map((item) => item.publisher_group).filter(Boolean));
+    const supported = claim.assessment === 'supported' && (supports.some((item) => item.source_tier === 'resmi') || groups.size >= 2);
+    if (supported && coversClaim(topic.title, claimText) && coversClaim(claimText, topic.title)) mainClaimSupported = true;
+    return { claim: claimText, assessment: supported ? 'supported' : 'unclear', note: normalizeText(claim.note),
+      evidence_ids: supports.map((item) => item.evidence_id), quotes: supported ? quotes : [] };
+  });
+  const fullySupported = mainClaimSupported && result.claims.length > 0 && result.claims.every((claim) => claim.assessment === 'supported');
+  const requested = result.status;
+  if (['hoax_detected', 'misleading'].includes(requested)
+    || (['verified', 'mostly_verified'].includes(requested) && !fullySupported)) {
+    result.status = related ? 'needs_context' : 'unverified';
+    result.confidence = Math.min(result.confidence, related ? 60 : 30);
+    result.summary = 'Bukti kutipan yang diberikan belum cukup untuk mengonfirmasi atau membantah klaim utama.';
+    result.deep_explanation = result.summary;
+    result.red_flags = [...new Set([...(result.red_flags || []), 'Putusan dibatasi oleh bukti yang tersedia; jumlah judul dan tier sumber tidak membuktikan klaim.'])];
+  } else if (!mainClaimSupported) result.confidence = Math.min(result.confidence, related ? 60 : 30);
+  return result;
 }
 
 // ------------------------------------------------------------------------------
@@ -277,7 +345,8 @@ async function llmVerdict(topic, signals, corroboration, local) {
       query: corroboration.query,
       jumlah_domain_berbeda: corroboration.distinct_domains,
       maksimum_kecocokan_angka: corroboration.numeric_overlap,
-      contoh: corroboration.items.slice(0, 5).map((i) => ({ judul: i.title, domain: i.domain, url: i.url })),
+      contoh: corroboration.items.slice(0, 10).map((i) => ({ evidence_id: i.evidence_id, judul: i.title, excerpt: i.excerpt,
+        domain: i.domain, publisher_group: i.publisher_group, relevant: i.relevant, url: i.url })),
     },
     topik_lokal_mirip: local,
   };
@@ -288,7 +357,7 @@ DATA BUKTI:
 ${JSON.stringify(evidence, null, 2)}
 
 RUBRIK:
-1. "verified" hanya jika klaim utama didukung sumber resmi ATAU ≥2 domain pembanding independen dan angka kunci konsisten.
+1. "verified" hanya jika pemeriksaan eksplisit klaim utama mengutip excerpt yang diberikan: sumber resmi ATAU ≥2 kelompok penerbit independen, dengan semua angka kunci konsisten. Nama sumber, judul, dan hitungan domain saja tidak cukup.
 2. "mostly_verified" jika indikasi kuat tetapi konteks masih kurang.
 3. "needs_context" jika klaim benar sebagian tetapi berpotensi disalahpahami tanpa konteks.
 4. "opinion" jika isinya pendapat/analisis, bukan pernyataan fakta.
@@ -302,7 +371,7 @@ Tugas tambahan:
 - "deep_explanation": 3-5 kalimat penjelasan yang membuat pembaca paham duduk perkaranya, termasuk apa yang benar, apa yang belum terbukti, dan mengapa.
 - "reader_takeaway": 1-2 kalimat agar pembaca tidak miskonsepsi.
 - "misconceptions": daftar kesalahpahaman umum yang mungkin muncul (maks 3).
-- "claims": daftar klaim spesifik dengan penilaian "supported" | "unsupported" | "unclear".
+- "claims": daftar klaim spesifik dengan penilaian "supported" | "unsupported" | "unclear", evidence_ids dan quotes sejajar yang menyalin kutipan persis dari excerpt. Klaim utama wajib diperiksa secara eksplisit.
 - "confidence": 0-100, sesuai kekuatan bukti.
 
 Kembalikan HANYA JSON valid:
@@ -315,7 +384,7 @@ Kembalikan HANYA JSON valid:
   "reader_takeaway": "",
   "misconceptions": [],
   "red_flags": [],
-  "claims": [{ "claim": "", "assessment": "supported|unsupported|unclear", "note": "" }]
+  "claims": [{ "claim": "", "assessment": "supported|unsupported|unclear", "note": "", "evidence_ids": ["news:0"], "quotes": ["kutipan persis dari excerpt"] }]
 }`;
 
   const resp = await callAgentLLM('verifikator', prompt, verCfg.system_prompt || '', true);
@@ -328,7 +397,7 @@ Kembalikan HANYA JSON valid:
 
   return {
     status: parsed.status,
-    confidence: Math.max(0, Math.min(100, parseInt(parsed.confidence, 10) || 0)),
+    confidence: Math.max(0, Math.min(100, Number.isFinite(Number(parsed.confidence)) ? Math.round(Number(parsed.confidence)) : 0)),
     method: 'llm+corroboration',
     claim: normalizeText(parsed.claim) || normalizeText(topic.title),
     summary: normalizeText(parsed.summary),
@@ -343,7 +412,7 @@ Kembalikan HANYA JSON valid:
 const STATUS_DISCLAIMER = {
   verified: 'Terverifikasi melalui sumber resmi dan/atau beberapa sumber independen. Tetap periksa dokumen primer.',
   mostly_verified: 'Indikasi kuat, namun sebagian konteks masih perlu dikonfirmasi redaksi.',
-  needs_context: 'Sebagian klaim benar tetapi berpotensi menyesatkan bila dibaca tanpa konteks lengkap.',
+  needs_context: 'Ada informasi terkait, tetapi klaim utama masih memerlukan pemeriksaan kutipan dan konteks oleh redaksi.',
   unverified: 'Belum terverifikasi otomatis. Jangan jadikan dasar keputusan sebelum ada konfirmasi redaksi.',
   opinion: 'Ini opini/analisis, bukan pernyataan fakta. Perbedaannya penting.',
   speculation: 'Ini spekulasi/prediksi tanpa bukti yang cukup.',
@@ -378,12 +447,7 @@ export async function verifyTopic(topicId, { client } = {}) {
       result.llm_error = err.message;
     }
 
-    // Guard: jangan biarkan LLM meloloskan konten yang sinyalnya sudah menyesatkan.
-    const heuristic = heuristicVerdict(topic, signals, corroboration, local);
-    if (result.method === 'llm+corroboration' && heuristic.status === 'misleading' && result.status === 'verified' && result.confidence < 80) {
-      result.status = 'needs_context';
-      result.red_flags = [...new Set([...(result.red_flags || []), 'Sinyal clickbait/misinformasi kuat pada judul'])];
-    }
+    result = capVerdict(result, topic, corroboration, local);
 
     const disclaimer = STATUS_DISCLAIMER[result.status] || STATUS_DISCLAIMER.unverified;
 
@@ -403,10 +467,11 @@ export async function verifyTopic(topicId, { client } = {}) {
             query: corroboration.query,
             distinct_domains: corroboration.distinct_domains,
             numeric_overlap: corroboration.numeric_overlap,
-            examples: corroboration.items.slice(0, 5),
+            examples: corroboration.items.slice(0, 10),
             error: corroboration.error,
           },
           local_topics: local,
+          independent_publishers: independentPublishers(topic, corroboration, local).size,
           signals,
         }),
         JSON.stringify(result.claims || []),

@@ -16,8 +16,10 @@ import { fileURLToPath } from 'url';
 import pkg from 'pg';
 const { Pool } = pkg;
 import dotenv from 'dotenv';
-import { fetchFeed, parseFeed, googleNewsRssUrl, domainOf } from '../common/rss.js';
+import { googleNewsRssUrl, domainOf } from '../common/rss.js';
 import { loadAgentsConfig } from '../common/llm.js';
+import { mapLimit } from '../common/concurrency.js';
+import { fetchSourceFeed as fetchFeed, fetchXAccount, fetchXQuery, normalizeArticleUrl } from '../scout/sources.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -66,7 +68,8 @@ function toDate(value) {
 
 function hoursAgo(date) {
   if (!date) return 48;
-  return Math.max(0, (Date.now() - new Date(date).getTime()) / 36e5);
+  const parsed = toDate(date);
+  return parsed ? Math.max(0, (Date.now() - parsed.getTime()) / 36e5) : 48;
 }
 
 /** "200+" / "2.000+" / "1,5 jt" -> angka kasar untuk skor. */
@@ -94,13 +97,16 @@ function keywordListFor(category) {
 
 function matchedKeywords(text, keywords) {
   const lower = String(text || '').toLowerCase();
-  return keywords.filter((kw) => kw && lower.includes(kw));
+  return keywords.filter((kw) => {
+    const escaped = String(kw).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+    return escaped && new RegExp(`(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`, 'u').test(lower);
+  });
 }
 
 /**
  * Skor viralitas 0-100: sinyal platform + bobot sumber + kebaruan + relevansi kata kunci.
  */
-function computeVirality({ platform, engagement = {}, publishedAt, sourceWeight = 10, keywords = [], text = '' }) {
+function computeVirality({ platform, engagement = {}, publishedAt, firstSeenAt, sourceWeight = 10, keywords = [], text = '' }) {
   let platformScore = 0;
   if (platform === 'x') {
     const raw =
@@ -118,7 +124,7 @@ function computeVirality({ platform, engagement = {}, publishedAt, sourceWeight 
   }
 
   const weightScore = Math.min(20, Math.round((Number(sourceWeight) || 10) * 0.8));
-  const age = hoursAgo(publishedAt);
+  const age = Math.max(publishedAt ? hoursAgo(publishedAt) : 48, firstSeenAt ? hoursAgo(firstSeenAt) : 0);
   const recencyScore = age <= 3 ? 12 : age <= 12 ? 8 : age <= 24 ? 4 : 0;
   const matched = matchedKeywords(text, keywords);
   const keywordScore = matched.length ? Math.min(10, matched.length * 3) : 0;
@@ -129,10 +135,14 @@ function computeVirality({ platform, engagement = {}, publishedAt, sourceWeight 
   if (platform === 'google_trends' && matched.length === 0) {
     total = Math.round(total * 0.3);
   }
+  const baseScore = total;
+  // Publication age, never the latest fetch, determines momentum. Unknown dates
+  // get no freshness bonus; old items lose half their score each day.
+  const decay = Math.pow(0.5, age / 24);
   return {
-    score: total,
+    score: Math.round(total * decay),
     matched,
-    breakdown: { platform: platformScore, source_weight: weightScore, recency: recencyScore, keywords: keywordScore },
+    breakdown: { platform: platformScore, source_weight: weightScore, recency: recencyScore, keywords: keywordScore, base_score: baseScore, age_hours: age, decay },
   };
 }
 
@@ -140,79 +150,30 @@ function computeVirality({ platform, engagement = {}, publishedAt, sourceWeight 
 // Provider X/Twitter
 // ------------------------------------------------------------------------------
 async function fetchXUserTweets(handle) {
-  const username = String(handle).replace(/^@/, '');
-  if (!X_BEARER_TOKEN) throw new Error('X_BEARER_TOKEN tidak dikonfigurasi');
-
-  const userRes = await fetch(
-    `https://api.twitter.com/2/users/by/username/${encodeURIComponent(username)}?user.fields=public_metrics,name`,
-    { headers: { Authorization: `Bearer ${X_BEARER_TOKEN}` }, signal: AbortSignal.timeout(15000) }
-  );
-  if (!userRes.ok) throw new Error(`X user lookup HTTP ${userRes.status}`);
-  const userData = await userRes.json();
-  const userId = userData?.data?.id;
-  if (!userId) throw new Error(`Akun X @${username} tidak ditemukan`);
-
-  const tweetsRes = await fetch(
-    `https://api.twitter.com/2/users/${userId}/tweets?max_results=10&exclude=retweets,replies&tweet.fields=created_at,public_metrics`,
-    { headers: { Authorization: `Bearer ${X_BEARER_TOKEN}` }, signal: AbortSignal.timeout(15000) }
-  );
-  if (!tweetsRes.ok) throw new Error(`X timeline HTTP ${tweetsRes.status}`);
-  const tweetsData = await tweetsRes.json();
-
-  return (tweetsData.data || []).map((t) => ({
-    provider: 'x_api',
-    platform: 'x',
-    author: `@${username}`,
-    title: normalizeText(t.text).slice(0, 280),
-    snippet: normalizeText(t.text),
-    url: `https://x.com/${username}/status/${t.id}`,
-    published_at: toDate(t.created_at),
-    engagement: {
-      likes: t.public_metrics?.like_count || 0,
-      retweets: t.public_metrics?.retweet_count || 0,
-      replies: t.public_metrics?.reply_count || 0,
-      quotes: t.public_metrics?.quote_count || 0,
-    },
-  }));
+  return (await fetchXAccount(handle, { token: X_BEARER_TOKEN, rssHubBase: RSSHUB_BASE_URL })).map(xTrendItem);
 }
 
 async function fetchXSearch(query) {
-  if (!X_BEARER_TOKEN) throw new Error('X_BEARER_TOKEN tidak dikonfigurasi');
-  const q = `${query} -is:retweet lang:id`;
-  const url = `https://api.twitter.com/2/tweets/search/recent?query=${encodeURIComponent(q)}&max_results=20&tweet.fields=created_at,public_metrics,author_id&expansions=author_id&user.fields=username,name`;
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${X_BEARER_TOKEN}` },
-    signal: AbortSignal.timeout(15000),
-  });
-  if (!res.ok) throw new Error(`X search HTTP ${res.status}`);
-  const data = await res.json();
-  const users = new Map((data.includes?.users || []).map((u) => [u.id, u]));
+  return (await fetchXQuery(query, { token: X_BEARER_TOKEN, rssHubBase: RSSHUB_BASE_URL })).map(xTrendItem);
+}
 
-  return (data.data || []).map((t) => {
-    const u = users.get(t.author_id);
-    return {
-      provider: 'x_api',
-      platform: 'x',
-      author: u ? `@${u.username}` : null,
-      title: normalizeText(t.text).slice(0, 280),
-      snippet: normalizeText(t.text),
-      url: u ? `https://x.com/${u.username}/status/${t.id}` : null,
-      published_at: toDate(t.created_at),
-      engagement: {
-        likes: t.public_metrics?.like_count || 0,
-        retweets: t.public_metrics?.retweet_count || 0,
-        replies: t.public_metrics?.reply_count || 0,
-        quotes: t.public_metrics?.quote_count || 0,
-      },
-    };
-  });
+function xTrendItem(post) {
+  const engagement = {};
+  for (const [field, metric] of Object.entries({ likes: 'like_count', retweets: 'retweet_count', replies: 'reply_count', quotes: 'quote_count', impressions: 'impression_count' })) {
+    if (Number.isFinite(post.metrics?.[metric]) && post.metrics[metric] >= 0) engagement[field] = post.metrics[metric];
+  }
+  return {
+    provider: post.type, platform: post.type === 'google_news_proxy' ? 'news' : 'x',
+    author: post.source || null, title: post.title, snippet: post.content, url: post.url,
+    publisher_url: post.publisher_url || null, published_at: toDate(post.published_at), engagement,
+  };
 }
 
 async function fetchRsshubUser(handle) {
   if (!RSSHUB_BASE_URL) throw new Error('RSSHUB_BASE_URL tidak dikonfigurasi');
   const username = String(handle).replace(/^@/, '');
   const feed = await fetchFeed(`${RSSHUB_BASE_URL}/twitter/user/${encodeURIComponent(username)}`);
-  if (!feed.ok) throw new Error(`RSSHub HTTP ${feed.status || 0}`);
+  if (!feed.ok) throw new Error(feed.error || `RSSHub HTTP ${feed.status || 0}`);
   return feed.items.map((it) => ({
     provider: 'rsshub',
     platform: 'x',
@@ -241,14 +202,15 @@ async function fetchGoogleNewsProxy(source) {
     ? keywordsFromLabel(source.label, source.value)
     : source.value;
   const feed = await fetchFeed(googleNewsRssUrl(query, { when: '1d' }));
-  if (!feed.ok) throw new Error(`Google News HTTP ${feed.status || 0}`);
+  if (!feed.ok) throw new Error(feed.error || `Google News HTTP ${feed.status || 0}`);
   return feed.items.slice(0, 15).map((it) => ({
     provider: 'google_news_proxy',
     platform: 'news',
-    author: domainOf(it.link) || 'Google News',
+    author: normalizeText(it.extra?.sourceName) || domainOf(it.extra?.sourceUrl) || domainOf(it.link) || 'Google News',
     title: normalizeText(it.title),
     snippet: normalizeText(it.description),
     url: it.link,
+    publisher_url: normalizeArticleUrl(it.extra?.sourceUrl),
     published_at: toDate(it.pubDate),
     engagement: {},
   }));
@@ -257,7 +219,7 @@ async function fetchGoogleNewsProxy(source) {
 async function fetchGoogleTrends(source) {
   const geo = (source.value || 'ID').toUpperCase();
   const feed = await fetchFeed(`https://trends.google.com/trending/rss?geo=${encodeURIComponent(geo)}`);
-  if (!feed.ok) throw new Error(`Google Trends HTTP ${feed.status || 0}`);
+  if (!feed.ok) throw new Error(feed.error || `Google Trends HTTP ${feed.status || 0}`);
   return feed.items.slice(0, 20).map((it) => {
     const traffic = parseApproxTraffic(it.extra?.approxTraffic);
     const news = it.extra?.newsItems || [];
@@ -298,8 +260,8 @@ async function fetchSourceItems(source) {
       return items;
     }
     case 'x_query': {
-      if (X_BEARER_TOKEN) return fetchXSearch(source.value);
-      return fetchGoogleNewsProxy(source);
+      try { return await fetchXSearch(source.value); }
+      catch { return fetchGoogleNewsProxy(source); }
     }
     case 'google_trends':
       return fetchGoogleTrends(source);
@@ -317,14 +279,21 @@ async function saveTrendItem(client, source, item, keywords) {
   const title = normalizeText(item.title);
   if (!title) return null;
 
-  const canonicalUrl = item.url ? String(item.url).split('?')[0] : '';
+  const canonicalUrl = normalizeArticleUrl(item.url);
+  if (item.url && !canonicalUrl) return null;
   const dedupSeed = canonicalUrl || `${item.platform}:${item.author || ''}:${title.toLowerCase()}`;
   const urlHash = hashKey(dedupSeed);
+
+  const { rows: existing } = await client.query('SELECT published_at, first_seen_at, fetched_at FROM trend_items WHERE url_hash = $1', [urlHash]);
+  const incomingDate = toDate(item.published_at);
+  const previousDate = toDate(existing[0]?.published_at);
+  const publishedAt = previousDate && incomingDate ? new Date(Math.min(previousDate, incomingDate)) : previousDate || incomingDate;
 
   const virality = computeVirality({
     platform: item.platform,
     engagement: item.engagement,
-    publishedAt: item.published_at,
+    publishedAt,
+    firstSeenAt: existing[0]?.first_seen_at || existing[0]?.fetched_at,
     sourceWeight: source.weight,
     keywords,
     text: `${title} ${item.snippet || ''}`,
@@ -333,13 +302,16 @@ async function saveTrendItem(client, source, item, keywords) {
   const { rows } = await client.query(
     `INSERT INTO trend_items
        (trend_source_id, platform, provider, author, title, snippet, url, url_hash,
-        engagement, virality_score, score_breakdown, matched_keywords, published_at, fetched_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())
+         engagement, virality_score, score_breakdown, matched_keywords, published_at, publisher_url, fetched_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW())
      ON CONFLICT (url_hash) WHERE url_hash IS NOT NULL DO UPDATE SET
        virality_score = EXCLUDED.virality_score,
        engagement = EXCLUDED.engagement,
        score_breakdown = EXCLUDED.score_breakdown,
-       matched_keywords = EXCLUDED.matched_keywords,
+        matched_keywords = EXCLUDED.matched_keywords,
+        published_at = LEAST(trend_items.published_at, EXCLUDED.published_at),
+        first_seen_at = COALESCE(trend_items.first_seen_at, trend_items.fetched_at),
+        publisher_url = COALESCE(EXCLUDED.publisher_url, trend_items.publisher_url),
        fetched_at = NOW()
      RETURNING id, (xmax = 0) AS inserted`,
     [
@@ -349,13 +321,14 @@ async function saveTrendItem(client, source, item, keywords) {
       item.author || null,
       title,
       item.snippet || null,
-      item.url || null,
+      canonicalUrl,
       urlHash,
       JSON.stringify(item.engagement || {}),
       virality.score,
       JSON.stringify(virality.breakdown),
       virality.matched,
-      item.published_at,
+      publishedAt,
+      normalizeArticleUrl(item.publisher_url),
     ]
   );
 
@@ -365,37 +338,52 @@ async function saveTrendItem(client, source, item, keywords) {
 /**
  * Jalankan pemindaian SEO untuk seluruh sumber aktif (atau satu sumber).
  */
-export async function runSeoScan({ sourceId = null, client } = {}) {
+export async function runSeoScan({ sourceId = null, force = sourceId !== null, client } = {}) {
   const db = client || (await pool.connect());
   const shouldRelease = !client;
   const startedAt = new Date();
-  const summary = { sources: 0, items_seen: 0, items_new: 0, errors: [] };
+  const summary = { sources: 0, items_seen: 0, items_new: 0, errors: [], sourceResults: [] };
 
   try {
-    const params = [];
-    let where = 'WHERE is_active = TRUE';
+    const params = [Boolean(force)];
+    let where = `WHERE is_active = TRUE AND ($1::boolean OR last_scanned_at IS NULL
+      OR last_scanned_at < NOW() - make_interval(mins => COALESCE(poll_interval_mins, 60)))`;
     if (sourceId) {
       params.push(sourceId);
       where += ` AND id = $${params.length}`;
     }
     const { rows: sources } = await db.query(`SELECT * FROM trend_sources ${where} ORDER BY weight DESC, id ASC`, params);
 
-    for (const source of sources) {
+    const fetched = await mapLimit(sources, 4, async (source) => {
+      try { return { source, items: await fetchSourceItems(source), error: null }; }
+      catch (error) { return { source, items: [], error }; }
+    });
+    for (const { source, items, error } of fetched) {
       summary.sources += 1;
+      const diagnostic = { source_id: source.id, status: 'success', seen: 0, inserted: 0, invalid: 0, error: null };
       try {
-        const items = await fetchSourceItems(source);
+        if (error) throw error;
         const keywords = keywordListFor(source.category);
         for (const item of items) {
           summary.items_seen += 1;
+          diagnostic.seen++;
           const saved = await saveTrendItem(db, source, item, keywords);
-          if (saved?.inserted) summary.items_new += 1;
+          if (!saved) diagnostic.invalid++;
+          if (saved?.inserted) { summary.items_new += 1; diagnostic.inserted++; }
         }
-        await db.query('UPDATE trend_sources SET last_scanned_at = NOW(), last_error = NULL, updated_at = NOW() WHERE id = $1', [source.id]);
       } catch (err) {
         const message = err.message.slice(0, 500);
+        diagnostic.status = 'error';
+        diagnostic.error = message;
         summary.errors.push({ source_id: source.id, label: source.label, error: message });
-        await db.query('UPDATE trend_sources SET last_scanned_at = NOW(), last_error = $2, updated_at = NOW() WHERE id = $1', [source.id, message]);
       }
+      summary.sourceResults.push(diagnostic);
+      await db.query(
+        `UPDATE trend_sources SET last_scanned_at = NOW(), last_error = $2,
+           last_success_at = CASE WHEN $2::text IS NULL THEN NOW() ELSE last_success_at END,
+           last_scan_diagnostics = $3::jsonb, updated_at = NOW() WHERE id = $1`,
+        [source.id, diagnostic.error, JSON.stringify(diagnostic)]
+      );
     }
 
     // Rapikan skor historis: trend Google tanpa kecocokan kata kunci tidak boleh
@@ -408,7 +396,14 @@ export async function runSeoScan({ sourceId = null, client } = {}) {
          AND virality_score > 30`
     );
 
-    const status = summary.errors.length === sources.length && sources.length > 0 ? 'error' : 'success';
+    await db.query(
+      `UPDATE trend_items SET virality_score = LEAST(virality_score,
+         ROUND(COALESCE((score_breakdown->>'base_score')::numeric, virality_score)
+           * POWER(0.5::numeric, GREATEST(0, EXTRACT(EPOCH FROM (NOW() - LEAST(published_at, COALESCE(first_seen_at, fetched_at)))) / 86400)))::int)
+       WHERE LEAST(published_at, COALESCE(first_seen_at, fetched_at)) < NOW() - INTERVAL '1 hour'`
+    );
+
+    const status = summary.errors.length ? 'error' : 'success';
     await db.query(
       `INSERT INTO agent_runs (agent, entity_id, started_at, completed_at, status, model, error_log)
        VALUES ('seo', NULL, $1, NOW(), $2, 'seo-trend-hunter-v1', $3)`,
@@ -424,7 +419,7 @@ export async function runSeoScan({ sourceId = null, client } = {}) {
 /** Daftar trend teratas untuk dashboard. */
 export async function listTrends({ limit = 50, platform = null, minScore = 0 } = {}) {
   const params = [parseInt(limit, 10) || 50, parseInt(minScore, 10) || 0];
-  let where = "WHERE ti.virality_score >= $2 AND ti.fetched_at > NOW() - INTERVAL '3 days'";
+  let where = "WHERE ti.virality_score >= $2 AND LEAST(ti.published_at, COALESCE(ti.first_seen_at, ti.fetched_at)) > NOW() - INTERVAL '3 days'";
   if (platform) {
     params.push(platform);
     where += ` AND ti.platform = $${params.length}`;
@@ -464,10 +459,10 @@ export async function promoteTrendToTopic(trendId, client) {
       .join(' ');
 
     const { rows: topicRows } = await db.query(
-      `INSERT INTO topics (title, summary, url, primary_source, status, source_kind, trend_score)
-       VALUES ($1, $2, $3, $4, 'new', 'trend', $5)
+      `INSERT INTO topics (title, summary, url, primary_source, status, source_kind, trend_score, publisher_url)
+       VALUES ($1, $2, $3, $4, 'new', 'trend', $5, $6)
        RETURNING id`,
-      [trend.title, summaryParts || trend.title, trend.url, sourceLabel, trend.virality_score]
+      [trend.title, summaryParts || trend.title, trend.url, sourceLabel, trend.virality_score, normalizeArticleUrl(trend.publisher_url)]
     );
     const topicId = topicRows[0].id;
 
