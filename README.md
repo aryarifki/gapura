@@ -3,6 +3,14 @@
 > Akun Instagram Resmi: **[`@gapuramedia`](https://instagram.com/gapuramedia)**  
 > Portal Dashboard: **[https://gapura.avenia.my.id](https://gapura.avenia.my.id)** · Canvas / Fallback Manual n8n: **[https://n8n.avenia.my.id](https://n8n.avenia.my.id)**
 
+**Mode evaluasi editorial — 16 November 2026:** hasil draf/desain dan antrean
+publikasi telah dikosongkan dengan backup/restore teruji. Timer intake dan
+publisher dijeda (`disabled`), worker Studio background dinonaktifkan, dashboard
+dan koneksi Instagram tetap tersedia. Perubahan desain/isi berikutnya mengikuti
+[blueprint editorial baru](docs/plans/07_EDITORIAL_REDESIGN_BLUEPRINT.md) dan
+[laporan reset](docs/EDITORIAL_WORKSPACE_RESET_20261116.md). Penghapusan
+Verifikator dan delapan perbaikan konten masih berstatus rencana, bukan selesai.
+
 ---
 
 ## 📌 Ringkasan Proyek
@@ -148,6 +156,8 @@ Dokumen evaluasi teknis, daftar permasalahan yang telah diselesaikan, dan fitur 
 👉 **[`docs/STATUS_DAN_ROADMAP_FITUR.md`](file:///root/gapura/docs/STATUS_DAN_ROADMAP_FITUR.md)**
 
 ### Ringkasan Status Fitur:
+- [x] Workspace desain/konten bersih dan backup teruji untuk evaluasi ulang
+- [x] Blueprint pembaruan editorial enam desk tersusun; implementasi menunggu review rencana
 - [x] Web Review Dashboard Responsif (Desktop & Mobile)
 - [x] Microservice Render Satori + Sharp (1080x1350 px)
 - [x] Migrasi Identitas Penuh ke Brand Guidelines Gapura Media (`@gapuramedia`)
@@ -157,11 +167,11 @@ Dokumen evaluasi teknis, daftar permasalahan yang telah diselesaikan, dan fitur 
 - [x] Kustomisasi Penuh 7 Agen AI & berkas `skills.md` per agen
 - [x] Manajemen Sumber Berita Niche Dinamis
 - [x] Agen SEO (Radar Trending) dengan sumber X/Google Trends yang dapat dikustomisasi
-- [x] Agen Verifikator (fact-check, anti-miskonsepsi, gate hoaks)
+- [ ] Penghapusan Agen Verifikator seluruh fungsi/dependensi sesuai blueprint (kode lama masih ada selama fase perencanaan)
 - [x] Katalog Provider & Model multi-provider (registry + fallback lintas provider + uji dari dashboard)
 - [x] P2 — [audit skor historis & validasi constraint](docs/P2_SCORE_INTEGRITY_AUDIT.md): 1.062 baris valid, 0 perubahan data; `topic_scores_component_total` tervalidasi
 - [x] P2 — scheduler native terverifikasi dan terdokumentasi: unit systemd terpasang menjadi sumber kebenaran; tanpa penambahan cron atau aktivasi workflow otomatis n8n
-- [x] Publisher Meta multi-platform (Instagram/Facebook/Threads) + timer `gapura-publisher.timer` *(mode shadow; publish live menunggu izin `instagram_content_publish` & `pages_manage_posts`)*
+- [x] Publisher Meta multi-platform tersedia; Instagram Unified terhubung, timer publisher dijeda dan mode shadow dipertahankan selama evaluasi
 - [ ] Aktivasi publish Meta live *(menunggu izin Meta App)*
 - [ ] Bot Notifikasi & Approval Telegram *(engine siap, menunggu `TELEGRAM_BOT_TOKEN`)*
 - [ ] UI Kalender Konten Interaktif (Drag & Drop Scheduler)
@@ -175,8 +185,11 @@ Dokumen evaluasi teknis, daftar permasalahan yang telah diselesaikan, dan fitur 
 **Sumber kebenaran scheduler adalah unit yang terpasang beserta status runtime
 systemd**, termasuk drop-in jika ada. Berkas terlacak di [`deploy/`](deploy/)
 merupakan template untuk redeploy; perubahan template belum mengubah unit yang
-sedang terpasang. Pemeriksaan read-only pada 16 November 2026 memastikan keempat
-unit di bawah cocok dengan template deploy dan tidak memiliki drop-in.
+sedang terpasang. **Keadaan terbaru setelah reset evaluasi:** kedua timer
+`disabled/inactive`, serta `hme-web` memiliki drop-in `editorial-review.conf`
+untuk menjeda worker background. Tabel berikut adalah snapshot historis P2
+sebelum penjedaan; jangan menafsirkannya sebagai status aktif saat ini. Lihat
+[laporan reset](docs/EDITORIAL_WORKSPACE_RESET_20261116.md) sebelum re-enable.
 
 | Unit terpasang | Jadwal / tugas | Snapshot verifikasi 16 November 2026 |
 | :--- | :--- | :--- |

@@ -2,6 +2,13 @@
 > **Repositori:** `aryarifki/gapura` · **Diperbarui:** 16 November 2026
 > **Brand Identity:** `@gapuramedia` · **Portal Live:** [https://gapura.avenia.my.id](https://gapura.avenia.my.id)
 
+**Status terbaru: evaluasi desain/editorial.** Hasil produksi dan antrean lokal
+sudah kosong, intake/publisher otomatis dijeda, dan worker Studio background
+dinonaktifkan. Dashboard, render, n8n manual, sumber/config dan koneksi Instagram
+tetap tersedia. [Blueprint baru](plans/07_EDITORIAL_REDESIGN_BLUEPRINT.md)
+mencakup delapan permintaan owner; hanya reset/jeda yang sudah dieksekusi.
+[Bukti reset dan backup](EDITORIAL_WORKSPACE_RESET_20261116.md).
+
 ---
 
 ## 1. Matriks Status Fitur (Feature Matrix)
@@ -22,8 +29,10 @@
 | **Bypass Cache CDN (Cloudflare)** | ✅ **Selesai & Aktif** | Middleware HTTP `no-store, no-cache`, query string bust unik `?t=...`, dan asset versioning `v=3.5.0` mencegah browser/CDN menyajikan file usang. |
 | **Audit Log & Activity Tracker** | ✅ **Selesai & Aktif** | Pencatatan setiap aksi editorial (create, edit_slide, approve, reject, regenerated_ai) ke tabel `audit_log` PostgreSQL. |
 | **Audit skor historis & constraint (P2)** | ✅ **Selesai** | Snapshot 16 November 2026, 18:23:55 WIB: 1.062 baris hingga ID 1062; mismatch/rentang invalid/NULL masing-masing 0. Mapping identitas, 0 `UPDATE`; `convalidated=true` sebelum dan sesudah validasi eksplisit. [Laporan audit](P2_SCORE_INTEGRITY_AUDIT.md). |
-| **Publisher Instagram / Facebook / Threads** | 🟡 **Shadow aktif** | Adapter dan worker tersedia; tabel `publication_targets` menyimpan status per akun/platform. Token Page dan akses baca IG tervalidasi. Live diblokir izin `instagram_content_publish` / `pages_manage_posts`; Threads belum memiliki token dan user ID tersendiri. |
-| **Scheduler native (P2)** | ✅ **Selesai & Aktif** | Unit systemd terpasang dan status runtime menjadi sumber kebenaran operasional. Intake kalender 15 menit dan publisher monotonic 10 menit terverifikasi `enabled`, `active (waiting)` pada 16 November 2026; template `deploy/` cocok dengan keempat unit terpasang. n8n tetap canvas/fallback manual. |
+| **Publisher Instagram / Facebook / Threads** | 🟡 **Dijeda untuk evaluasi** | Instagram Unified `@gapuramedia` terhubung; pemeriksaan quota publikasi berhasil sebelum reset. Publisher tetap shadow dengan timer disabled. Facebook Page dan Threads perlu pemeriksaan/koneksi tersendiri. |
+| **Scheduler native (P2)** | 🟡 **Terpasang, sengaja dijeda** | Intake/publisher `disabled/inactive` selama evaluasi hasil baru. Snapshot P2 aktif di bawah tetap historis; unit runtime dan drop-in web adalah acuan keadaan terbaru. n8n tetap canvas/fallback manual. |
+| **Reset draf/desain** | ✅ **Selesai** | 142 draf, 269 slide, seluruh jadwal/target/job Studio dan 556 berkas hasil dibersihkan setelah backup restore teruji. Sumber/config/token tetap utuh. |
+| **Blueprint pembaruan editorial** | 🟡 **Siap review owner** | Carousel-first, foto nyata, headline/caption bersih, enam desk nasional, sumber lebih kuat, dan penghapusan seluruh Verifikator dijabarkan beserta urutan R0–R8. |
 | **Telegram Approval Bot** | ⏳ **Belum Dikonfigurasi** | Engine dan kode notifikasi Telegram telah siap, namun menunggu input token Bot Telegram (`TELEGRAM_BOT_TOKEN`) dan Chat ID admin dari owner agar bot dapat aktif di polling. |
 | **Kalender Konten Interaktif** | ⏳ **Belum Dikerjakan** | Jadwal tersimpan di PostgreSQL; kalender visual dengan drag-and-drop belum tersedia. |
 | **Multi-User Role** | ⏳ **Belum Dikerjakan** | Dashboard dibuka langsung tanpa login/token admin atas permintaan owner. Validasi Origin dan redaksi API key tetap aktif; akun pengguna dan pembagian role belum tersedia. |
@@ -71,6 +80,10 @@ Berikut adalah riwayat kendala teknis nyata yang dihadapi dan langkah solutif ya
   - Memperbaiki endpoint menjadi `${RENDER_SERVICE_URL}/render` sehingga produksi topik berjalan mulus.
 
 ### 5. P2 — Sumber Kebenaran Scheduler Native (Selesai)
+
+Snapshot historis sebelum reset evaluasi. Status aktif pada tabel ini sudah
+digantikan penjedaan yang tercatat di [laporan reset](EDITORIAL_WORKSPACE_RESET_20261116.md).
+Tidak ada aktivasi kembali otomatis selama owner menilai desain/isi baru.
 
 Lingkup scheduler P2 selesai diverifikasi secara read-only pada 16 November
 2026. Definisi unit yang terpasang, drop-in, dan status runtime systemd menjadi
