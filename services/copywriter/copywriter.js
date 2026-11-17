@@ -10,6 +10,7 @@ import { validateDesignOutput } from '../common/carousel.js';
 import { validateStudioTopic } from '../studio/validation.js';
 import { buildEvidenceBasedContent, composeCaption, groundedCaptionBody, chunkText, verificationCaptionBlock, isDraftComplete } from './editorial.js';
 import { runtimeSecret } from '../common/runtime-secret.js';
+import { loadIllustration, selectedIllustration, illustrationDescriptor, pinIllustrationSlides } from '../designer/illustration-store.js';
 
 const { Pool } = pkg;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -74,7 +75,12 @@ function validVerification(verification, topicId) {
 }
 
 async function renderDraft(client, draftId, content, options) {
-  const requestSlides = await renderPayload(content.slides, options.imageOptions);
+  const assets = new Map();
+  for (const slide of content.slides) if (slide.data?.asset_id && !assets.has(slide.data.asset_id)) {
+    assets.set(slide.data.asset_id, await loadIllustration(client, slide.data.asset_id, { topic_id: options.topicId }));
+  }
+  const requestSlides = await renderPayload(content.slides, { ...options.imageOptions,
+    resolveAsset: (id) => assets.get(id) });
   const response = await (options.fetchImpl || fetch)(RENDER_SERVICE_URL, {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Render-Secret': RENDER_SECRET },
     body: JSON.stringify({ draft_id: draftId, slides: requestSlides }), signal: AbortSignal.timeout(options.renderTimeoutMs || 120000),
@@ -157,7 +163,12 @@ async function produce(topicOrId, database, options = {}) {
          AND action IN ('produced', 'regenerated') ORDER BY id DESC LIMIT 1`, [regeneration.id]);
       if (audits[0]?.payload?.editorial_brief) options = { ...options, editorialBrief: audits[0].payload.editorial_brief };
     }
+    const pinnedId = regeneration?.slides?.[0]?.data?.asset_id;
+    const asset = pinnedId ? await loadIllustration(client, pinnedId, { topic_id: topic.id }) : await selectedIllustration(client, topic.id);
+    if (!asset && loadAgentsConfig().designer?.image_generation?.enabled === true) throw new Error('needs_media: Ilustrasi AI belum siap. Buat ilustrasi topik sebelum produksi draf.');
+    if (asset) topic.cover_illustration = illustrationDescriptor(asset);
     const content = await buildCarouselSlides(topic, verification, options);
+    content.slides = await pinIllustrationSlides(content.slides, { client, topic_id: topic.id });
     let draftId = regeneration?.id;
     if (regeneration) {
       await client.query('SAVEPOINT regeneration');
@@ -179,7 +190,7 @@ async function produce(topicOrId, database, options = {}) {
         [topicId, JSON.stringify(content.slides), content.format, content.caption, content.hashtags, content.disclaimer_type, Boolean(content.needs_review || options.forceReview)]);
       draftId = rows[0].id;
     }
-    const rendered = await renderDraft(client, draftId, content, options);
+    const rendered = await renderDraft(client, draftId, content, { ...options, topicId: topic.id });
     const { rows: latestReports } = await client.query('SELECT * FROM verification_reports WHERE topic_id = $1 ORDER BY created_at DESC, id DESC LIMIT 1', [topicId]);
     validVerification(latestReports[0], topicId);
     if (String(latestReports[0].id) !== String(verification.id)) throw new Error('verification_changed; retry with the latest report');

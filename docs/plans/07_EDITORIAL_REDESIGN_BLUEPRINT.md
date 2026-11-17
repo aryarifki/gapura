@@ -1,6 +1,7 @@
 # Blueprint pembaruan editorial dan desain Gapura Media
 
-Versi 2.0 · 17 November 2026 · Status: R0–R2 selesai; arah R3–R8 direvisi oleh owner.
+Versi 2.1 · 17 November 2026 · Status: R0–R2 selesai; R3 kode/aset lokal tersedia,
+generasi nyata tertahan kuota; R4–R8 mengikuti arah orisinal owner.
 
 Dokumen ini menjadi acuan perubahan konten berikutnya. [Keputusan konten orisinal
 dan ilustrasi AI](10_ORIGINAL_AI_EDITORIAL.md) menggantikan kewajiban memakai
@@ -12,6 +13,8 @@ dan reader/snapshot [R2](09_R2_ARTICLE_MATERIALS.md) tetap hasil historis yang
 tersedia. Pembersihan workspace dan penjedaan otomatisasi sudah dilaksanakan;
 buktinya tercantum di
 [laporan reset](../EDITORIAL_WORKSPACE_RESET_20261116.md).
+[R3](11_R3_AI_ILLUSTRATIONS.md) menambahkan adapter ilustrasi/provenance lokal
+dan disclosure, tanpa menyatakan naskah orisinal R4–R6 sudah terpasang.
 
 ## 1. Keputusan produk dan tujuan
 
@@ -256,8 +259,9 @@ foto sumber atau menganggap cover kosong siap unggah.
 Validasi bytes, MIME raster, dimensi, checksum, batas ukuran dan timeout tetap
 wajib. Jika provider mengembalikan URL, gunakan kebijakan host provider, DNS
 publik/redirect yang aman dan penyimpanan lokal; engine render tidak fetch URL.
-Adapter/provider gambar belum terpasang. Kontrak R1 harus direvisi dengan TDD
-sebelum klaim aset generatif siap pada R3.
+Adapter dan cabang kontrak visual R1 tersedia pada [R3](11_R3_AI_ILLUSTRATIONS.md)
+setelah TDD. Uji provider nyata tertahan kuota 0; belum ada raster model nyata
+yang dapat dinyatakan siap atau diterima owner.
 
 ## 7. Produk carousel dan desain editorial
 
@@ -411,7 +415,7 @@ Semua perubahan kode dimulai dari tes merah yang mereproduksi masalah.
 | R0 — Workspace bersih | Backup/restore teruji, konten kosong, timer dan worker otomatis dijeda | **Selesai**, lihat laporan reset; koneksi Meta tetap connected |
 | R1 — Kontrak editorial | Taxonomy enam desk, material/media contract, kebijakan hak/credit minimum, aturan headline/caption/carousel, corpus fixture | **Tersedia offline**, lihat [kontrak R1](08_R1_EDITORIAL_CONTRACT.md); bukan acceptance foto berita live/visual owner |
 | R2 — Pengambilan materi | Feed body penuh yang tersedia, publisher article resolver, metadata, akses status, snapshot hash idempotent | **Tersedia**, lihat [hasil R2](09_R2_ARTICLE_MATERIALS.md); validasi fixture dan migrasi tanpa rewrite. Clustering peristiwa lintas URL menyusul bersama kurasi sumber R4 |
-| R3 — Ilustrasi AI end-to-end | Revisi kontrak R1, provider gambar, asset ID lokal, provenance/disclosure, hydration | Raster generatif dan label muncul pada normal/fallback/regenerasi; semua kegagalan terlihat |
+| R3 — Ilustrasi AI end-to-end | Revisi kontrak visual R1, adapter gambar, asset ID lokal, provenance/disclosure, hydration | **Kode/API/render teruji**, lihat [R3](11_R3_AI_ILLUSTRATIONS.md); fixture raster/label bertahan pada normal/fallback/regenerasi. Generasi provider nyata **tertahan kuota 0**, belum acceptance visual live |
 | R4 — Sources dan Analis | Topik/judul dan metadata saja, cluster enam desk, angle/kepentingan publik | Body/ringkasan/foto tidak masuk payload agen; fixture per desk dan endpoint gagal teruji |
 | R5 — Lepas Verifikator | Seluruh runtime/API/UI/config/SQL consumer report hilang | Produksi/review tanpa report berhasil; publish tanpa review tetap ditolak |
 | R6 — Penulisan dan desain | Hapus verbatim/fallback salin sumber; angle/naskah/caption orisinal; mode umum/aktual | Sampel enam desk tidak mengarang fakta, 3–9 slide bermakna dan render lulus |
@@ -536,12 +540,12 @@ ilustrasi AI dan naskah orisinal sudah ditetapkan owner.
 
 Kontrak/corpus sintetis **R1** dan reader/snapshot **R2** tersedia setelah mandat
 owner; lihat [hasil R1](08_R1_EDITORIAL_CONTRACT.md) dan
-[hasil R2](09_R2_ARTICLE_MATERIALS.md). Langkah berikutnya **R3** mengikuti
-[keputusan konten orisinal](10_ORIGINAL_AI_EDITORIAL.md): revisi kontrak R1
-dengan TDD, provider ilustrasi AI, aset lokal/provenance/disclosure dan
-kontinuitas preview/render/fallback. R4/R6 menghubungkan input topik/judul
-serta naskah orisinal. Dokumen keputusan ini belum berarti runtime telah berubah
-atau generator/provider gambar telah tersedia.
+[hasil R2](09_R2_ARTICLE_MATERIALS.md). [R3](11_R3_AI_ILLUSTRATIONS.md) sudah
+menyediakan adapter gambar, aset lokal/provenance/disclosure serta kontinuitas
+preview/render/fallback yang diuji dengan TDD. Kuota gambar provider nyata
+masih tertahan; kelulusan fixture tidak menggantikan sampel nyata R7.
+Pekerjaan kode berikutnya R4/R6 menghubungkan input topik/judul dan naskah
+orisinal, disertai penghapusan Verifikator R5. Naskah produksi lama belum diubah.
 
 Otomatisasi produksi/publish tetap dijeda sampai owner menyetujui sampel. Lihat
 [laporan reset](../EDITORIAL_WORKSPACE_RESET_20261116.md) untuk backup, keadaan

@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { renderPayload } from '../common/images.js';
+import { pinIllustrationSlides, loadIllustration } from '../designer/illustration-store.js';
 
 export class DraftError extends Error {
   constructor(message, statusCode = 400) { super(message); this.statusCode = statusCode; }
@@ -18,7 +19,7 @@ export function validateSlides(input) {
 }
 
 /** Editing invalidates all queued publication decisions, inside the same row lock. */
-export async function editDraft(draftId, change, { pool, renderUrl, renderSecret, storagePath, fetchImpl = fetch }) {
+export async function editDraft(draftId, change, { pool, renderUrl, renderSecret, storagePath, fetchImpl = fetch, replaceIllustration = false }) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -33,7 +34,12 @@ export async function editDraft(draftId, change, { pool, renderUrl, renderSecret
     );
     if (metaBusy.length) throw new DraftError('Publikasi Meta sudah dicoba. Rekonsiliasi hasil sebelum mengubah aset draf.', 409);
     const next = await change(structuredClone(draft), client);
-    const slides = validateSlides(next.slides ?? draft.slides);
+    let slides = validateSlides(next.slides ?? draft.slides);
+    // Body slides can move: only the single-slide edit route restores omitted body
+    // metadata. The cover stays pinned during ordinary full/text/structure edits.
+    const preserve = replaceIllustration ? [] : next.preserveIllustrations ? draft.slides : [draft.slides[0]];
+    try { slides = await pinIllustrationSlides(slides, { client, topic_id: draft.topic_id, preserveSlides: preserve }); }
+    catch (error) { throw new DraftError(error.message, 409); }
     const caption = next.caption ?? draft.caption;
     const hashtags = next.hashtags ?? draft.hashtags;
     if (typeof caption !== 'string' || !Array.isArray(hashtags) || hashtags.some((tag) => typeof tag !== 'string')) throw new DraftError('Caption atau hashtag tidak valid.');
@@ -41,9 +47,13 @@ export async function editDraft(draftId, change, { pool, renderUrl, renderSecret
     if (next.render !== false) {
       let response;
       try {
+        const assets = new Map();
+        for (const slide of slides) if (slide.data?.asset_id && !assets.has(slide.data.asset_id)) {
+          assets.set(slide.data.asset_id, await loadIllustration(client, slide.data.asset_id, { topic_id: draft.topic_id }));
+        }
         response = await fetchImpl(`${renderUrl}/render`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Render-Secret': renderSecret },
-          body: JSON.stringify({ draft_id: Number(draftId), slides: await renderPayload(slides) }),
+          body: JSON.stringify({ draft_id: Number(draftId), slides: await renderPayload(slides, { storagePath, resolveAsset: (id) => assets.get(id) }) }),
           signal: AbortSignal.timeout(30000),
         });
       } catch { throw new DraftError('Renderer tidak dapat dihubungi. Draf sebelumnya dipertahankan.', 502); }

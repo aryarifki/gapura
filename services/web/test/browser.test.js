@@ -34,6 +34,8 @@ test('Chromium: newsroom opens without login, navigation, fresh draft review, Ra
   const stamp = '2026-11-16T02:00:00Z';
   const topic = { id: '42', title: 'Inflasi Oktober 2,1% menurut BPS', summary: 'Data BPS menunjukkan inflasi tahunan 2,1%.', status: 'scored', score_total: 88, primary_source: 'BPS', url: 'https://www.bps.go.id/rilis/1', created_at: stamp, verification_status: 'verified' };
   const draft = { id: '21', topic_id: '42', topic_title: topic.title, caption: topic.summary, hashtags: ['#GapuraMedia'], primary_source: 'BPS', source_url: topic.url, status: 'draft', score_total: 88, created_at: stamp, rendered_slides: [{ slide_no: 1, layout: 'cover-focus', text: topic.title, data: { title: topic.title }, image_url: '/assets/logo.png' }] };
+  const assetId = '2d30e364-b95d-4d49-82ed-43c548270944';
+  let illustration = null;
   let detailDraft = { ...draft, caption: 'Fresh detail caption for review', revision: 'fixture-reviewed-revision' };
   const requests = [];
   const credentialedRequests = [];
@@ -58,6 +60,13 @@ test('Chromium: newsroom opens without login, navigation, fresh draft review, Ra
         break;
       case '/api/topics': data = url.searchParams.get('q')?.includes('nothing') ? [] : [topic]; headers['X-Has-More'] = 'false'; headers['X-Next-Offset'] = '1'; break;
       case '/api/topics/42/verify': data = { report: { status: 'verified', confidence: 90 } }; break;
+      case '/api/topics/42/illustration': data = { assets: illustration ? [illustration] : [], selected: illustration, configured: true }; break;
+      case '/api/topics/42/illustration/generate': illustration = { id: assetId, status: 'ready', kind: 'ai_generated', disclosure: 'Ilustrasi AI · Gapura Media' }; data = { asset: illustration, is_existing: false }; break;
+      case `/api/media/assets/${assetId}`:
+        await route.fulfill({ status: 200, headers: { 'Content-Type': 'image/png' }, body: await fs.readFile(path.join(PUBLIC, 'assets/logo.png')) }); return;
+      case '/api/drafts/21/illustration':
+        detailDraft = { ...detailDraft, revision: 'fixture-illustration-revision', rendered_slides: detailDraft.rendered_slides.map((slide, i) => i ? slide : { ...slide, data: { ...slide.data, asset_id: body.asset_id, asset_sha256: 'a'.repeat(64), image_kind: 'ai_generated', disclosure_version: 1 } }) };
+        data = { status: 'success', asset_id: body.asset_id, needs_review: true }; break;
       case '/api/agents/config':
         if (request.method() === 'POST') { for (const [key, value] of Object.entries(body)) config[key] = { ...config[key], ...value }; data = { status: 'success' }; }
         else data = config;
@@ -86,6 +95,17 @@ test('Chromium: newsroom opens without login, navigation, fresh draft review, Ra
   assert.deepEqual(requests.filter((entry) => entry.path.startsWith('/api/access/')), [], 'Startup must not request admin access endpoints');
   await page.locator('[data-view="view-topics"]').click();
   await page.locator('[data-verify-topic="42"]').waitFor();
+  assert.equal(requests.filter((r) => r.path.includes('/illustration')).length, 0, 'loading Radar must not generate or fetch images');
+  await page.locator('[data-illustration-action="open"]').click();
+  await page.getByText('Belum ada ilustrasi AI.', { exact: true }).waitFor();
+  await page.locator('[data-illustration-action="generate"]').click();
+  await page.getByText('Ilustrasi terpilih siap.', { exact: true }).waitFor();
+  const generationRequests = requests.filter((r) => r.path.endsWith('/illustration/generate'));
+  assert.equal(generationRequests.length, 1);
+  assert.match(generationRequests[0].body.request_id, /^[a-f0-9-]{36}$/u);
+  assert.deepEqual(Object.keys(generationRequests[0].body), ['request_id']);
+  await page.locator(`[data-topic-illustration="42"] img`).waitFor();
+  assert.equal(await page.locator(`[data-topic-illustration="42"] img`).evaluate((image) => image.complete && image.naturalWidth > 0), true);
   await page.locator('[data-verify-topic="42"]').click();
   await page.waitForFunction(() => document.querySelector('#toast').textContent.includes('selesai'));
   await page.locator('[data-view="view-review"]').click();
@@ -94,6 +114,11 @@ test('Chromium: newsroom opens without login, navigation, fresh draft review, Ra
   await page.waitForFunction(() => document.querySelector('#editor-input-caption').value === 'Fresh detail caption for review');
   assert.ok(requests.some((entry) => entry.method === 'GET' && entry.path === '/api/drafts/21'));
   assert.equal(await page.locator('#editor-reviewed').isChecked(), false);
+  await page.locator('#editor-reviewed').check();
+  await page.locator('#btn-use-topic-illustration').click();
+  await page.waitForFunction(() => document.querySelector('#toast').textContent.includes('Ilustrasi diperbarui'));
+  assert.equal(await page.locator('#editor-reviewed').isChecked(), false);
+  assert.ok(requests.some((r) => r.path === '/api/drafts/21/illustration' && r.body.asset_id === assetId));
   detailDraft = { ...detailDraft, caption: 'Changed in another browser', revision: 'fixture-remote-revision' };
   const beforeStaleApproval = requests.length;
   await page.locator('#editor-reviewed').check();
@@ -101,7 +126,7 @@ test('Chromium: newsroom opens without login, navigation, fresh draft review, Ra
   await page.waitForFunction(() => /muat ulang/i.test(document.querySelector('#toast').textContent));
   assert.deepEqual(requests.slice(beforeStaleApproval).filter((entry) => entry.path.startsWith('/api/drafts')), [{
     path: '/api/drafts/21/approve', query: '', method: 'POST',
-    body: { mode: 'auto', reviewed: true, expected_revision: 'fixture-reviewed-revision' },
+    body: { mode: 'auto', reviewed: true, expected_revision: 'fixture-illustration-revision' },
   }]);
   assert.equal(await page.locator('#editor-input-caption').inputValue(), 'Fresh detail caption for review');
   await page.reload();
@@ -146,6 +171,11 @@ test('Chromium: newsroom opens without login, navigation, fresh draft review, Ra
   await page.waitForFunction(() => !document.querySelector('#btn-save-agents-config-top').disabled);
   assert.equal(config.studio.system_prompt, 'Edited Studio instruction from browser test');
   assert.ok(requests.some((entry) => entry.path === '/api/agents/config/test' && entry.body.config.studio.system_prompt === 'Edited Studio instruction from browser test'));
+  await page.locator('[data-agent="designer"]').click();
+  await page.locator('#designer-image-model').fill('gemini-3.1-flash-lite-image');
+  await page.locator('#btn-save-agents-config-top').click();
+  await page.waitForFunction(() => !document.querySelector('#btn-save-agents-config-top').disabled);
+  assert.equal(config.designer.image_generation.model, 'gemini-3.1-flash-lite-image');
   await page.locator('[data-view="view-trends"]').click();
   await page.waitForFunction(() => document.querySelector('#trend-health-message').textContent.includes('fallback'));
   await page.locator('[data-view="view-verifications"]').click();

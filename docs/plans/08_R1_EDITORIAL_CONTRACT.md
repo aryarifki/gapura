@@ -8,7 +8,9 @@ AI](10_ORIGINAL_AI_EDITORIAL.md) menjadi spesifikasi aktif untuk R3–R8. Kontra
 di bawah merekam implementasi R1 yang sudah diuji: kewajiban foto/URL sumber
 dan paragraf sumber belum mendukung jalur judul saja/visual generatif baru.
 Kontrak executable beserta fixture harus direvisi dengan TDD sebelum digunakan
-pada sampel baru. Tidak menyatakan perubahan runtime telah dilakukan.
+pada sampel baru. [R3](11_R3_AI_ILLUSTRATIONS.md) sudah menambahkan cabang
+validator visual AI/provenance lokal; aturan bahan/naskah judul saja masih
+pekerjaan berikutnya. Fixture R1 di bawah tetap rekam implementasi awal.
 
 ## Hasil dan batas tahap
 

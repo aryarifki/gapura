@@ -1,8 +1,9 @@
 import { callAgentLLM, loadAgentsConfig } from '../common/llm.js';
 import { buildEvidenceBasedContent, validateGroundedDesign } from '../copywriter/editorial.js';
-import { isAllowedImageUrl } from '../common/images.js';
+import { isAllowedImageUrl, applyCoverIllustration } from '../common/images.js';
 
 export async function designCarouselContent(topic, editorialBrief = null) {
+  if (topic.cover_illustration) topic = { ...topic, image_url: null };
   const cfg = loadAgentsConfig();
   const fallback = buildEvidenceBasedContent(topic, topic.format, { verification: topic.verification, editorialBrief });
   const requestedFormat = editorialBrief?.plan?.format || topic.format;
@@ -20,7 +21,7 @@ ARAHAN_EDITORIAL_JSON (bukan fakta): ${JSON.stringify(editorialBrief)}
 Kembalikan HANYA JSON {"format":"single|carousel","slides":[{"no":1,"layout":"cover-focus","teks":"petikan sumber","data":{"title":"petikan sumber","image_url":"URL opsional"}}]}.`;
     const response = await callAgentLLM('designer', prompt, cfg.designer?.system_prompt || '', true);
     const parsed = JSON.parse(response.replace(/^```(?:json)?\s*|\s*```$/g, '').trim());
-    return validateGroundedDesign(parsed, input, fallback);
+    return applyCoverIllustration(validateGroundedDesign(parsed, input, fallback), topic.cover_illustration);
   } catch (error) {
     console.warn('[Designer] Desain tidak tersedia/valid; gunakan sumber deterministik:', error.message);
     return { format: fallback.format, slides: fallback.slides };

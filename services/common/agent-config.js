@@ -27,6 +27,25 @@ export function validateAgent(agentName, agent) {
     const timeout = Number(agent.timeout_ms);
     if (!Number.isInteger(timeout) || timeout < 1000 || timeout > 300000) errors.push(`${agentName}: timeout_ms harus bilangan bulat 1000-300000.`);
   }
+  if (agentName === 'designer' && Object.hasOwn(agent, 'image_generation')) {
+    errors.push(...validateImageGeneration(agent.image_generation));
+  }
+  return errors;
+}
+
+function validateImageGeneration(config) {
+  const prefix = 'designer.image_generation:';
+  if (!config || typeof config !== 'object' || Array.isArray(config)) return [`${prefix} konfigurasi wajib berupa object.`];
+  const errors = [];
+  const fields = ['enabled', 'provider', 'model', 'rights_reference', 'timeout_ms'];
+  for (const field of Object.keys(config)) {
+    if (!fields.includes(field)) errors.push(`${prefix} field tidak didukung (${field}).`);
+  }
+  if (typeof config.enabled !== 'boolean') errors.push(`${prefix} enabled wajib berupa boolean.`);
+  if (config.provider !== 'gemini') errors.push(`${prefix} provider harus gemini.`);
+  if (typeof config.model !== 'string' || !config.model.trim()) errors.push(`${prefix} model wajib berupa string yang tidak kosong.`);
+  if (config.rights_reference !== 'https://ai.google.dev/gemini-api/terms') errors.push(`${prefix} rights_reference harus https://ai.google.dev/gemini-api/terms.`);
+  if (!Number.isInteger(config.timeout_ms) || config.timeout_ms < 1000 || config.timeout_ms > 120000) errors.push(`${prefix} timeout_ms harus bilangan bulat 1000-120000.`);
   return errors;
 }
 

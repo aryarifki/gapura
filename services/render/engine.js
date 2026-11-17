@@ -16,6 +16,7 @@ import { validateDraftId, validateSlides, validatePreview } from './validation.j
 const draftRenders = new Map();
 
 const JPEG_OPTIONS = Object.freeze({ quality: 92, chromaSubsampling: '4:4:4', mozjpeg: true });
+const AI_IMAGE_DISCLOSURE = 'Ilustrasi AI · Gapura Media';
 
 /**
  * Writes slide_<n>.jpg beside every slide_<n>.png inside one draft directory.
@@ -206,7 +207,7 @@ export class RenderEngine {
   // Base Slide Shell — dua varian:
   //  - "cover" : murni masthead + konten utama (tanpa kategori, counter, sumber, CTA)
   //  - "body"  : header/footer minimalis untuk slide isi
-  wrapSlide(contentNode, { slideNo, totalSlides, source, showSource = true, variant = 'body' }) {
+  wrapSlide(contentNode, { slideNo, totalSlides, source, showSource = true, variant = 'body', imageData }) {
     const { brand, palette, grid } = this.tokens;
     const margin = grid.margin || 72;
 
@@ -341,7 +342,9 @@ export class RenderEngine {
                 paddingTop: '40px',
                 paddingBottom: '32px',
               },
-              children: [contentNode],
+              children: imageData?.image_kind === 'ai_generated'
+                ? [this.renderImage(imageData), { type: 'div', props: { style: { height: '28px', flexShrink: 0 } } }, contentNode]
+                : [contentNode],
             },
           },
 
@@ -383,6 +386,68 @@ export class RenderEngine {
     };
   }
 
+  // Disclosure is part of the image itself, independent of source visibility or
+  // client credit text. Fixed contrast keeps it readable under token overrides.
+  renderImage(data) {
+    if (!data?.image_data) return null;
+    const image = {
+      type: 'img',
+      props: {
+        src: data.image_data,
+        width: CONTENT_WIDTH,
+        height: 390,
+        style: { width: `${CONTENT_WIDTH}px`, height: '390px', objectFit: 'cover', borderRadius: '4px' },
+      },
+    };
+    if (data.image_kind !== 'ai_generated') return image;
+    return {
+      type: 'div',
+      props: {
+        style: { display: 'flex', position: 'relative', width: `${CONTENT_WIDTH}px`, height: '390px', flexShrink: 0, borderRadius: '4px', overflow: 'hidden' },
+        children: [
+          image,
+          {
+            type: 'div',
+            props: {
+              style: { display: 'flex', position: 'absolute', bottom: '14px', left: '14px', padding: '10px 14px', backgroundColor: '#12241b', color: '#ffffff', fontFamily: 'Inter', fontWeight: 700, fontSize: '20px', lineHeight: '1.2', borderRadius: '4px' },
+              children: AI_IMAGE_DISCLOSURE,
+            },
+          },
+        ],
+      },
+    };
+  }
+
+  renderIllustration(slide, slideIndex, totalSlides) {
+    const data = slide.data || {};
+    const { palette } = this.tokens;
+    const headline = data.title || data.headline || slide.teks;
+    const body = slide.teks !== headline ? slide.teks : '';
+    return this.wrapSlide({
+      type: 'div',
+      props: {
+        style: { display: 'flex', flexDirection: 'column', gap: '28px', width: '100%' },
+        children: [
+          this.renderImage(data),
+          {
+            type: 'div',
+            props: {
+              style: { fontFamily: 'Archivo Black', fontSize: `${fitFontSize(headline, { max: 56, min: 26, maxLines: 3 })}px`, lineHeight: '1.2', color: palette.ink || '#102B45' },
+              children: headline,
+            },
+          },
+          body ? {
+            type: 'div',
+            props: {
+              style: { fontSize: `${fitFontSize(body, { max: 30, min: 18, ratio: CHAR_RATIO.body, maxLines: 8, step: 1 })}px`, lineHeight: '1.5', color: palette.ink || '#102B45' },
+              children: body,
+            },
+          } : null,
+        ].filter(Boolean),
+      },
+    }, { slideNo: slideIndex, totalSlides, source: slide.source });
+  }
+
   // Cover murni: masthead kecil + (opsional) angka utama + headline auto-fit.
   renderCover(slide, slideIndex, totalSlides) {
     const { palette } = this.tokens;
@@ -421,17 +486,7 @@ export class RenderEngine {
         props: {
           style: { display: 'flex', flexDirection: 'column', gap: hasStat ? '32px' : '28px', width: '100%' },
           children: [
-            data.image_data
-              ? {
-                  type: 'img',
-                  props: {
-                    src: data.image_data,
-                    width: CONTENT_WIDTH,
-                    height: 390,
-                    style: { width: `${CONTENT_WIDTH}px`, height: '390px', objectFit: 'cover', borderRadius: '4px' },
-                  },
-                }
-              : null,
+            this.renderImage(data),
             {
               type: 'div',
               props: {
@@ -522,6 +577,9 @@ export class RenderEngine {
     }
 
     switch (layout) {
+      case 'illustration':
+        return this.renderIllustration(slide, slideIndex, totalSlides);
+
       case 'verifikasi': {
         const d = slide.data || {};
         const verdictRaw = String(d.status || d.verdict || 'unverified').toLowerCase();
@@ -728,7 +786,7 @@ export class RenderEngine {
               ].filter(Boolean),
             },
           },
-          { slideNo: slideIndex, totalSlides, source: slide.source, category: 'VERIFIKASI' }
+          { slideNo: slideIndex, totalSlides, source: slide.source, imageData: slide.data, category: 'VERIFIKASI' }
         );
       }
 
@@ -928,7 +986,7 @@ export class RenderEngine {
               ],
             },
           },
-          { slideNo: slideIndex, totalSlides, source: slide.source, category: category }
+          { slideNo: slideIndex, totalSlides, source: slide.source, imageData: slide.data, category: category }
         );
       }
 
@@ -1026,7 +1084,7 @@ export class RenderEngine {
               ].filter(Boolean),
             },
           },
-          { slideNo: slideIndex, totalSlides, source: slide.source, category: slide.data?.category }
+          { slideNo: slideIndex, totalSlides, source: slide.source, imageData: slide.data, category: slide.data?.category }
         );
       }
 
@@ -1115,7 +1173,7 @@ export class RenderEngine {
               ],
             },
           },
-          { slideNo: slideIndex, totalSlides, source: slide.source, category: slide.data?.category }
+          { slideNo: slideIndex, totalSlides, source: slide.source, imageData: slide.data, category: slide.data?.category }
         );
       }
 
@@ -1198,7 +1256,7 @@ export class RenderEngine {
               ],
             },
           },
-          { slideNo: slideIndex, totalSlides, source: slide.source, category: slide.data?.category }
+          { slideNo: slideIndex, totalSlides, source: slide.source, imageData: slide.data, category: slide.data?.category }
         );
       }
 
@@ -1292,7 +1350,7 @@ export class RenderEngine {
               ],
             },
           },
-          { slideNo: slideIndex, totalSlides, source: slide.source, category: slide.data?.category }
+          { slideNo: slideIndex, totalSlides, source: slide.source, imageData: slide.data, category: slide.data?.category }
         );
       }
 
@@ -1356,7 +1414,7 @@ export class RenderEngine {
               ],
             },
           },
-          { slideNo: slideIndex, totalSlides, source: slide.source, category: 'HUKUM & REGULASI' }
+          { slideNo: slideIndex, totalSlides, source: slide.source, imageData: slide.data, category: 'HUKUM & REGULASI' }
         );
       }
 
@@ -1416,7 +1474,7 @@ export class RenderEngine {
               ],
             },
           },
-          { slideNo: slideIndex, totalSlides, source: slide.source, category: slide.data?.category }
+          { slideNo: slideIndex, totalSlides, source: slide.source, imageData: slide.data, category: slide.data?.category }
         );
       }
 
@@ -1487,7 +1545,7 @@ export class RenderEngine {
               ],
             },
           },
-          { slideNo: slideIndex, totalSlides, source: slide.source, category: slide.data?.category }
+          { slideNo: slideIndex, totalSlides, source: slide.source, imageData: slide.data, category: slide.data?.category }
         );
       }
 
@@ -1661,7 +1719,7 @@ export class RenderEngine {
               ],
             },
           },
-          { slideNo: slideIndex, totalSlides, source: slide.source, category: 'PENUTUP' }
+          { slideNo: slideIndex, totalSlides, source: slide.source, imageData: slide.data, category: 'PENUTUP' }
         );
       }
 
@@ -1672,6 +1730,7 @@ export class RenderEngine {
 
   // Universal Fluid Layout Renderer (Full AI Adaptive Creative Direction)
   renderFluidLayout(slide, slideIndex, totalSlides) {
+    if (slide.data?.image_kind === 'ai_generated') return this.renderIllustration(slide, slideIndex, totalSlides);
     const { palette, typography } = this.tokens;
     const data = slide.data || {};
     const text = slide.teks || '';
@@ -2238,6 +2297,16 @@ export class RenderEngine {
   // Render Single Slide to PNG Buffer (supports overrideTokens for live realtime preview)
   async renderSlideToBuffer(slide, slideIndex, totalSlides, overrideTokens = null) {
     validatePreview(slide, slideIndex, totalSlides, overrideTokens);
+    if (slide.data?.image_kind === 'ai_generated') {
+      try {
+        const bytes = Buffer.from(slide.data.image_data.split(',')[1], 'base64');
+        const metadata = await sharp(bytes, { failOn: 'warning', limitInputPixels: 16 * 1024 * 1024 }).metadata();
+        if ((metadata.pages || 1) !== 1 || metadata.width > 4096 || metadata.height > 4096) throw new Error('image dimensions');
+        await sharp(bytes, { failOn: 'warning', limitInputPixels: 16 * 1024 * 1024 }).stats();
+      } catch {
+        throw Object.assign(new Error('Invalid payload: slide.data.image_data must contain a decodable raster'), { status: 400 });
+      }
+    }
     // Layout methods read this.tokens synchronously. A private context keeps a
     // preview's overrides out of other renders and token reloads across awaits.
     const context = Object.create(this);

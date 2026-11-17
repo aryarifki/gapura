@@ -227,3 +227,23 @@ test('an otherwise grounded slide cannot hide a misleading cherry-picked headlin
   const content = await designCarouselContent({ ...source, format: 'single' });
   assert.equal(content.slides[0].data.title, source.title);
 });
+
+test('R3 selected illustration survives normal designer output and deterministic fallback without LLM choosing its ID', async () => {
+  const media = { asset_id: 'aa1cc71e-46d3-4db6-bf20-8c9eb066491c', asset_sha256: 'a'.repeat(64), image_kind: 'ai_generated', disclosure_version: 1 };
+  const selected = { ...topic, format: 'carousel', cover_illustration: media, image_url: 'https://img.antaranews.com/obsolete-photo.jpg' };
+  responses.designer = new Error('offline');
+  responses.copywriter = new Error('offline');
+  const fallback = await buildCarouselSlides(selected, verification);
+  assert.equal(fallback.slides[0].data.asset_id, media.asset_id);
+  assert.equal(fallback.slides[0].data.image_url, undefined);
+  responses.designer = { format: 'carousel', slides: [
+    { teks: topic.title, data: { title: topic.title, asset_id: 'invented-by-model', image_url: selected.image_url } },
+    { teks: 'Inflasi tahunan Oktober tercatat 2,1%.', data: {} },
+    { teks: 'Harga pangan naik 1,2% pada periode yang sama.', data: {} },
+  ] };
+  const normal = await buildCarouselSlides(selected, verification);
+  assert.equal(normal.slides[0].data.asset_id, media.asset_id);
+  assert.equal(normal.slides[0].data.image_url, undefined);
+  assert.equal(normal.slides[0].data.image_kind, 'ai_generated');
+  assert.ok(calls.filter((call) => call.agent === 'designer').every((call) => !call.prompt.includes('obsolete-photo.jpg')), 'selected AI cover must remove the old source photo from Designer input');
+});

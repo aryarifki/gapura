@@ -12,7 +12,9 @@ mencakup delapan permintaan owner. Reset/jeda, kontrak offline
 kontrak berita baru dan Verifikator runtime belum dihapus.
 [Keputusan owner terbaru](plans/10_ORIGINAL_AI_EDITORIAL.md): sumber hanya
 memasok topik/judul dan metadata; naskah serta ilustrasi dibuat agen AI secara
-orisinal. Blueprint/roadmap sudah diselaraskan, wiring runtime belum berubah.
+orisinal. Blueprint/roadmap sudah diselaraskan. [R3](plans/11_R3_AI_ILLUSTRATIONS.md)
+menambahkan jalur ilustrasi lokal/disclosure; naskah lama belum diganti dan
+generasi gambar nyata tertahan kuota provider.
 [Bukti reset dan backup](EDITORIAL_WORKSPACE_RESET_20261116.md).
 
 ---
@@ -41,7 +43,8 @@ orisinal. Blueprint/roadmap sudah diselaraskan, wiring runtime belum berubah.
 | **Blueprint pembaruan editorial** | 🟡 **Implementasi bertahap** | Carousel-first, input topik/judul, angle/naskah orisinal dan ilustrasi AI, enam desk nasional, serta penghapusan seluruh Verifikator mengikuti R0–R8. R1/R2 selesai sebagai baseline historis; kontraknya perlu penyesuaian, acceptance visual tetap R7. |
 | **R1 — Kontrak editorial** | ✅ **Offline tersedia** | Enam desk, normalizer headline, referensi materi unik, kontrak media/rights, carousel 3–9, caption/tag assembler; enam fixture sintetis berisi 36 paragraf/36 slide dan raster lokal. Belum dipasang ke produksi. [Kontrak R1](plans/08_R1_EDITORIAL_CONTRACT.md). |
 | **R2 — Materi artikel** | ✅ **Reader dan snapshot tersedia** | Body feed dipertahankan, HTML/JSON-LD diekstrak terpisah dari summary, tanggal/URL/status akses eksplisit, snapshot hash idempotent dan endpoint GET/enrich manual. Migrasi tambahan tanpa backfill; galeri tetap kosong. [Hasil R2](plans/09_R2_ARTICLE_MATERIALS.md). |
-| **R3–R8 — Konten orisinal dan ilustrasi AI** | 🟡 **Spesifikasi diperbarui** | RSS/registry hanya discovery topik/judul, agen menulis penjelasan dan membuat visual sendiri; detail aktual tetap memerlukan dasar, visual berlabel ilustrasi AI. Revisi kontrak, adapter gambar dan wiring penulis belum diterapkan. [Keputusan/acceptance](plans/10_ORIGINAL_AI_EDITORIAL.md). |
+| **R3 — Ilustrasi AI** | 🟡 **Kode/API/render tersedia; kuota tertahan** | Adapter Gemini text-only, versi aset immutable/idempotent, preview/editor/fallback/regenerasi dan label AI teruji. Migrasi additive terpasang, 20 tabel historis identik. Provider nyata 429 dengan Free Tier limit 0; belum ada gambar nyata atau draf produksi baru. [Hasil R3](plans/11_R3_AI_ILLUSTRATIONS.md). |
+| **R4–R8 — Konten orisinal** | 🟡 **Spesifikasi diperbarui** | Proyeksi judul saja bagi seluruh agen, clustering enam desk, naskah/angle orisinal serta penghapusan Verifikator belum diterapkan. Review owner dan aktivasi mengikuti gate yang sama. [Keputusan/acceptance](plans/10_ORIGINAL_AI_EDITORIAL.md). |
 | **Telegram Approval Bot** | ⏳ **Belum Dikonfigurasi** | Engine dan kode notifikasi Telegram telah siap, namun menunggu input token Bot Telegram (`TELEGRAM_BOT_TOKEN`) dan Chat ID admin dari owner agar bot dapat aktif di polling. |
 | **Kalender Konten Interaktif** | ⏳ **Belum Dikerjakan** | Jadwal tersimpan di PostgreSQL; kalender visual dengan drag-and-drop belum tersedia. |
 | **Multi-User Role** | ⏳ **Belum Dikerjakan** | Dashboard dibuka langsung tanpa login/token admin atas permintaan owner. Validasi Origin dan redaksi API key tetap aktif; akun pengguna dan pembagian role belum tersedia. |

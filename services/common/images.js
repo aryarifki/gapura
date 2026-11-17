@@ -36,8 +36,19 @@ export async function imageUrlToDataUri(value, { fetchImpl = fetch, timeoutMs = 
   }
 }
 
-export async function prepareSlideImages(slides, options) {
+export async function prepareSlideImages(slides, options = {}) {
   return Promise.all((slides || []).map(async (slide) => {
+    const descriptor = slide?.data || {};
+    if (descriptor.asset_id || descriptor.image_kind === 'ai_generated') {
+      const { ASSET_ID, readIllustrationRaster } = await import('../designer/illustrations.js');
+      if (typeof descriptor.asset_id !== 'string' || !ASSET_ID.test(descriptor.asset_id)) throw new Error('illustration_id_invalid');
+      if (typeof options.resolveAsset !== 'function') throw new Error('illustration_resolver_missing');
+      const asset = await options.resolveAsset(descriptor.asset_id);
+      if (descriptor.asset_sha256 && descriptor.asset_sha256 !== asset.sha256) throw new Error('illustration_revision_mismatch');
+      const bytes = await readIllustrationRaster(asset, options);
+      const { image_url, image_data, image_disclosure, ...data } = descriptor;
+      return { ...slide, data: { ...data, asset_id: asset.id, asset_sha256: asset.sha256, image_kind: 'ai_generated', disclosure_version: 1, image_data: `data:${asset.mime};base64,${bytes.toString('base64')}` } };
+    }
     const imageUrl = slide?.data?.image_url;
     if (!imageUrl) return slide;
     const imageData = await imageUrlToDataUri(imageUrl, options);
@@ -53,4 +64,12 @@ export async function renderPayload(slides, options) {
     const { image_url, ...data } = slide.data;
     return { ...slide, data };
   });
+}
+
+/** Server-selected descriptor wins over every model's image field, including fallback. */
+export function applyCoverIllustration(content, descriptor) {
+  if (!descriptor) return content;
+  if (!Array.isArray(content?.slides) || !content.slides.length) throw new Error('illustration_cover_missing');
+  const { image_url, image_data, image_disclosure, ...data } = content.slides[0].data || {};
+  return { ...content, slides: content.slides.map((slide, index) => index ? slide : { ...slide, data: { ...data, ...descriptor } }) };
 }

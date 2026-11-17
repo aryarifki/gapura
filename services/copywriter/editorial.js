@@ -1,6 +1,6 @@
 import { chooseFormat, validateDesignOutput } from '../common/carousel.js';
 import { needsHumanReview } from '../common/editorial.js';
-import { isAllowedImageUrl } from '../common/images.js';
+import { isAllowedImageUrl, applyCoverIllustration } from '../common/images.js';
 
 const DISCLAIMER = 'Informasi ini untuk edukasi publik dan bukan rekomendasi investasi atau nasihat hukum.';
 const STATUSES = new Set(['verified', 'mostly_verified', 'needs_context', 'unverified', 'opinion', 'speculation', 'misleading', 'hoax_detected']);
@@ -174,11 +174,11 @@ export function buildEvidenceBasedContent(topic, requestedFormat = topic?.format
   const slides = [cover];
   if (format === 'carousel') chunks.forEach((text) => slides.push({ no: slides.length + 1, layout: 'big-statement', teks: text, data: {}, source }));
   const captionData = composeCaption(topic, { verification, editorialBrief });
-  return {
+  return applyCoverIllustration({
     ...validateDesignOutput({ format, slides }, topic), ...captionData,
     disclaimer_type: /ojk|pojk|\buu\b|hukum|regulasi|peraturan/i.test(title) ? 'hukum' : 'keuangan',
     needs_review: !topic?.summary || !topic?.primary_source || !sourceUrl(topic?.url) || needsHumanReview(verification),
     verification_status: verification?.status || null,
     source_url: sourceUrl(topic?.url),
-  };
+  }, topic?.cover_illustration);
 }

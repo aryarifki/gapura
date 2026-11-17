@@ -5,6 +5,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { RenderEngine } from '../../render/engine.js';
+import sharp from '../../render/node_modules/sharp/lib/index.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const name = `gapura_test_${process.pid}`;
@@ -42,6 +43,7 @@ try {
   await fs.cp(path.join(root, 'config/skills'), env.AGENT_SKILLS_DIR, { recursive: true });
   await fs.cp(path.join(root, 'design-system'), env.DESIGN_SYSTEM_PATH, { recursive: true });
   const engine = new RenderEngine(env.DESIGN_SYSTEM_PATH);
+  const imageFixture = await sharp({ create: { width: 640, height: 480, channels: 3, background: '#1f7e81' } }).png().toBuffer();
   fixture = http.createServer(async (req, res) => {
     try {
       let text = ''; for await (const chunk of req) text += chunk;
@@ -50,6 +52,11 @@ try {
         if (body.slides?.some((slide) => slide.teks === 'FIXTURE_RENDER_ERROR')) return res.writeHead(503).end('fixture render failure');
         const slides = await engine.renderCarouselToDisk(body.draft_id, body.slides, path.join(env.STORAGE_PATH, 'drafts'));
         res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ rendered_slides: slides, total_time_ms: 1 }));
+      } else if (req.url === '/v1beta/models/fixture-image:generateContent') {
+        res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ responseId: 'fixture-image-response', candidates: [{ finishReason: 'STOP', content: { parts: [{ inlineData: { mimeType: 'image/png', data: imageFixture.toString('base64') } }] } }] }));
+      } else if (req.url === '/render/preview') {
+        const png = await engine.renderSlideToBuffer(body.slide, body.slide_no, body.total_slides);
+        res.writeHead(200, { 'Content-Type': 'image/png' }).end(png);
       } else if (req.url === '/health' || req.url === '/tokens/reload') res.writeHead(200, { 'Content-Type': 'application/json' }).end('{"status":"ok"}');
       else if (req.url === '/v1/models') res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ object: 'list', data: [{ id: 'fixture-model' }, { id: 'fixture-alt' }] }));
       else if (req.url === '/v1/chat/completions') {
@@ -66,10 +73,12 @@ try {
   env.RENDER_SERVICE_URL = fixtureUrl;
   const config = JSON.parse(await fs.readFile(path.join(root, 'config/agents.json'), 'utf8'));
   for (const key of ['analis', 'copywriter', 'designer', 'seo', 'verifikator', 'studio']) Object.assign(config[key], { provider: 'custom', endpoint: fixtureUrl, api_key: 'fixture-key', model: 'fixture-model' });
+  config.designer.image_generation = { enabled: true, provider: 'gemini', model: 'fixture-image', rights_reference: 'https://ai.google.dev/gemini-api/terms', timeout_ms: 30000 };
   await fs.writeFile(env.AGENTS_CONFIG_PATH, JSON.stringify(config));
   await fs.writeFile(env.PROVIDERS_CONFIG_PATH, JSON.stringify({
     providers: {
       custom: { label: 'Fixture Provider', kind: 'openai', base_url: fixtureUrl, api_key_env: 'CUSTOM_API_KEY', enabled: true, max_tokens: 8192 },
+      gemini: { label: 'Fixture Image', kind: 'gemini', base_url: fixtureUrl, api_key_env: 'GEMINI_API_KEY', enabled: true },
     },
     routing: { fallback_chain: [] },
   }, null, 2));

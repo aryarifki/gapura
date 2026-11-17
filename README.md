@@ -14,8 +14,10 @@ sintetis [R1](docs/plans/08_R1_EDITORIAL_CONTRACT.md) tersedia offline.
 snapshot materi dan API pengayaan manual, tanpa backfill/draf baru.
 **Arah terbaru owner:** [konten orisinal dan ilustrasi AI](docs/plans/10_ORIGINAL_AI_EDITORIAL.md).
 RSS menjadi pemicu topik/judul; agen menulis naskah/angle/visual Gapura sendiri.
-Spesifikasi R3–R8 sudah diselaraskan; runtime input/naskah dan generator gambar
-belum diubah. Verifikator masih menunggu penghapusan pada tahapnya.
+Spesifikasi R3–R8 sudah diselaraskan. [R3](docs/plans/11_R3_AI_ILLUSTRATIONS.md)
+menambahkan generator ilustrasi, aset lokal dan disclosure yang teruji; uji
+Gemini nyata tertahan 429/kuota gambar Free Tier 0. Input/naskah orisinal seluruh
+agen dan penghapusan Verifikator tetap pekerjaan R4–R6.
 
 ---
 

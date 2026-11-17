@@ -118,6 +118,13 @@ function collectAgentConfigPayload() {
         endpoint: document.getElementById('designer-endpoint')?.value || 'https://generativelanguage.googleapis.com',
         api_key: document.getElementById('designer-api-key')?.value || '',
         model: document.getElementById('designer-model')?.value || 'gemini-3.8-flash',
+        image_generation: {
+          enabled: document.getElementById('designer-image-enabled')?.checked === true,
+          provider: document.getElementById('designer-image-provider')?.value ?? 'gemini',
+          model: document.getElementById('designer-image-model')?.value.trim() ?? 'gemini-3.1-flash-lite-image',
+          rights_reference: document.getElementById('designer-image-rights-reference')?.value.trim() ?? 'https://ai.google.dev/gemini-api/terms',
+          timeout_ms: Number(document.getElementById('designer-image-timeout')?.value ?? 90000),
+        },
         system_prompt: document.getElementById('designer-prompt')?.value || '',
         tokens: { palette: Object.fromEntries(['bg', 'ink', 'accent', 'highlight', 'up', 'down'].map((key) => [key, document.getElementById(`color-${key}-hex`)?.value || ''])), typography: {
           display_font: document.getElementById('designer-display-font')?.value || 'Archivo Black',
@@ -195,6 +202,7 @@ function initializeApp() {
 }
 
 function setupNavigation() {
+  bindClick('btn-use-topic-illustration', useTopicIllustrationForDraft);
   // Mobile Sidebar Toggle
   const toggleBtn = document.getElementById('btn-toggle-sidebar');
   const sidebar = document.getElementById('app-sidebar');
@@ -720,6 +728,27 @@ async function regenerateActiveDraftAI() {
       btn.innerHTML = originalHtml;
     }
   }
+}
+
+async function useTopicIllustrationForDraft() {
+  if (!activeDraft?.topic_id) return;
+  const button = document.getElementById('btn-use-topic-illustration');
+  button.disabled = true;
+  try {
+    const response = await fetch(`/api/topics/${encodeURIComponent(activeDraft.topic_id)}/illustration`);
+    const packet = await response.json();
+    if (!response.ok || !packet.selected || packet.selected.status !== 'ready') throw new Error(packet.error || 'Buat ilustrasi topik di Radar terlebih dahulu.');
+    const save = await fetch(`/api/drafts/${activeDraft.id}/illustration`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ asset_id: packet.selected.id }) });
+    const result = await save.json();
+    if (!save.ok) throw new Error(result.error || 'Ilustrasi gagal diterapkan.');
+    invalidateDraftReview();
+    const fresh = await fetch(`/api/drafts/${activeDraft.id}`).then((res) => res.json());
+    activeDraft = fresh;
+    activeSlideIndex = 0;
+    renderActiveSlide();
+    renderThumbnailsStrip();
+    showToast('Ilustrasi diperbarui. Tinjau kembali isi dan seluruh slide.');
+  } finally { button.disabled = false; }
 }
 
 function renderActiveSlide() {
@@ -1345,6 +1374,7 @@ async function loadTopics() {
             ${t.status === 'scored' || t.status === 'produced' ? `<button class="btn btn-outline" data-verify-topic="${t.id}">Verifikasi</button>` : ''}
             ${isLolos ? `<button class="btn btn-lime" data-produce-topic="${t.id}">Buat draf review</button>` : ''}
           </div>
+          <div data-topic-illustration="${escapeHtml(t.id)}" style="margin-top: 12px;"></div>
         </div>
       `;
 
@@ -1357,9 +1387,108 @@ async function loadTopics() {
         autoProduceAndReviewTopic(t.id, t.title);
       });
       container.appendChild(card);
+      bindTopicIllustration(t.id, card.querySelector('[data-topic-illustration]'));
     });
   } catch (err) {
     console.error('Error loadTopics:', err);
+  }
+}
+
+const topicIllustrationStates = new Map();
+
+function topicIllustrationState(topicId) {
+  const key = String(topicId);
+  if (!topicIllustrationStates.has(key)) topicIllustrationStates.set(key, { open: false, assets: [], selected: null, configured: undefined, loading: false, generating: false, error: '', request: null });
+  return topicIllustrationStates.get(key);
+}
+
+function renderTopicIllustration(topicId) {
+  const state = topicIllustrationState(topicId);
+  const busy = state.loading || state.generating;
+  const selected = state.selected;
+  const latest = state.assets[0];
+  const preview = selected?.status === 'ready' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(selected.id));
+  let status = selected?.status === 'ready' ? 'Ilustrasi terpilih siap.' : 'Belum ada ilustrasi AI.';
+  if (latest && latest.status !== 'ready') status += ` Status pembuatan terakhir: ${latest.status || 'belum tersedia'}${latest.error_code ? ` (${latest.error_code})` : ''}.`;
+  if (state.configured === false) status = 'Ilustrasi AI belum dikonfigurasi. Periksa pengaturan Agen Designer.';
+  if (state.loading) status = 'Memuat ilustrasi...';
+  if (state.generating) status = 'Membuat ilustrasi AI...';
+  for (const panel of document.querySelectorAll('[data-topic-illustration]')) {
+    if (panel.dataset.topicIllustration !== String(topicId)) continue;
+    panel.setAttribute('aria-busy', String(busy));
+    panel.innerHTML = `
+      <div class="radar-card-actions">
+        <button type="button" class="btn btn-outline" data-illustration-action="generate" ${busy || state.configured === false ? 'disabled' : ''}><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#sparkles"></use></svg> Buat ilustrasi AI</button>
+        <button type="button" class="btn btn-outline" data-illustration-action="open" ${busy ? 'disabled' : ''}><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#eye"></use></svg> Lihat ilustrasi</button>
+        ${state.open && (state.assets.length || selected) ? `<button type="button" class="btn btn-outline" data-illustration-action="regenerate" ${busy || state.configured === false ? 'disabled' : ''}><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#refresh-cw"></use></svg> Buat ulang ilustrasi AI</button>` : ''}
+      </div>
+      ${state.open ? `<div role="region" aria-label="Ilustrasi AI topik" style="margin-top: 10px;">
+        <p role="status" style="color: var(--muted); font-size: 12px;">${escapeHtml(status)}</p>
+        ${state.error ? `<p role="alert" style="color: var(--down); font-size: 12px;">${escapeHtml(state.error)}</p>` : ''}
+        ${preview ? `<figure style="margin: 10px 0 0;"><img src="/api/media/assets/${encodeURIComponent(selected.id)}" alt="Ilustrasi AI terpilih untuk topik ini" loading="lazy" style="display: block; max-width: 100%; width: 240px; height: auto; border-radius: 8px;"><figcaption style="color: var(--muted); font-size: 11px; margin-top: 6px;">Ilustrasi AI · Perlu tinjauan editorial.</figcaption></figure>` : ''}
+      </div>` : ''}`;
+  }
+}
+
+function bindTopicIllustration(topicId, panel) {
+  if (!panel) return;
+  panel.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const action = event.target.closest('[data-illustration-action]')?.dataset.illustrationAction;
+    if (action === 'open') loadTopicIllustration(topicId);
+    else if (action === 'generate' || action === 'regenerate') generateTopicIllustration(topicId, action === 'regenerate');
+  });
+  renderTopicIllustration(topicId);
+}
+
+async function loadTopicIllustration(topicId) {
+  const state = topicIllustrationState(topicId);
+  if (state.loading || state.generating) return;
+  state.open = true;
+  state.loading = true;
+  state.error = '';
+  renderTopicIllustration(topicId);
+  try {
+    const response = await fetch(`/api/topics/${encodeURIComponent(topicId)}/illustration`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    state.assets = Array.isArray(data.assets) ? data.assets : [];
+    state.selected = data.selected || null;
+    state.configured = data.configured === true;
+  } catch (error) {
+    state.error = `Ilustrasi gagal dimuat: ${error.message}`;
+  } finally {
+    state.loading = false;
+    renderTopicIllustration(topicId);
+  }
+}
+
+async function generateTopicIllustration(topicId, regenerate = false) {
+  const state = topicIllustrationState(topicId);
+  if (state.loading || state.generating || state.configured === false) return;
+  state.open = true;
+  state.generating = true;
+  state.error = '';
+  renderTopicIllustration(topicId);
+  try {
+    // Retain the request ID after a transport failure so retrying cannot create a duplicate asset.
+    if (!state.request || state.request.regenerate !== regenerate) state.request = { request_id: crypto.randomUUID(), regenerate };
+    const response = await fetch(`/api/topics/${encodeURIComponent(topicId)}/illustration/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ request_id: state.request.request_id, ...(regenerate ? { regenerate: true } : {}) }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    if (!data.asset || typeof data.asset !== 'object' || !data.asset.id) throw new Error('Respons ilustrasi tidak valid.');
+    state.assets = [data.asset, ...state.assets.filter((asset) => asset.id !== data.asset.id)];
+    if (data.asset.status === 'ready') state.selected = data.asset;
+    state.request = null;
+  } catch (error) {
+    state.error = `Ilustrasi gagal dibuat: ${error.message}`;
+  } finally {
+    state.generating = false;
+    renderTopicIllustration(topicId);
   }
 }
 
@@ -1656,6 +1785,7 @@ async function saveStudioToDrafts() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        ...(Number(document.getElementById('studio-quick-topic-select')?.value) > 0 ? { topic_id: Number(document.getElementById('studio-quick-topic-select').value) } : {}),
         title,
         summary: studioSlides[0]?.teks || '',
         primary_source: source,
@@ -1784,10 +1914,12 @@ function setupDesignStudioEvents() {
   if (topicSelect) {
     topicSelect.addEventListener('change', () => {
       const tid = parseInt(topicSelect.value);
-      const chosen = cachedTopics.find((t) => t.id === tid);
+      const chosen = cachedTopics.find((t) => Number(t.id) === tid);
       if (chosen) {
         document.getElementById('studio-custom-topic-text').value = chosen.title;
         document.getElementById('studio-custom-source-text').value = chosen.primary_source || '@gapuramedia';
+        const sourceUrl = document.getElementById('studio-custom-source-url');
+        if (sourceUrl) sourceUrl.value = chosen.url || '';
       }
     });
   }
@@ -2513,6 +2645,13 @@ async function loadAgentsConfigUI() {
     if (document.getElementById('designer-prompt')) document.getElementById('designer-prompt').value = designer.system_prompt || '';
     if (document.getElementById('designer-skills-md')) document.getElementById('designer-skills-md').value = (config.skills && config.skills.designer) || '';
 
+    const imageGeneration = designer.image_generation || {};
+    if (document.getElementById('designer-image-enabled')) document.getElementById('designer-image-enabled').checked = imageGeneration.enabled === true;
+    if (document.getElementById('designer-image-provider')) document.getElementById('designer-image-provider').value = imageGeneration.provider ?? 'gemini';
+    if (document.getElementById('designer-image-model')) document.getElementById('designer-image-model').value = imageGeneration.model ?? 'gemini-3.1-flash-lite-image';
+    if (document.getElementById('designer-image-timeout')) document.getElementById('designer-image-timeout').value = imageGeneration.timeout_ms ?? 90000;
+    if (document.getElementById('designer-image-rights-reference')) document.getElementById('designer-image-rights-reference').value = imageGeneration.rights_reference ?? 'https://ai.google.dev/gemini-api/terms';
+
     const tokens = designer.tokens || {};
     const palette = tokens.palette || {};
 
@@ -2624,6 +2763,11 @@ function syncProviderModelDatalist(providers) {
   if (!datalist) return;
   const models = [...new Set(providers.flatMap((provider) => provider.models || []))].sort((a, b) => a.localeCompare(b));
   datalist.innerHTML = models.map((model) => `<option value="${escapeHtml(model)}"></option>`).join('');
+  const imageDatalist = document.getElementById('designer-image-model-datalist');
+  if (imageDatalist) {
+    const imageModels = providers.filter((provider) => provider.id === 'gemini').flatMap((provider) => provider.models || []).filter((model) => /image|nano-banana/i.test(model));
+    imageDatalist.innerHTML = [...new Set(imageModels)].sort().map((model) => `<option value="${escapeHtml(model)}"></option>`).join('');
+  }
   for (const inputId of AGENT_MODEL_INPUTS) {
     const input = document.getElementById(inputId);
     if (input) input.setAttribute('list', 'provider-model-datalist');

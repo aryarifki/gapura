@@ -4,7 +4,7 @@ export const EDITORIAL_CATEGORIES = Object.freeze(['politik', 'sosial', 'hukum',
 
 export const EDITORIAL_POLICY = Object.freeze({
   carousel: Object.freeze({ format: 'carousel', min_slides: 3, default_slides: 6, max_slides: 9 }),
-  media: Object.freeze({ require_cover_photo: true, allowed_mime: Object.freeze(['image/jpeg', 'image/png', 'image/webp']), min_width: 320, min_height: 240 }),
+  media: Object.freeze({ require_cover_visual: true, default_kind: 'ai_generated', allowed_mime: Object.freeze(['image/jpeg', 'image/png', 'image/webp']), min_width: 320, min_height: 240 }),
   caption: Object.freeze({ target_min_chars: 1200, target_max_chars: 1900, max_chars: 2200 }),
 });
 
@@ -21,7 +21,7 @@ const TRANSPORT_PREFIX = /^\[(?:Google News:\s*X(?: query)? fallback|X\/RSSHub|X
 const NOISE_MARKERS = /\[(?:Google News:[^\]]+|X\/RSSHub|X)\]/iu;
 const INTERNAL_CAPTION_MARKERS = /(?:Sumber primer\s*:|Status verifikasi\s*:|Belum terverifikasi otomatis|Jangan jadikan dasar keputusan sebelum ada konfirmasi redaksi|verification_status|confidence\s*:)/iu;
 const SLIDE_ROLES = new Set(['cover', 'lead', 'explanation', 'official_statement', 'chronology', 'data', 'public_impact', 'close']);
-const LAYOUTS = new Set(['cover-focus', 'big-statement', 'timeline', 'comparison', 'stat-grid', 'chart-bar', 'chart-line', 'regulasi']);
+const LAYOUTS = new Set(['cover-focus', 'big-statement', 'timeline', 'comparison', 'stat-grid', 'chart-bar', 'chart-line', 'regulasi', 'illustration']);
 const RIGHTS_BASES = new Set(['owned', 'editor_approved', 'licensed', 'official_reuse']);
 const validText = (value) => typeof value === 'string' && Boolean(value.trim());
 const normalizedText = (value) => value.normalize('NFKC').replace(/\s+/gu, ' ').trim().toLocaleLowerCase('id').replace(/[.!?]+$/u, '');
@@ -80,6 +80,22 @@ export function materialSufficiency(material) {
 export function validateMediaAsset(asset) {
   if (!asset || typeof asset !== 'object') return { valid: false, reason: 'media_missing' };
   if (!validText(asset.id)) return invalid('media_id_missing');
+  if (asset.kind === 'ai_generated') {
+    if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(asset.id)) return invalid('media_id_missing');
+    if (!validText(asset.provider) || !validText(asset.model) || !validText(asset.prompt) || asset.prompt.length > 8000
+      || !validText(asset.generated_at) || !Number.isFinite(Date.parse(asset.generated_at))
+      || asset.rights_basis !== 'ai_generated' || !validUrl(asset.rights_reference)) return invalid('media_generation_missing');
+    if (asset.disclosure !== 'Ilustrasi AI · Gapura Media' || asset.disclosure_version !== 1) return invalid('media_disclosure_missing');
+    if (asset.status !== 'ready') return invalid('media_not_ready');
+    const extension = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }[asset.mime];
+    if (!extension) return invalid('media_type_invalid');
+    if (!Number.isInteger(asset.width) || !Number.isInteger(asset.height) || asset.width < 320 || asset.height < 240 || asset.width > 4096 || asset.height > 4096) return invalid('media_dimensions_invalid');
+    if (asset.local_path !== `media/${asset.id}.${extension}` || typeof asset.sha256 !== 'string'
+      || !/^[a-f0-9]{64}$/u.test(asset.sha256) || /^0{64}$/u.test(asset.sha256)) return invalid('media_local_identity_missing');
+    return valid();
+  }
+  // R1 historical assets remain readable; new production uses the generative branch.
+  if (asset.kind !== undefined) return invalid('media_type_invalid');
   if (!validUrl(asset.url)) return { valid: false, reason: 'media_url_invalid' };
   if (!validUrl(asset.source_url)) return { valid: false, reason: 'media_source_missing' };
   if (!validText(asset.credit)) return { valid: false, reason: 'media_credit_missing' };

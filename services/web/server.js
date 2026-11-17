@@ -26,7 +26,7 @@ import { buildAttempts, loadProvidersConfig, saveProvidersConfig, validateProvid
 import { loadProviderSecrets, saveProviderSecret } from '../common/secret-store.js';
 import { loadModelCache, providerInventory, refreshModels } from '../common/model-catalog.js';
 import { saveSettings } from './settings-store.js';
-import { DraftError, editDraft } from './drafts.js';
+import { DraftError, editDraft, validateSlides as validateDraftSlides } from './drafts.js';
 import { createZip } from './export.js';
 import { createScheduler } from './scheduler.js';
 import { produceSingleTopicDraft, regenerateDraft } from '../copywriter/copywriter.js';
@@ -42,6 +42,8 @@ import { runtimeSecret } from '../common/runtime-secret.js';
 import { createMetaIntegration } from './meta-integration.js';
 import { createArticleReader } from '../scout/article-reader.js';
 import { createTopicMaterialService } from '../scout/enrichment.js';
+import { createIllustrationService, pinIllustrationSlides, loadIllustration, selectedIllustration, illustrationDescriptor } from '../designer/illustration-store.js';
+import { illustrationConfiguration, ASSET_ID } from '../designer/illustrations.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -108,6 +110,9 @@ async function writeAudit(entity, entityId, action, actor = 'web_admin', payload
 
 const scheduler = createScheduler();
 const topicMaterials = createTopicMaterialService({ pool, reader: createArticleReader() });
+const illustrations = createIllustrationService({ pool, storagePath: STORAGE_PATH });
+const illustrationRequests = new Map();
+let activeIllustrationRequests = 0;
 const materialRequests = new Map();
 let activeMaterialRequests = 0;
 
@@ -366,23 +371,36 @@ app.post('/api/drafts/create-from-custom', async (req, res) => {
     return res.status(400).json({ error: 'Data draf tidak lengkap atau slide kosong.' });
   }
   if (validatePublicSourceUrl(source_url)) return res.status(400).json({ error: 'Sumber primer HTTPS yang dapat diverifikasi wajib diisi.' });
+  const client = await pool.connect();
   try {
-    // 1. Simpan Topik
-    const { rows: topicRows } = await pool.query(
-      `INSERT INTO topics (title, summary, primary_source, url, status, source_kind)
-       VALUES ($1, $2, $3, $4, 'new', 'custom_studio') RETURNING id`,
-      [title, summary || '', primary_source || parsePublicSourceUrl(source_url).sourceName, source_url]
-    );
-    const topicId = topicRows[0].id;
-
+    await client.query('BEGIN');
+    let topicId = req.body.topic_id;
+    if (topicId !== undefined && (!Number.isSafeInteger(topicId) || topicId < 1)) throw new DraftError('topic_id harus bilangan bulat positif.');
+    if (topicId) {
+      const { rows } = await client.query('SELECT id FROM topics WHERE id=$1', [topicId]);
+      if (!rows.length) throw new DraftError('Topik tidak ditemukan.', 404);
+    } else if (loadAgentsConfig().designer?.image_generation?.enabled === true) {
+      throw new DraftError('needs_media: Pilih topik Radar yang sudah memiliki ilustrasi AI.', 409);
+    } else {
+      const { rows: [topic] } = await client.query(
+        `INSERT INTO topics (title,summary,primary_source,url,status,source_kind) VALUES($1,$2,$3,$4,'new','custom_studio') RETURNING id`,
+        [title, summary || '', primary_source || parsePublicSourceUrl(source_url).sourceName, source_url]);
+      topicId = topic.id;
+    }
+    let pinnedSlides = await pinIllustrationSlides(validateDraftSlides(slides), { client, topic_id: topicId });
+    if (!pinnedSlides[0].data.asset_id) {
+      const asset = await selectedIllustration(client, topicId);
+      if (asset) pinnedSlides[0].data = { ...pinnedSlides[0].data, ...illustrationDescriptor(asset) };
+      else if (loadAgentsConfig().designer?.image_generation?.enabled === true) throw new DraftError('needs_media: Ilustrasi topik belum siap.', 409);
+    }
     // 2. Simpan draft as a review-only design preview; it is not marked as scored.
     const defaultCaption = caption || `${title}\n\n${summary || ''}\n\nSumber Data: ${primary_source || '@gapuramedia'}\n\n---\nDisclaimer: Informasi disajikan untuk tujuan edukasi publik dan bukan merupakan rekomendasi investasi beli/jual saham atau nasihat hukum resmi.`;
     const defaultHashtags = Array.isArray(hashtags) && hashtags.length > 0 ? hashtags : ['#GapuraMedia', '#DataEkonomi', '#BursaSaham', '#IHSG'];
 
-    const { rows: draftRows } = await pool.query(
+    const { rows: draftRows } = await client.query(
       `INSERT INTO drafts (topic_id, slides, content_format, caption, hashtags, disclaimer_type, status, needs_review, tokens_version, copy_model)
        VALUES ($1, $2, $3, $4, $5, 'keuangan', 'draft', true, 'v1.0', 'studio-ai-designer') RETURNING id`,
-      [topicId, JSON.stringify(slides), req.body?.format === 'single' && slides.length === 1 ? 'single' : 'carousel', defaultCaption, defaultHashtags]
+      [topicId, JSON.stringify(pinnedSlides), req.body?.format === 'single' && slides.length === 1 ? 'single' : 'carousel', defaultCaption, defaultHashtags]
     );
     const draftId = draftRows[0].id;
 
@@ -395,7 +413,7 @@ app.post('/api/drafts/create-from-custom', async (req, res) => {
       },
       body: JSON.stringify({
         draft_id: draftId,
-        slides: await renderPayload(slides),
+        slides: await renderPayload(pinnedSlides, { storagePath: STORAGE_PATH, resolveAsset: (id) => loadIllustration(client, id, { topic_id: topicId }) }),
       }),
     });
 
@@ -408,7 +426,7 @@ app.post('/api/drafts/create-from-custom', async (req, res) => {
 
     // 4. Simpan ke draft_slides
     for (const slideRes of renderData.rendered_slides) {
-      await pool.query(
+      await client.query(
         `INSERT INTO draft_slides (draft_id, slide_no, layout, render_path, text_snapshot, data_snapshot)
          VALUES ($1, $2, $3, $4, $5, $6)`,
         [
@@ -417,26 +435,28 @@ app.post('/api/drafts/create-from-custom', async (req, res) => {
           slideRes.layout,
           slideRes.file_path,
           slides[slideRes.slide_no - 1]?.teks || '',
-          JSON.stringify(slides[slideRes.slide_no - 1]?.data || {}),
+          JSON.stringify(pinnedSlides[slideRes.slide_no - 1]?.data || {}),
         ]
       );
     }
 
     // 5. Catat audit_log
-    await pool.query(
+    await client.query(
       `INSERT INTO audit_log (entity, entity_id, action, actor, payload) VALUES ('draft', $1, 'created_custom_studio', 'studio_editor', $2)`,
       [draftId, JSON.stringify({ topic_id: topicId, slides_count: slides.length })]
     );
 
+    await client.query('COMMIT');
     res.json({
       status: 'success',
       draft_id: draftId,
       slides_count: slides.length,
     });
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     console.error('[Web API] Error creating custom draft:', err);
-    res.status(500).json({ error: err.message });
-  }
+    res.status(err.statusCode || (/^illustration_/u.test(err.message) ? 409 : 500)).json({ error: err.message });
+  } finally { client.release(); }
 });
 
 // 3. Approve Draft
@@ -550,12 +570,25 @@ app.post('/api/drafts/:id/edit-slide', async (req, res) => {
       if (data !== undefined) slide.data = data;
       if (category) slide.data = { ...slide.data, category };
       if (source) slide.source = source;
-      return { slides: draft.slides };
+      return { slides: draft.slides, preserveIllustrations: true };
     }, draftDependencies);
     res.json({ status: 'success', draftId, slide_no, layout: result.slides[slide_no - 1].layout, data: result.slides[slide_no - 1].data, image_url: `/storage/drafts/${draftId}/slide_${slide_no}.png?t=${Date.now()}`, needs_review: true });
   } catch (err) {
     res.status(err.statusCode || 500).json({ error: err.message });
   }
+});
+
+app.post('/api/drafts/:id/illustration', async (req, res) => {
+  if (!req.body || Array.isArray(req.body) || Object.keys(req.body).some((key) => key !== 'asset_id') || !ASSET_ID.test(String(req.body.asset_id))) return res.status(400).json({ error: 'asset_id UUID wajib diisi.' });
+  try {
+    const result = await editDraft(Number(req.params.id), async (draft, client) => {
+      const asset = await loadIllustration(client, req.body.asset_id, { topic_id: draft.topic_id });
+      const { image_url, image_data, asset_id, asset_sha256, ...data } = draft.slides[0]?.data || {};
+      draft.slides[0].data = { ...data, asset_id: asset.id };
+      return { slides: draft.slides };
+    }, { ...draftDependencies, replaceIllustration: true });
+    return res.json({ status: 'success', asset_id: result.slides[0].data.asset_id, needs_review: true });
+  } catch (error) { return res.status(error.statusCode || (/^illustration_/u.test(error.message) ? 409 : 500)).json({ error: /^illustration_/u.test(error.message) ? 'Ilustrasi tidak tersedia untuk topik draf ini.' : error.message }); }
 });
 
 // 5a. Add Slide to Draft
@@ -583,6 +616,7 @@ app.post('/api/drafts/:id/delete-slide', async (req, res) => {
     const result = await editDraft(draftId, (draft) => {
       if (!Number.isInteger(slide_no) || slide_no < 1 || slide_no > draft.slides.length) throw new DraftError('Nomor slide tidak valid.');
       if (draft.slides.length === 1) throw new DraftError('Draf minimal memiliki satu slide.');
+      if (slide_no === 1 && draft.slides[0].data?.asset_id) throw new DraftError('Cover ilustrasi dipertahankan; ubah isi atau ganti visual melalui kontrol ilustrasi.', 409);
       draft.slides.splice(slide_no - 1, 1);
       return { slides: draft.slides };
     }, draftDependencies);
@@ -665,6 +699,49 @@ app.get('/api/topics/:id/material', async (req, res) => {
   } catch {
     return res.status(500).json({ error: 'Materi topik tidak dapat dibaca.' });
   }
+});
+
+app.get('/api/topics/:id/illustration', async (req, res) => {
+  try {
+    const result = await illustrations.list(req.params.id);
+    let configured = false;
+    try { illustrationConfiguration(); configured = true; } catch { /* Missing configuration is shown without exposing keys. */ }
+    return res.json({ ...result, configured });
+  } catch (error) { return res.status(error.message === 'topic_not_found' ? 404 : 500).json({ error: error.message === 'topic_not_found' ? 'Topik tidak ditemukan.' : 'Ilustrasi tidak dapat dibaca.' }); }
+});
+
+app.post('/api/topics/:id/illustration/generate', async (req, res) => {
+  const body = req.body;
+  if (!body || Array.isArray(body) || typeof body !== 'object' || Object.keys(body).some((key) => !['request_id', 'regenerate'].includes(key))
+    || !ASSET_ID.test(String(body.request_id)) || (body.regenerate !== undefined && typeof body.regenerate !== 'boolean')) {
+    return res.status(400).json({ error: 'request_id UUID wajib diisi; hanya regenerate boolean yang dapat ditambahkan.' });
+  }
+  const now = Date.now();
+  for (const [key, entry] of illustrationRequests) if (entry.expiresAt <= now) illustrationRequests.delete(key);
+  const peer = req.socket.remoteAddress || 'unknown';
+  const forwarded = req.get('cf-connecting-ip') || '';
+  const address = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(peer) && isIP(forwarded) ? forwarded : peer;
+  const entry = illustrationRequests.get(address) || { count: 0, expiresAt: now + 10 * 60 * 1000 };
+  if (activeIllustrationRequests >= 2 || entry.count >= 5 || (!illustrationRequests.has(address) && illustrationRequests.size >= 1000)) return res.status(429).json({ error: 'Batas pembuatan ilustrasi tercapai. Coba lagi setelah permintaan selesai.' });
+  entry.count++;
+  illustrationRequests.set(address, entry);
+  activeIllustrationRequests++;
+  try {
+    const result = await illustrations.generate(req.params.id, body);
+    await writeAudit('topic', Number(req.params.id), 'illustration_generated', 'web_admin', { asset_id: result.asset.id, status: result.asset.status, is_existing: result.is_existing });
+    return res.json(result);
+  } catch (error) {
+    const status = error.message === 'topic_not_found' ? 404 : error.message === 'illustration_busy' ? 409 : 500;
+    return res.status(status).json({ error: status === 404 ? 'Topik tidak ditemukan.' : status === 409 ? 'Ilustrasi topik sedang dibuat.' : 'Ilustrasi tidak dapat diproses.' });
+  } finally { activeIllustrationRequests--; }
+});
+
+app.get('/api/media/assets/:assetId', async (req, res) => {
+  if (!ASSET_ID.test(req.params.assetId)) return res.status(400).json({ error: 'ID aset harus UUID.' });
+  try {
+    const { asset, bytes } = await illustrations.raster(req.params.assetId);
+    return res.set('X-Content-Type-Options', 'nosniff').type(asset.mime).send(bytes);
+  } catch (error) { return res.status(error.message === 'illustration_not_found' ? 404 : 409).json({ error: 'Raster ilustrasi belum tersedia atau tidak cocok dengan catatan aset.' }); }
 });
 
 app.post('/api/topics/:id/material/enrich', async (req, res) => {
@@ -808,13 +885,15 @@ app.post('/api/tokens', async (req, res) => {
 // 9b. Render Single Slide Preview (Proxy ke Render Service Port 3000)
 app.post('/api/render/preview', async (req, res) => {
   try {
+    const payload = req.body || {};
+    const [slide] = await renderPayload([payload.slide], { storagePath: STORAGE_PATH, resolveAsset: (id) => loadIllustration(pool, id) });
     const renderRes = await fetch(`${RENDER_SERVICE_URL}/render/preview`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Render-Secret': RENDER_SECRET,
       },
-      body: JSON.stringify(req.body),
+      body: JSON.stringify({ ...payload, slide }),
     });
 
     if (!renderRes.ok) {
@@ -827,7 +906,7 @@ app.post('/api/render/preview', async (req, res) => {
     res.send(Buffer.from(pngBuffer));
   } catch (err) {
     console.error('[Web API] Error proxying render preview:', err);
-    res.status(500).json({ error: err.message });
+    res.status(/^illustration_/u.test(err.message) ? 409 : 500).json({ error: /^illustration_/u.test(err.message) ? 'Ilustrasi belum tersedia atau revisinya tidak cocok.' : 'Preview tidak dapat dirender.' });
   }
 });
 

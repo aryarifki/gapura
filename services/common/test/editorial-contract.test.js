@@ -50,8 +50,26 @@ test('policy defines six desks and carousel-first newsroom defaults', () => {
   assert.deepEqual(EDITORIAL_CATEGORIES, ['politik', 'sosial', 'hukum', 'lingkungan', 'ekonomi', 'bursa']);
   assert.equal(EDITORIAL_POLICY.carousel.default_slides, 6);
   assert.deepEqual([EDITORIAL_POLICY.carousel.min_slides, EDITORIAL_POLICY.carousel.max_slides], [3, 9]);
-  assert.equal(EDITORIAL_POLICY.media.require_cover_photo, true);
+  assert.equal(EDITORIAL_POLICY.media.require_cover_visual, true);
+  assert.equal(EDITORIAL_POLICY.media.default_kind, 'ai_generated');
   assert.equal(EDITORIAL_POLICY.caption.max_chars, 2200);
+});
+
+test('AI visual contract has local provenance and disclosure without pretending to be a source photograph', () => {
+  const generated = { id: 'ad3cc71e-46d3-4db6-bf20-8c9eb066491c', kind: 'ai_generated', status: 'ready', credit: 'Gapura Media',
+    provider: 'gemini', model: 'fixture-image', prompt: 'Ilustrasi editorial konseptual tentang layanan warga',
+    generated_at: '2026-11-17T00:00:00Z', rights_basis: 'ai_generated', rights_reference: 'https://ai.google.dev/gemini-api/terms',
+    disclosure: 'Ilustrasi AI · Gapura Media', disclosure_version: 1, local_path: 'media/ad3cc71e-46d3-4db6-bf20-8c9eb066491c.png',
+    mime: 'image/png', width: 640, height: 480, sha256: 'b'.repeat(64) };
+  assert.deepEqual(validateMediaAsset(generated), { valid: true, reason: null });
+  for (const mutation of [
+    { prompt: '' }, { provider: '' }, { model: '' }, { generated_at: null }, { rights_reference: '' },
+    { disclosure: 'Foto Gapura' }, { disclosure_version: 0 }, { rights_basis: 'owned' }, { local_path: '../escape.png' }, { id: '' },
+  ]) assert.equal(validateMediaAsset({ ...generated, ...mutation }).valid, false, JSON.stringify(mutation));
+  const draft = carousel();
+  draft.media = { cover_asset_id: generated.id, assets: [generated] };
+  draft.slides[0].data.asset_id = generated.id;
+  assert.equal(validateNewsCarousel(draft).valid, true);
 });
 
 test('normalizes only known transport noise and preserves meaningful punctuation', () => {

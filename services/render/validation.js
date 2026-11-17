@@ -104,6 +104,13 @@ export function validateSlide(slide, budget = { nodes: 0, text: 0, imageBytes: 0
   if (data.image_url !== undefined && data.image_url !== null && data.image_url !== '') {
     invalid('slide.data.image_url must be hydrated to image_data by the trusted caller');
   }
+  if (Object.hasOwn(data, 'image_kind') && data.image_kind !== 'ai_generated') invalid('slide.data.image_kind must be ai_generated when present');
+  if (data.image_kind === 'ai_generated') {
+    if (typeof data.asset_id !== 'string' || data.asset_id.length !== 36 || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(data.asset_id)) {
+      invalid('slide.data.asset_id must be a UUID for an ai_generated image');
+    }
+    if (data.image_data === undefined) invalid('slide.data.image_data is required for an ai_generated image');
+  }
   textFields(data, ['title', 'headline', 'subtitle', 'subtext', 'unit', 'label', 'category', 'author', 'quote', 'callout', 'regulasi', 'note', 'cta', 'disclaimer', 'status', 'verdict', 'claim', 'explanation', 'finding', 'fakta', 'misconception', 'miskonsepsi', 'source_note', 'image_url']);
   for (const key of ['value', 'stat', 'credibility']) if (data[key] !== undefined && data[key] !== null) scalar(data[key], `slide.data.${key}`);
   if (!(slide.teks || data.title || data.headline || '').trim()) invalid('slide requires non-empty teks, title or headline');

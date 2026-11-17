@@ -1,7 +1,9 @@
 # Gapura Media — Konten orisinal dan ilustrasi AI
 
-Tanggal: 17 November 2026. Status: **keputusan produk owner; implementasi runtime
-belum diterapkan**. Mengubah arah [blueprint R0–R8](07_EDITORIAL_REDESIGN_BLUEPRINT.md).
+Tanggal: 17 November 2026. Status: **keputusan produk owner**. Mengubah arah
+[blueprint R0–R8](07_EDITORIAL_REDESIGN_BLUEPRINT.md). Dokumen awal adalah PR #9;
+hasil implementasi visual [R3](11_R3_AI_ILLUSTRATIONS.md) dicatat terpisah.
+Input/naskah orisinal seluruh agen belum diterapkan.
 
 ## 1. Ringkasan keputusan
 
@@ -210,9 +212,9 @@ Sebagai pembaca, saya ingin ilustrasi relevan dengan isu dan jelas sifatnya.
 - Timer intake/publisher tetap disabled dan worker Studio tetap dijeda sampai
   tahapan review/aktivasi mendapat mandat yang sesuai.
 
-## 8. Lingkup pekerjaan saat ini
+## 8. Lingkup keputusan awal dan kelanjutan
 
-Perubahan sesi ini adalah penyelarasan dokumen keputusan, blueprint dan roadmap.
+Perubahan PR #9 adalah penyelarasan dokumen keputusan, blueprint dan roadmap.
 Tidak ada pembuatan konten live, pembelian paket, kontak penerbit, perubahan
 kredensial/provider, backfill atau penghapusan data.
 
@@ -231,10 +233,10 @@ raster historis; bukan bukti bahwa generator gambar sudah bekerja.
 | R7 | Sampel kecil dengan ilustrasi AI untuk owner | Review style/isi/orisinalitas/disclosure, perbaiki sebelum batch |
 | R8 | Batch manual, shadow, satu publish uji disetujui | Tidak ada regresi foto sumber, single diam-diam, stale approval atau publish duplikat |
 
-**Dependensi teknis:** belum ditemukan adapter image generation dalam kode yang
-diperiksa. Dukungan chat/katalog model tidak membuktikan endpoint image dan
-key-nya kompatibel. Engineer memverifikasi provider sebelum wiring, memakai
-mock untuk TDD dan request nyata yang terbatas sesudah konfigurasi tersedia.
+**Dependensi teknis saat keputusan dibuat:** belum ada adapter image generation.
+[R3](11_R3_AI_ILLUSTRATIONS.md) kemudian menambahkan adapter dan fixture TDD;
+uji nyata tertahan kuota gambar Free Tier 0. Dukungan chat/katalog model tidak
+membuktikan bahwa kuota gambar tersedia.
 
 **Risiko faktual:** judul tidak cukup untuk laporan aktual panjang. Tahan klaim
 yang tidak didukung; keluaran judul saja memakai bentuk penjelasan isu dengan

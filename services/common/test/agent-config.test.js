@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { validateAgent, validateAgentConfig } from '../agent-config.js';
 import { callAgentLLM } from '../llm.js';
 
@@ -8,6 +9,14 @@ const valid = () => ({
   copywriter: { provider: 'gemini', model: 'flash', slide_count: 5 },
   designer: { provider: 'gemini', model: 'flash' }, seo: { provider: 'gemini', model: 'flash' },
   verifikator: { provider: 'gemini', model: 'flash' }, studio: { provider: 'gemini', model: 'flash' },
+});
+
+const validImageGeneration = () => ({
+  enabled: true,
+  provider: 'gemini',
+  model: 'gemini-3.1-flash-lite-image',
+  rights_reference: 'https://ai.google.dev/gemini-api/terms',
+  timeout_ms: 90000,
 });
 
 test('accepts valid saved settings for all configured agents', () => {
@@ -60,4 +69,74 @@ test('executes an agent-settings test against temporary config and an injected p
 test('validates one agent without requiring unrelated agent configurations', () => {
   assert.deepEqual(validateAgent('designer', { provider: 'gemini', model: 'flash', endpoint: 'https://generativelanguage.googleapis.com' }), []);
   assert.deepEqual(validateAgent('studio', { provider: 'custom', model: 'm', endpoint: 'https://provider.example' }), []);
+});
+
+test('keeps legacy Designer settings compatible and accepts complete image settings including timeout boundaries', () => {
+  assert.deepEqual(validateAgentConfig(valid()), []);
+  for (const enabled of [true, false]) {
+    for (const timeout_ms of [1000, 90000, 120000]) {
+      const config = valid();
+      config.designer.image_generation = { ...validImageGeneration(), enabled, timeout_ms };
+      assert.deepEqual(validateAgent('designer', config.designer), []);
+      assert.deepEqual(validateAgentConfig(config), []);
+    }
+  }
+});
+
+test('tracks enabled Gemini image defaults without an image-specific secret', () => {
+  const config = JSON.parse(readFileSync(new URL('../../../config/agents.json', import.meta.url), 'utf8'));
+  assert.deepEqual(config.designer.image_generation, validImageGeneration());
+  assert.deepEqual(validateAgentConfig(config), []);
+});
+
+test('rejects malformed image_generation objects rather than silently ignoring them', () => {
+  for (const image_generation of [undefined, null, [], true, 42, 'gemini']) {
+    const designer = { ...valid().designer, image_generation };
+    assert.deepEqual(validateAgent('designer', designer), ['designer.image_generation: konfigurasi wajib berupa object.']);
+  }
+});
+
+test('requires every image setting even while image generation is disabled', () => {
+  const required = {
+    enabled: 'enabled wajib berupa boolean.',
+    provider: 'provider harus gemini.',
+    model: 'model wajib berupa string yang tidak kosong.',
+    rights_reference: 'rights_reference harus https://ai.google.dev/gemini-api/terms.',
+    timeout_ms: 'timeout_ms harus bilangan bulat 1000-120000.',
+  };
+  for (const [field, message] of Object.entries(required)) {
+    const config = valid();
+    config.designer.image_generation = { ...validImageGeneration(), enabled: false };
+    delete config.designer.image_generation[field];
+    assert.deepEqual(validateAgentConfig(config), [`designer.image_generation: ${message}`], field);
+  }
+});
+
+test('rejects unknown image settings and nested API keys without echoing secret values', () => {
+  for (const field of ['api_key', 'endpoint', 'unexpected']) {
+    const config = valid();
+    config.designer.image_generation = { ...validImageGeneration(), [field]: 'do-not-expose-this-secret' };
+    const errors = validateAgentConfig(config);
+    assert.deepEqual(errors, [`designer.image_generation: field tidak didukung (${field}).`]);
+    assert.ok(!errors.join(' ').includes('do-not-expose-this-secret'));
+  }
+});
+
+test('rejects unsupported image providers and invalid field types or values', () => {
+  const invalid = {
+    enabled: ['true', 1, null],
+    provider: ['openai', 'Gemini', '', null, {}],
+    model: ['', '  ', null, 123, {}, []],
+    rights_reference: ['', null, {}, 'not-a-url', 'http://ai.google.dev/gemini-api/terms', 'https://example.com/terms', 'https://ai.google.dev/gemini-api/terms?other=1'],
+    timeout_ms: [0, 999, 120001, 90000.5, '90000', true, null, {}, NaN, Infinity],
+  };
+  for (const [field, values] of Object.entries(invalid)) {
+    for (const value of values) {
+      const config = valid();
+      config.designer.image_generation = { ...validImageGeneration(), [field]: value };
+      const errors = validateAgentConfig(config);
+      assert.equal(errors.length, 1, `${field}: ${String(value)}`);
+      assert.match(errors[0], new RegExp(`^designer\\.image_generation: ${field} `));
+    }
+  }
 });

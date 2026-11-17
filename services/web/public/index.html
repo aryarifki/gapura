@@ -225,6 +225,7 @@
               <div class="editor-actions-group">
                 <span class="editor-source-chip" id="editor-source-link"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#link"></use></svg> Link sumber</span>
                 <button class="btn btn-primary" id="btn-action-regenerate-ai">Rancang ulang</button>
+                <button class="btn btn-dark" id="btn-use-topic-illustration"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#palette"></use></svg> Pakai ilustrasi topik</button>
                 <button class="btn btn-lime" id="btn-action-approve-auto">Setujui & jadwalkan</button>
                 <button class="btn btn-dark" id="btn-action-approve-manual">Konfirmasi sudah terbit manual</button>
                 <button class="btn btn-danger" id="btn-action-reject"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#circle-x"></use></svg> Tolak</button>
@@ -281,6 +282,7 @@
                         <option value="cover-stat">cover-stat (Cover Hook Stat)</option>
                         <option value="cover-editorial">cover-editorial (Cover Editorial)</option>
                         <option value="big-statement">big-statement (Pernyataan Kunci)</option>
+                        <option value="illustration">illustration (Ilustrasi AI)</option>
                         <option value="stat-grid">stat-grid (Grid Metrik)</option>
                         <option value="stat-spotlight">stat-spotlight (Sorotan Angka)</option>
                         <option value="regulasi">regulasi (Pasal / Kebijakan)</option>
@@ -1436,6 +1438,41 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
                 </div>
               </div>
 
+              <fieldset style="border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin: 0 0 20px; min-width: 0;">
+                <legend class="form-label-editor"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#sparkles"></use></svg> Ilustrasi AI</legend>
+                <div class="form-group-editor">
+                  <label for="designer-image-enabled" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                    <input type="checkbox" id="designer-image-enabled" checked style="accent-color: var(--lime);">
+                    Aktifkan pembuatan ilustrasi AI dari Radar Topik
+                  </label>
+                  <span class="form-help-text">Ilustrasi dibuat saat diminta. Menggunakan key Gemini dari secret store provider atau key Designer yang dikelola backend.</span>
+                </div>
+                <div class="form-grid-2col">
+                  <div class="form-group-editor">
+                    <label class="form-label-editor" for="designer-image-provider">Provider ilustrasi</label>
+                    <select id="designer-image-provider" class="form-input-dark form-select-dark">
+                      <option value="gemini">Google Gemini</option>
+                    </select>
+                  </div>
+                  <div class="form-group-editor">
+                    <label class="form-label-editor" for="designer-image-model">Model ilustrasi</label>
+                    <input type="text" id="designer-image-model" class="form-input-dark" list="designer-image-model-datalist" value="gemini-3.1-flash-lite-image" required>
+                    <datalist id="designer-image-model-datalist"></datalist>
+                  </div>
+                </div>
+                <div class="form-grid-2col">
+                  <div class="form-group-editor">
+                    <label class="form-label-editor" for="designer-image-timeout">Timeout ilustrasi (ms)</label>
+                    <input type="number" id="designer-image-timeout" class="form-input-dark" value="90000" min="1000" max="120000" step="1" required>
+                  </div>
+                  <div class="form-group-editor">
+                    <label class="form-label-editor" for="designer-image-rights-reference">Referensi ketentuan penggunaan</label>
+                    <input type="url" id="designer-image-rights-reference" class="form-input-dark" value="https://ai.google.dev/gemini-api/terms" required>
+                    <a class="form-help-text" href="https://ai.google.dev/gemini-api/terms" target="_blank" rel="noopener noreferrer">Baca ketentuan resmi Gemini API</a>
+                  </div>
+                </div>
+              </fieldset>
+
               <div class="form-group-editor">
                 <label class="form-label-editor">Instruksi Sistem AI Designer (System Prompt)</label>
                 <textarea id="designer-prompt" class="form-input-dark form-textarea" rows="3">Anda adalah AI Creative Director & Visual Architect untuk akun Instagram @gapuramedia (media editorial data pasar saham, hukum, dan ekonomi bursa). Anda memiliki kebebasan penuh merancang arsitektur visual carousel Instagram secara dinamis, adaptif, dan bebas tanpa batasan template kaku. Anda menentukan sendiri jumlah slide, struktur visual setiap slide, penempatan data/angka/kutipan, serta alur narasi agar berita tersampaikan secara utuh, padat data, dan berdampak tinggi.</textarea>
@@ -1738,6 +1775,6 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
   <!-- Toast -->
   <div id="toast" class="toast"></div>
 
-  <script src="/app.js?v=3.8.2"></script>
+  <script src="/app.js?v=3.9.0"></script>
 </body>
 </html>
