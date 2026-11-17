@@ -4,6 +4,13 @@ Tanggal: 17 November 2026. Turunan dari
 [blueprint](07_EDITORIAL_REDESIGN_BLUEPRINT.md) dan
 [kontrak R1](08_R1_EDITORIAL_CONTRACT.md).
 
+**Keputusan produk terbaru:** owner memilih [konten orisinal dan ilustrasi
+AI](10_ORIGINAL_AI_EDITORIAL.md). Jalur default R3–R8 memakai RSS untuk
+topik/judul dan metadata saja; body/foto penerbit tidak masuk payload agen.
+Reader/snapshot R2 di bawah tetap kemampuan terpisah yang sudah tersedia,
+bukan kewajiban melakukan enrichment sebelum generasi. Catatan R2 mengenai
+kelanjutan pengambilan foto/sindikasi adalah rencana historis yang diganti.
+
 ## 1. Tujuan dan batas tahap
 
 R2 memisahkan **materi sumber yang benar-benar tersedia** dari ringkasan Radar

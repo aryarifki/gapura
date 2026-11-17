@@ -3,6 +3,13 @@
 Tanggal: 17 November 2026 · Lingkup: kontrak dan fixture offline.
 Turunan dari [blueprint redesign](07_EDITORIAL_REDESIGN_BLUEPRINT.md).
 
+**Perubahan arah owner setelah R1:** [konten orisinal dan ilustrasi
+AI](10_ORIGINAL_AI_EDITORIAL.md) menjadi spesifikasi aktif untuk R3–R8. Kontrak
+di bawah merekam implementasi R1 yang sudah diuji: kewajiban foto/URL sumber
+dan paragraf sumber belum mendukung jalur judul saja/visual generatif baru.
+Kontrak executable beserta fixture harus direvisi dengan TDD sebelum digunakan
+pada sampel baru. Tidak menyatakan perubahan runtime telah dilakukan.
+
 ## Hasil dan batas tahap
 
 R1 menetapkan bentuk input/output yang akan dipakai tahap selanjutnya. Modul

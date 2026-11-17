@@ -11,8 +11,11 @@ dan koneksi Instagram tetap tersedia. Perubahan desain/isi berikutnya mengikuti
 [laporan reset](docs/EDITORIAL_WORKSPACE_RESET_20261116.md). Kontrak dan corpus
 sintetis [R1](docs/plans/08_R1_EDITORIAL_CONTRACT.md) tersedia offline.
 [R2](docs/plans/09_R2_ARTICLE_MATERIALS.md) menambahkan body feed, parser artikel,
-snapshot materi dan API pengayaan manual, tanpa backfill/draf baru. Foto siap
-pakai, penulisan baru dan penghapusan Verifikator masih tahap lanjutan.
+snapshot materi dan API pengayaan manual, tanpa backfill/draf baru.
+**Arah terbaru owner:** [konten orisinal dan ilustrasi AI](docs/plans/10_ORIGINAL_AI_EDITORIAL.md).
+RSS menjadi pemicu topik/judul; agen menulis naskah/angle/visual Gapura sendiri.
+Spesifikasi R3–R8 sudah diselaraskan; runtime input/naskah dan generator gambar
+belum diubah. Verifikator masih menunggu penghapusan pada tahapnya.
 
 ---
 

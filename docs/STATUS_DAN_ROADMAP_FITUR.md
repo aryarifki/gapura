@@ -10,6 +10,9 @@ mencakup delapan permintaan owner. Reset/jeda, kontrak offline
 [R1](plans/08_R1_EDITORIAL_CONTRACT.md), dan reader/snapshot materi
 [R2](plans/09_R2_ARTICLE_MATERIALS.md) tersedia. Penulisan produksi belum memakai
 kontrak berita baru dan Verifikator runtime belum dihapus.
+[Keputusan owner terbaru](plans/10_ORIGINAL_AI_EDITORIAL.md): sumber hanya
+memasok topik/judul dan metadata; naskah serta ilustrasi dibuat agen AI secara
+orisinal. Blueprint/roadmap sudah diselaraskan, wiring runtime belum berubah.
 [Bukti reset dan backup](EDITORIAL_WORKSPACE_RESET_20261116.md).
 
 ---
@@ -35,9 +38,10 @@ kontrak berita baru dan Verifikator runtime belum dihapus.
 | **Publisher Instagram / Facebook / Threads** | 🟡 **Dijeda untuk evaluasi** | Instagram Unified `@gapuramedia` terhubung; pemeriksaan quota publikasi berhasil sebelum reset. Publisher tetap shadow dengan timer disabled. Facebook Page dan Threads perlu pemeriksaan/koneksi tersendiri. |
 | **Scheduler native (P2)** | 🟡 **Terpasang, sengaja dijeda** | Intake/publisher `disabled/inactive` selama evaluasi hasil baru. Snapshot P2 aktif di bawah tetap historis; unit runtime dan drop-in web adalah acuan keadaan terbaru. n8n tetap canvas/fallback manual. |
 | **Reset draf/desain** | ✅ **Selesai** | 142 draf, 269 slide, seluruh jadwal/target/job Studio dan 556 berkas hasil dibersihkan setelah backup restore teruji. Sumber/config/token tetap utuh. |
-| **Blueprint pembaruan editorial** | 🟡 **Implementasi bertahap** | Carousel-first, foto nyata, headline/caption bersih, enam desk nasional, sumber lebih kuat, dan penghapusan seluruh Verifikator mengikuti R0–R8. R1 sudah dimulai atas mandat owner; acceptance visual tetap R7. |
+| **Blueprint pembaruan editorial** | 🟡 **Implementasi bertahap** | Carousel-first, input topik/judul, angle/naskah orisinal dan ilustrasi AI, enam desk nasional, serta penghapusan seluruh Verifikator mengikuti R0–R8. R1/R2 selesai sebagai baseline historis; kontraknya perlu penyesuaian, acceptance visual tetap R7. |
 | **R1 — Kontrak editorial** | ✅ **Offline tersedia** | Enam desk, normalizer headline, referensi materi unik, kontrak media/rights, carousel 3–9, caption/tag assembler; enam fixture sintetis berisi 36 paragraf/36 slide dan raster lokal. Belum dipasang ke produksi. [Kontrak R1](plans/08_R1_EDITORIAL_CONTRACT.md). |
 | **R2 — Materi artikel** | ✅ **Reader dan snapshot tersedia** | Body feed dipertahankan, HTML/JSON-LD diekstrak terpisah dari summary, tanggal/URL/status akses eksplisit, snapshot hash idempotent dan endpoint GET/enrich manual. Migrasi tambahan tanpa backfill; galeri tetap kosong. [Hasil R2](plans/09_R2_ARTICLE_MATERIALS.md). |
+| **R3–R8 — Konten orisinal dan ilustrasi AI** | 🟡 **Spesifikasi diperbarui** | RSS/registry hanya discovery topik/judul, agen menulis penjelasan dan membuat visual sendiri; detail aktual tetap memerlukan dasar, visual berlabel ilustrasi AI. Revisi kontrak, adapter gambar dan wiring penulis belum diterapkan. [Keputusan/acceptance](plans/10_ORIGINAL_AI_EDITORIAL.md). |
 | **Telegram Approval Bot** | ⏳ **Belum Dikonfigurasi** | Engine dan kode notifikasi Telegram telah siap, namun menunggu input token Bot Telegram (`TELEGRAM_BOT_TOKEN`) dan Chat ID admin dari owner agar bot dapat aktif di polling. |
 | **Kalender Konten Interaktif** | ⏳ **Belum Dikerjakan** | Jadwal tersimpan di PostgreSQL; kalender visual dengan drag-and-drop belum tersedia. |
 | **Multi-User Role** | ⏳ **Belum Dikerjakan** | Dashboard dibuka langsung tanpa login/token admin atas permintaan owner. Validasi Origin dan redaksi API key tetap aktif; akun pengguna dan pembagian role belum tersedia. |

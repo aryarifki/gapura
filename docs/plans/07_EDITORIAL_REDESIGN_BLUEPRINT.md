@@ -1,27 +1,30 @@
 # Blueprint pembaruan editorial dan desain Gapura Media
 
-Versi 1.2 · 17 November 2026 · Status: R0 selesai, kontrak R1 dan reader/snapshot R2 tersedia.
+Versi 2.0 · 17 November 2026 · Status: R0–R2 selesai; arah R3–R8 direvisi oleh owner.
 
-Dokumen ini menjadi acuan perubahan konten berikutnya. Persyaratan baru owner
-menggantikan ketentuan lama tentang niche finansial sempit, single otomatis,
-caption petikan verbatim, dan kewajiban melewati Agen Verifikator. Perubahan
-penulisan produksi belum diterapkan; kontrak dan fixture sintetis [R1](08_R1_EDITORIAL_CONTRACT.md)
-tersedia offline, sedangkan [R2](09_R2_ARTICLE_MATERIALS.md) menyediakan reader
-dan snapshot materi tanpa menghasilkan draf. Pembersihan workspace dan penjedaan
-otomatisasi sudah dilaksanakan; buktinya tercantum di
+Dokumen ini menjadi acuan perubahan konten berikutnya. [Keputusan konten orisinal
+dan ilustrasi AI](10_ORIGINAL_AI_EDITORIAL.md) menggantikan kewajiban memakai
+body/foto penerbit dan petikan verbatim: RSS hanya memasok topik/judul serta
+metadata asal; agen menghasilkan naskah dan visual Gapura sendiri. Rincian
+keputusan dan acceptance pada dokumen tersebut menjadi acuan bila kontrak lama
+berbeda. Penulisan produksi belum diperbarui; kontrak/fixture [R1](08_R1_EDITORIAL_CONTRACT.md)
+dan reader/snapshot [R2](09_R2_ARTICLE_MATERIALS.md) tetap hasil historis yang
+tersedia. Pembersihan workspace dan penjedaan otomatisasi sudah dilaksanakan;
+buktinya tercantum di
 [laporan reset](../EDITORIAL_WORKSPACE_RESET_20261116.md).
 
 ## 1. Keputusan produk dan tujuan
 
 Gapura menjadi media penjelas isu nasional: **politik, sosial, hukum,
 lingkungan, serta ekonomi nasional termasuk bursa saham**. Produk utamanya satu
-carousel berita yang dapat dipahami tanpa membuka artikel lain, dengan foto
-relevan dan caption yang menjelaskan peristiwa, konteks, pihak terkait, serta
-perkembangan yang diketahui.
+carousel penjelas yang dapat dipahami tanpa membuka artikel lain, dengan naskah
+orisinal, ilustrasi AI relevan dan caption yang mengembangkan isu. Fakta aktual
+tetap memiliki dasar; topik/judul saja tidak membenarkan model mengarang rincian
+berita atau menyatakan dirinya melakukan peliputan.
 
 Kebutuhan pembaca: mengetahui apa yang terjadi, mengapa penting, siapa yang
 terdampak, apa yang dikatakan pihak terkait, dan bagaimana peristiwanya
-berkembang. Kebutuhan redaktur: memeriksa bahan, foto, wording, dan desain dalam
+berkembang. Kebutuhan redaktur: memeriksa bahan, ilustrasi, wording, dan desain dalam
 satu workspace, lalu menyetujui versi konten yang benar-benar dilihat.
 
 Keputusan yang digunakan untuk membuat rencana konkret:
@@ -30,26 +33,38 @@ Keputusan yang digunakan untuk membuat rencana konkret:
   yang disebut carousel. Default enam slide, normal 5–8, rentang konfigurasi 3–9.
   Format single hanya boleh menjadi pilihan eksplisit owner untuk produk lain;
   jalur berita reguler tidak boleh turun ke single secara diam-diam.
-- Setidaknya satu foto jurnalistik relevan pada cover. Foto isi dapat ditambah
-  jika tersedia dan membantu penjelasan. Tidak memakai gambar generatif untuk
-  menggambarkan kejadian nyata, dan tidak mengulang foto sekadar mengisi slide.
+- Setidaknya satu ilustrasi AI orisinal pada cover. Agen memakai brief visual
+  konseptual, bukan foto penerbit atau rekonstruksi realistis yang terkesan
+  dokumentasi kejadian. Renderer menampilkan `Ilustrasi AI · Gapura Media`.
+  Visual isi ditambah bila membantu, bukan sekadar mengisi slide.
+- Registry/RSS dipakai untuk topik/judul dan provenance. Body, ringkasan dan foto
+  penerbit tidak masuk payload penulisan/desain default. Agen menulis angle,
+  struktur, penjelasan dan caption sendiri; tidak sekadar mengganti sinonim.
+- Judul saja menghasilkan penjelasan isu dengan batas klaim. Rincian aktual,
+  angka dan kutipan memerlukan catatan fakta/referensi yang tersedia; riset
+  sumber primer yang diizinkan merupakan kapabilitas terpisah, bukan fetch body
+  penerbit diam-diam. Pengetahuan model bukan bukti berita terbaru.
 - Caption Instagram menargetkan 1.200–1.900 karakter isi saat materi cukup;
   payload akhir maksimal 2.200 karakter termasuk paragraf tambahan dan tagar.
   Target panjang tidak membenarkan filler atau fakta buatan.
 - Agen/halaman/fungsi Verifikator dihapus sepenuhnya dari jalur aktif. Tidak
   diganti agen penilai kebenaran lain dengan nama baru.
-- Pengambilan materi, pemeriksaan struktur/angka/kutipan, dan review redaktur
-  tetap ada. Ini diperlukan agar berita tidak mengarang fakta atau salah
-  mengatribusikan pernyataan; tidak menghasilkan label verified/unverified,
-  confidence kebenaran, atau gerbang persetujuan otomatis oleh LLM.
+- Pemeriksaan struktur/angka/kutipan dan review redaktur tetap ada. Reader
+  materi R2 menjadi kemampuan terpisah, bukan prasyarat generasi judul saja.
+  Pemeriksaan tidak menghasilkan label verified/unverified, confidence
+  kebenaran, atau gerbang persetujuan otomatis oleh LLM.
 - Publikasi tetap memerlukan persetujuan manusia atas revisi konten terkini.
   Timer publisher tetap berhenti selama pencarian format; koneksi Meta disimpan.
 
 **Asumsi yang perlu disetujui lewat sampel:** target enam slide, rentang caption,
-ukuran ruang foto, tone headline, dan campuran rubrik. Angka ini adalah rancangan,
+ukuran ruang ilustrasi, tone headline, dan campuran rubrik. Angka ini adalah rancangan,
 bukan preferensi visual owner yang sudah terbukti.
 
-## 2. Temuan audit dan pemetaan delapan permintaan
+## 2. Temuan audit historis dan pemetaan delapan permintaan
+
+Bagian ini mencatat alasan rancangan awal sebelum perubahan arah konten
+orisinal. Solusi foto/artikel pada tabel adalah konteks historis, bukan
+instruksi memakai ulang body/foto penerbit pada jalur default baru.
 
 Audit terdiri dari pemeriksaan source code, reproduksi offline, dan inventaris
 database sebelum reset. Endpoint feed baru serta izin lisensi setiap penerbit
@@ -146,11 +161,11 @@ Daftar ini adalah **calon organisasi**, bukan endpoint RSS yang sudah valid:
 | Ekonomi/bursa | BPS, BI, Kemenkeu, OJK, BEI, keterbukaan emiten, Kontan, CNBC Indonesia, Bisnis | Data ekonomi, kebijakan, pengumuman korporasi, konteks pasar |
 | Perspektif warga/keahlian | Liputan lapangan, akademisi, organisasi masyarakat sipil yang relevan | Statement/pengalaman dengan atribusi dan kepentingan yang jelas |
 
-Setiap calon harus melalui uji adapter: alamat aktual, format respons,
-publication timestamp, body yang tersedia, gambar, hak penggunaan, rate limit,
-dan kegagalan. Uji yang gagal tidak boleh disamarkan sebagai feed sehat. Query
-Google News menjadi discovery cadangan; resolver harus menuju artikel asli,
-bukan memakai homepage penerbit sebagai URL artikel.
+Setiap calon harus melalui uji adapter: alamat aktual, format respons, judul,
+publication timestamp, metadata asal, ketentuan akses, rate limit dan kegagalan.
+Body dan foto yang kebetulan tersedia di feed tidak masuk payload generasi
+default. Query Google News menjadi discovery cadangan dengan provenance yang
+jujur; jangan memakai homepage penerbit sebagai identitas artikel.
 
 Hindari query `politik`/`ekonomi` sendirian. Buat query per isu/desk dengan
 konteks Indonesia, variasi aktor/kebijakan dan recency. Cluster laporan tentang
@@ -160,15 +175,15 @@ peristiwa yang sama agar satu isu tidak memenuhi galeri dengan duplikat.
 
 ```mermaid
 flowchart TD
-    A[RSS / artikel resmi / media nasional / sinyal tren] --> B[Normalisasi judul dan metadata]
+    A[RSS / registry: topik dan judul] --> B[Normalisasi judul dan metadata]
     B --> C[Cluster peristiwa dan kurasi desk]
     C --> D[Analis relevansi editorial]
-    D --> E[Pengambilan artikel dan aset yang diizinkan]
-    E --> F{Materi cukup untuk carousel?}
-    F -- Belum --> G[Menunggu materi / input redaktur]
-    F -- Ya --> H[Rencana berita 3–9 slide]
-    H --> I[Copywriter: narasi dan caption]
-    I --> J[Designer: foto dan layout]
+    D --> E[Angle Gapura dan batas klaim sesuai bahan]
+    E --> F{Tiga kontribusi berguna tersedia?}
+    F -- Belum --> G[Perjelas angle / bahan redaktur]
+    F -- Ya --> H[Rencana penjelasan 3–9 slide]
+    H --> I[Copywriter: naskah dan caption orisinal]
+    I --> J[Designer: ilustrasi AI dan layout]
     J --> K[Render PNG / JPEG dan pratinjau]
     K --> L[Review manusia atas revisi konten]
     L -- Revisi --> I
@@ -177,130 +192,85 @@ flowchart TD
 ```
 
 Tidak ada tahap Verifikator, permintaan report, confidence, atau badge kebenaran
-otomatis dalam alur baru. UI boleh menunjukkan status teknis seperti artikel
-belum terambil/foto gagal; status itu hanya di editor, tidak disisipkan ke
-headline/caption.
+otomatis dalam alur baru. UI menampilkan kekurangan bahan/gagal generasi di
+editor, bukan menyisipkan diagnostik ke headline/caption. Disclosure ilustrasi
+AI merupakan informasi pembaca dan tetap terlihat pada visual publik.
 
-**Definisi operasional materi cukup:** bahan yang tersedia mendukung minimal
-tiga kontribusi slide berbeda; pernyataan memiliki atribusi yang jelas, dan
-angka/kutipan yang dipakai mempunyai rujukan bagian sumber. Ini bukan syarat
-dua sumber, artikel penuh, konfirmasi resmi, atau keputusan LLM tentang
-kebenaran. Berita tentang suatu statement dapat bertumpu pada satu rekaman,
-rilis, atau artikel yang diatribusikan jelas. Jika bahan sudah cukup, produksi
-dapat berjalan tanpa menunggu sumber tambahan. Ketidakcukupan hanya menunjukkan
-bagian isi yang belum tersedia untuk produk carousel; redaktur dapat menambah
-materi atau menyunting rencana, tanpa membuat report verifikasi.
+**Definisi operasional bahan cukup:** minimal tiga kontribusi penjelasan yang
+berbeda dan berguna. Judul saja boleh memicu penjelasan isu umum dengan batas
+klaim; jangan mengarang detail aktual agar slide terisi. Mode aktual memerlukan
+catatan fakta/referensi bagi klaim kejadian, angka, kutipan dan kronologi yang
+dipakai. Tidak mensyaratkan dua sumber, body artikel penuh, atau keputusan
+kebenaran oleh LLM. Redaktur dapat memperjelas angle atau menambahkan bahan;
+tidak membuat report Verifikator. Pemisahan kedua mode mengikuti
+[keputusan konten orisinal](10_ORIGINAL_AI_EDITORIAL.md).
 
-## 5. Kontrak materi berita
+## 5. Kontrak input dan penulisan orisinal
 
-Gunakan `topics` sebagai identitas berita agar tidak membangun sistem paralel.
-Tambahkan dua penyimpanan minimal untuk materi dan aset; JSONB cukup untuk detail
-yang bervariasi. Schema final ditetapkan melalui migrasi berurutan.
+Gunakan `topics` sebagai identitas isu. Discovery hanya meneruskan source ID,
+nama/URL sumber, raw/normalized title, waktu, desk dan topic/keywords melalui
+daftar field yang diizinkan. `editorial_headline` merupakan tulisan Gapura.
+Body, summary, HTML, snapshot artikel dan URL foto tidak masuk payload default.
 
-### `topics` diperluas
+`topic_materials`/reader [R2](09_R2_ARTICLE_MATERIALS.md) tetap kemampuan terpisah
+yang historis, bukan prasyarat jalur judul saja. Jangan menambahkan pengayaan
+artikel otomatis atau menghapus snapshot lama untuk mengubah arah produk.
 
-- `raw_title`: judul feed asli untuk audit.
-- `normalized_title`: judul penerbit setelah pembersihan noise teknis.
-- `editorial_headline`: judul publik yang dapat ditulis ulang redaktur.
-- `editorial_category`: salah satu enam desk.
-- `source_published_at` dan `source_updated_at`, dibedakan dari waktu ditemukan.
-- `material_status`: ready/needs_material/access_failed; tidak berarti benar/salah.
+Brief penulis memisahkan: discovery; angle/pertanyaan pembaca; mode penjelasan
+umum atau aktual; catatan fakta/angka/kutipan/referensi bila tersedia; rencana
+kontribusi slide; dan kekurangan bahan. Arahan editorial bukan fakta baru.
 
-### `topic_materials`
+Copywriter menghasilkan naskah/struktur/caption sendiri. Judul discovery tidak
+dijadikan paragraf fakta baru secara otomatis. Klaim aktual tetap teratribusi,
+angka/satuan/periode tepat, kutipan persis bila dipakai, serta analisis bersyarat
+tidak disajikan sebagai kepastian. Penjelasan umum tidak mengaku sebagai laporan
+kejadian. Review manusia menilai makna; validator struktur tidak membuktikan
+kebenaran atau orisinalitas semantik. Rincian acceptance ada di
+[keputusan konten orisinal](10_ORIGINAL_AI_EDITORIAL.md).
 
-Referensi `topic_id`, URL artikel kanonis, penerbit, judul dokumen, waktu
-publish/update/retrieval, isi hasil ekstraksi, hash isi, status akses,
-adapter/metode ekstraksi, serta bagian-bagian sumber dalam JSONB. Satu berita
-dapat merujuk beberapa dokumen. Preferensi pengambilan:
+## 6. Ilustrasi AI harus bertahan sampai render
 
-1. Isi lengkap feed berizin: `content:encoded`/`content` yang substantif.
-2. Halaman artikel publik dengan parser artikel, metadata Open Graph/JSON-LD,
-   serta pengecualian navigasi/iklan/related stories.
-3. Materi resmi yang diizinkan dan dapat diekstrak.
-4. Teks/foto yang disediakan redaktur dengan URL/atribusi/hak yang jelas.
+Designer menyusun brief ilustrasi editorial konseptual/stilisasi yang relevan
+dengan isu. Adapter provider menghasilkan bytes raster nyata, disimpan lokal
+sebelum render. Chat model tidak mengarang URL/bytes sebagai bukti sukses.
+Tidak memakai foto RSS/artikel sebagai input, style salinan, atau fallback.
 
-Tidak melewati paywall, login, robots, pembatasan atau anti-bot. Status akses
-eksplisit: full/partial/summary_only/paywall/access_denied/robots_disallowed/
-rate_limited/parse_failed/unavailable. Batas respons/timeouts dan cache wajib.
-Materi ringkasan tidak boleh dinamai full article. Dokumen eksternal diperlakukan
-sebagai data dan tidak dapat memberi instruksi untuk tool atau model.
+`media_assets` mencatat asset ID, provider/model, prompt, waktu/generation ID
+bila tersedia, dasar syarat penggunaan provider, disclosure, MIME, dimensi,
+checksum, path lokal dan crop/focal point. URL sumber eksternal tidak wajib
+untuk aset yang memang dihasilkan provider; jangan mengisi URL foto fiktif.
+Tidak menyatakan hak eksklusif otomatis dari label “AI”.
 
-### Isi terstruktur yang dikirim ke penulis
+Renderer menambahkan `Ilustrasi AI · Gapura Media`, menjaga label tetap terbaca
+di preview, fallback, export dan JPEG publisher. Hindari rekonstruksi realistis
+yang terkesan foto kejadian nyata. Teks, angka dan grafik faktual dibuat renderer
+dari naskah/data yang sudah ditinjau, bukan digambar bebas oleh generator.
 
-```text
-story: event, desk, clean headline, dates, material revision
-documents: id, article URL, publisher, title, paragraph/source spans
-facts: subject, statement, evidence_refs
-figures: subject, value, unit, period, evidence_refs
-quotes: exact text, speaker, role, date/context, evidence_refs
-events: date/sequence, event text, evidence_refs
-responses: actor, position/statement, evidence_refs
-assets: id, source article, credit, rights, local file, crop/focal point
-gaps: material still unavailable; editor-facing only
-```
+Asset ID dipilih sebelum layout, lalu dipakai konsisten pada simpan editor,
+render, fallback dan regenerasi. Regenerasi teks mempertahankan aset terpilih;
+regenerasi visual eksplisit membuat revisi baru dan membatalkan approval.
+Generator gagal, bytes invalid, model/key tidak tersedia atau gambar tidak
+relevan menghasilkan error/`needs_media` yang terlihat. Tidak kembali mengambil
+foto sumber atau menganggap cover kosong siap unggah.
 
-Ini adalah kontrak bahan dan jejak penulisan, bukan report penilaian kebenaran.
-Validator memeriksa referensi ada, angka/satuan/periode tidak tertukar, dan
-kutipan cocok persis. Parafrasa akurat diperbolehkan; validator deterministik
-tidak diklaim dapat membuktikan kebenaran semantik. Review redaktur tetap penentu.
-
-## 6. Foto harus bertahan sampai hasil render
-
-### `media_assets` dan pemilihan foto
-
-Simpan keterkaitan ke dokumen, URL asal, credit/pemilik, status hak penggunaan,
-dimensi, MIME, checksum, local path, caption foto, serta focal point/crop.
-Satu kebijakan host dipakai Scout, SEO, downloader, dan editor. Host yang
-diizinkan tidak otomatis membuktikan relevansi atau izin publikasi.
-
-Urutan kandidat: foto artikel asli → lampiran resmi yang boleh digunakan →
-unggahan redaktur yang berhak → foto editorial berlisensi yang relevan dan
-ditandai sebagai ilustrasi jika bukan kejadian yang sama. Pemilihan tidak
-bergantung pada LLM menyalin URL: designer menerima `asset_id` yang sudah dipilih.
-
-Parser mempertimbangkan `media:content`, enclosure, gambar body, `og:image`,
-JSON-LD, URL relatif dan varian resolusi. Kebijakan unduh tetap HTTPS, host
-tepercaya, DNS/IP publik pada setiap redirect, MIME dan magic bytes raster,
-ukuran/dimensi terbatas, timeout, serta tidak menerima SVG atau URL bebas dari
-model. Gambar disimpan lokal sebelum render, bukan diambil dari internet oleh
-engine render.
-
-Kebijakan minimum hak foto ditetapkan di R1, sebelum sampel dibuat: foto milik
-Gapura/unggahan yang dinyatakan berhak oleh redaktur, berlisensi yang sesuai
-penggunaan, atau materi resmi yang syarat penggunaannya secara eksplisit
-mengizinkan. Catat asal, pemilik/credit, dasar izin, dan batas penggunaan.
-Foto artikel milik media lain dengan hak yang belum diketahui tidak otomatis
-dipakai hanya karena URL dapat diunduh; redaktur memilih aset sah pengganti.
-Ketepatan crop dan penempatan credit disempurnakan melalui R7.
-
-Status aset harus terlihat: candidate/selected/downloaded/rejected/failed, dengan
-alasan seperti host tidak diizinkan, 403, terlalu kecil, bytes invalid,
-hak belum jelas, atau tidak relevan. Tidak ada kegagalan diam-diam yang berakhir
-sebagai desain sukses tanpa foto. Bila foto wajib belum tersedia, draf berstatus
-`needs_media` dan redaktur diminta memilih/unggah foto. Jangan mengambil foto
-acak hanya agar metrik gambar lulus.
-
-Draf `needs_media` tetap dapat dibuka, diedit, dan dipratinjau selama eksperimen;
-belum memenuhi acceptance produk berita siap unggah. Cover tanpa foto bukan
-pengecualian otomatis. Jika owner kemudian menginginkan produk infografik tanpa
-foto, tetapkan mode dan kriteria tersendiri secara eksplisit.
-
-Paling sedikit cover menggunakan foto nyata yang dipilih. Layout isi `photo`
-opsional dikembangkan untuk kronologi/lokasi/statement bergambar. Local asset
-harus tetap ikut fallback, regenerasi, simpan editor, export, dan JPEG publisher.
+Validasi bytes, MIME raster, dimensi, checksum, batas ukuran dan timeout tetap
+wajib. Jika provider mengembalikan URL, gunakan kebijakan host provider, DNS
+publik/redirect yang aman dan penyimpanan lokal; engine render tidak fetch URL.
+Adapter/provider gambar belum terpasang. Kontrak R1 harus direvisi dengan TDD
+sebelum klaim aset generatif siap pada R3.
 
 ## 7. Produk carousel dan desain editorial
 
-Default enam slide dengan urutan menyesuaikan bukti:
+Default enam slide dengan urutan menyesuaikan mode dan bahan:
 
 | Slide | Tujuan | Contoh komponen |
 | --- | --- | --- |
-| 1 | Menarik perhatian dengan inti peristiwa | Foto relevan, headline singkat, identitas Gapura |
-| 2 | Menjelaskan apa yang terjadi | Aktor, lokasi, tanggal, keputusan/peristiwa utama |
+| 1 | Menarik perhatian dengan inti isu | Ilustrasi AI relevan, headline orisinal, identitas Gapura dan disclosure |
+| 2 | Menjelaskan inti isu | Definisi/pertanyaan pembaca; aktor/lokasi/tanggal kejadian hanya bila ada bahan aktual |
 | 3 | Memberi konteks | Latar kebijakan/perkara/data yang penting |
-| 4 | Menyajikan statement atau kronologi | Kutipan beratribusi ATAU urutan kejadian, sesuai bahan |
-| 5 | Menjelaskan dampak/respons | Siapa terdampak, angka yang relevan, tanggapan pihak lain |
-| 6 | Menyimpulkan dan mengarahkan pembacaan | Yang sudah diketahui, perkembangan berikutnya yang dinyatakan sumber |
+| 4 | Mengembangkan penjelasan | Mekanisme atau perbandingan; statement/kronologi hanya bila didukung bahan |
+| 5 | Menjelaskan arti bagi pembaca | Dampak bersyarat dan batasnya; angka/respons aktual hanya bila ada referensi |
+| 6 | Menyimpulkan dan mengarahkan pembacaan | Inti penjelasan dan pertanyaan lanjutan; perkembangan aktual hanya bila ada dasar |
 
 Slide boleh 3–9, normal 5–8. Statement/kronologi bukan template wajib untuk
 semua berita. Tidak mengarang kutipan, respons pihak lain, tanggal, dampak, atau
@@ -309,19 +279,20 @@ unik; judul/paragraph yang sama tidak diulang untuk memenuhi jumlah.
 
 Keputusan format berlaku identik di konfigurasi, Studio, API, editor, renderer,
 export, dan publisher. Hapus fallback single dari produk berita ini. Jika materi
-kurang dari tiga kontribusi berbeda, jalur kembali ke pengayaan/input redaktur.
+kurang dari tiga kontribusi berbeda, jalur kembali ke perumusan angle/bahan
+redaktur, tanpa mengambil body penerbit otomatis.
 
 Desain mempertahankan brand Gapura, dua keluarga font Archivo Black/Inter,
-kanvas 1080×1350, hierarki judul-isi, margin konsisten, kontras teks/foto,
-counter slide, dan credit foto kecil yang tidak menutupi konten. Headline target
+kanvas 1080×1350, hierarki judul-isi, margin konsisten, kontras teks/ilustrasi,
+counter slide, dan disclosure AI yang terbaca tanpa menutupi konten. Headline target
 6–14 kata/sekitar 60–100 karakter adalah pedoman, bukan truncation mekanis.
-Body diringkas ke paragraf pendek atau poin; pemecahan slide mendahului
+Naskah orisinal disusun menjadi paragraf pendek atau poin; pemecahan slide mendahului
 pengecilan font berlebihan. Tidak memakai CTA/filler/slide disclaimer wajib.
 
 Semua default faktual demonstrasi pada layout chart/stat/timeline/comparison
 dihapus. Data yang hilang menghasilkan validasi terarah atau layout teks netral,
 bukan angka/kejadian contoh. Golden render disusun untuk enam desk dan desktop/
-mobile preview, termasuk foto landscape/portrait, judul panjang, kutipan dan data.
+mobile preview, termasuk ilustrasi landscape/portrait, judul panjang, kutipan dan data.
 
 ## 8. Headline bersih dan caption yang menjelaskan
 
@@ -342,19 +313,24 @@ DPR Membahas RUU ...
 provider/publisher tetap ada di metadata internal, bukan pada headline.
 ```
 
-Headline editorial boleh parafrasa dengan fakta, negasi, angka, status dugaan,
-dan aktor yang konsisten. Uji normalizer harus idempotent dan menyertakan judul
+Headline editorial ditulis sendiri sesuai angle Gapura; tidak dibatasi menjadi
+parafrasa judul discovery. Fakta, negasi, angka, status dugaan dan aktor tetap
+konsisten bila disebut. Uji normalizer harus idempotent dan menyertakan judul
 dengan tanda hubung/kurung bermakna.
 
 ### Caption publik
 
-Struktur yang disarankan:
+Struktur mode aktual yang disarankan, bila bahan tersedia:
 
 1. Lead yang menyebut peristiwa dan mengapa penting, tanpa clickbait kosong.
 2. Penjelasan siapa/apa/kapan/di mana dan data kunci yang diperlukan.
 3. Konteks atau kronologi yang membantu pembaca memahami sebab/urutan.
 4. Statement teratribusi dan respons relevan yang benar-benar tersedia.
 5. Dampak/perkembangan lanjutan yang didukung bahan, lalu penutup natural.
+
+Mode judul saja memakai lead pertanyaan/isu, penjelasan mekanisme, konteks
+umum, arti bagi pembaca dan batasnya. Jangan mengisi siapa/kapan/angka/statement
+aktual yang tidak diketahui demi mengikuti struktur mode aktual.
 
 Hapus dari caption publik: `[Google News ...]`, label fallback, `Sumber primer:`,
 `Status verifikasi:`, `Belum terverifikasi otomatis`, disclaimer tentang
@@ -435,12 +411,12 @@ Semua perubahan kode dimulai dari tes merah yang mereproduksi masalah.
 | R0 — Workspace bersih | Backup/restore teruji, konten kosong, timer dan worker otomatis dijeda | **Selesai**, lihat laporan reset; koneksi Meta tetap connected |
 | R1 — Kontrak editorial | Taxonomy enam desk, material/media contract, kebijakan hak/credit minimum, aturan headline/caption/carousel, corpus fixture | **Tersedia offline**, lihat [kontrak R1](08_R1_EDITORIAL_CONTRACT.md); bukan acceptance foto berita live/visual owner |
 | R2 — Pengambilan materi | Feed body penuh yang tersedia, publisher article resolver, metadata, akses status, snapshot hash idempotent | **Tersedia**, lihat [hasil R2](09_R2_ARTICLE_MATERIALS.md); validasi fixture dan migrasi tanpa rewrite. Clustering peristiwa lintas URL menyusul bersama kurasi sumber R4 |
-| R3 — Foto end-to-end | Asset ID lokal, host policy tunggal, rights/credit, hydration, fallback/photo layout | Foto nyata tampil pada normal/fallback/regenerasi; semua kegagalan terlihat |
-| R4 — Sources dan Analis | Katalog tervalidasi enam desk, scoring kepentingan publik, query aktual | Fixture tiap desk lolos/gugur sesuai materi dan konteks; endpoint gagal nonaktif |
+| R3 — Ilustrasi AI end-to-end | Revisi kontrak R1, provider gambar, asset ID lokal, provenance/disclosure, hydration | Raster generatif dan label muncul pada normal/fallback/regenerasi; semua kegagalan terlihat |
+| R4 — Sources dan Analis | Topik/judul dan metadata saja, cluster enam desk, angle/kepentingan publik | Body/ringkasan/foto tidak masuk payload agen; fixture per desk dan endpoint gagal teruji |
 | R5 — Lepas Verifikator | Seluruh runtime/API/UI/config/SQL consumer report hilang | Produksi/review tanpa report berhasil; publish tanpa review tetap ditolak |
-| R6 — Penulisan dan desain | Carousel default enam 3–9, caption mendalam, headline bersih, no demo facts | Sampel lokal untuk enam desk lulus kontrak isi dan render |
-| R7 — Review visual owner | Galeri kecil berisi satu carousel sampel per desk dan variasi cover/layout | Owner menyetujui style/isi; perbaiki sampel, jangan isi ratusan draf |
-| R8 — Aktivasi bertahap | 20 draf berurutan, shadow, satu publish uji yang disetujui | Tidak ada drop foto/single/boilerplate, approval/hash/idempotency lulus |
+| R6 — Penulisan dan desain | Hapus verbatim/fallback salin sumber; angle/naskah/caption orisinal; mode umum/aktual | Sampel enam desk tidak mengarang fakta, 3–9 slide bermakna dan render lulus |
+| R7 — Review visual owner | Satu carousel per desk dengan ilustrasi AI dan variasi cover/layout | Owner menyetujui orisinalitas/style/isi/disclosure; perbaiki sebelum batch |
+| R8 — Aktivasi bertahap | 20 draf berurutan, shadow, satu publish uji yang disetujui | Tidak ada drop ilustrasi, foto sumber, single/boilerplate; approval/hash/idempotency lulus |
 
 Jangan mengaktifkan kembali timer hanya karena test unit hijau. Keputusan style
 dan kedalaman isi harus lulus review owner pada R7. Sampel awal memakai materi
@@ -453,14 +429,18 @@ reset tidak otomatis memberikan mandat untuk menyalakan timer.
 
 ## 12. Matriks pengujian dan definisi selesai
 
-### Source dan materi
+### Discovery dan bahan
 
-- Isi kaya `content:encoded` tidak kalah oleh description pendek; batas/token
-  budget diterapkan setelah isi bersih disimpan, bukan memotong bukti asli.
+- Jalur default hanya meneruskan topik/judul dan metadata asal dari registry.
+  Body, summary, HTML, kandidat foto dan snapshot lama tidak masuk payload agen,
+  termasuk pada fallback/regenerasi. Reader/snapshot R2 diuji sebagai kemampuan
+  terpisah yang tidak dipanggil otomatis pada jalur ini.
 - Judul raw tetap tersimpan; headline tidak memuat prefix fallback atau suffix
   penerbit; punctuation/negasi/nama dan status dugaan dipertahankan.
-- HTML/JSON-LD/feed, URL relatif, encoding, robots/paywall/401/403/429/timeout,
-  response oversized, redirect dan parse_failed diuji dengan fixture lokal.
+- Field judul/tanggal/URL invalid dan kegagalan feed diuji. Penjelasan judul
+  saja tidak menyatakan detail aktual yang tidak disediakan; mode aktual
+  memerlukan referensi yang benar-benar tersedia. Fixture reader R2 tetap
+  historis dan tidak membuktikan riset sumber primer baru sudah terpasang.
 - Volume tren/metadata discovery tidak pernah dipromosikan menjadi kalimat berita.
 
 ### Konten dan caption
@@ -474,23 +454,26 @@ reset tidak otomatis memberikan mandat untuk menyalakan timer.
   dipaksakan untuk semua jenis berita.
 - Fixture enam desk memakai adapter/query dari katalog sumber baru yang
   diseleksi untuk desknya, bukan hanya mengganti kategori pada feed finansial
-  lama. Uji integrasi menegaskan source ID, desk, tanggal, URL artikel, dan aset
-  yang benar-benar dipakai.
+  lama. Uji integrasi menegaskan source ID, desk, waktu, URL discovery, mode
+  artikel, referensi bila ada, serta aset generatif yang benar-benar dipakai.
 - Setiap slide menyumbang informasi berbeda; kutipan hanya bila ada speaker/
   kutipan persis; timeline hanya bila urutan/waktu tersedia.
-- Parafrasa yang setara boleh lolos; angka, unit, periode, nama atau negasi yang
-  berubah ditolak; brief redaktur tidak menjadi sumber fakta baru.
+- Naskah memakai angle, struktur, penjelasan dan wording Gapura sendiri;
+  validator tidak mewajibkan kalimat sumber utuh. Angka/negasi/qualifier tidak
+  diubah dan brief/model tidak dijadikan bukti fakta aktual. Penilaian makna
+  dan orisinalitas tetap lewat review redaktur.
 - Caption menjawab peristiwa/konteks/pihak terkait tanpa boilerplate terlarang.
   Kasus 1.200–1.900 dan batas 2.200 diuji; tags hanya sekali pada semua consumer.
 - Varian Threads diuji maksimal 500 dengan review sendiri, bukan slice string.
 
 ### Visual
 
-- Golden render 1080×1350 untuk foto portrait/landscape, long headline, kutipan,
-  kronologi, data dan teks saja pada body; cover wajib foto pada produk utama.
+- Golden render 1080×1350 untuk ilustrasi portrait/landscape, long headline,
+  kutipan, kronologi, data dan teks pada body; cover memakai ilustrasi generatif.
 - Tidak ada teks meluber, logo tertutup, contrast rendah atau font terlalu kecil.
-- Foto terkait peristiwa, local raster muncul, credit dan rights tercatat.
-  Fallback/regenerasi/export/JPEG memakai aset yang sama.
+- Ilustrasi terkait isu, bytes lokal benar-benar muncul, provenance/provider
+  tercatat dan label `Ilustrasi AI · Gapura Media` tetap terbaca pada fallback,
+  regenerasi, export dan JPEG. Gagal generator tidak beralih ke foto penerbit.
 - Chart/stat/timeline kosong tidak pernah menampilkan fakta demo.
 
 ### Penghapusan verifier dan review
@@ -510,30 +493,31 @@ reset tidak otomatis memberikan mandat untuk menyalakan timer.
 ### Batch penerimaan
 
 Batch 20 draf berturut-turut harus memenuhi kontrak: 100% carousel bermakna,
-100% cover dengan foto relevan berhak pakai, 0 label teknis pada judul/caption,
-0 quote/angka demonstrasi, 0 parsing error yang disamarkan menjadi konten tipis,
-0 posting tanpa review. Target 100% ini berlaku pada corpus yang memang punya
-materi/foto; kegagalan sumber luar harus terlihat dan menahan produksi.
+100% cover dengan ilustrasi AI relevan dan disclosure, 0 body/foto penerbit di
+payload generasi default, 0 label teknis pada judul/caption, 0 quote/angka atau
+detail kejadian buatan, 0 posting tanpa review. Target berlaku pada hasil yang
+memenuhi bahan sesuai mode; kegagalan generator/bahan tetap terlihat.
 
 Denominator batch harus dilaporkan: jumlah kandidat dicoba, berhasil, tertahan
-karena materi/foto, gagal teknis, dan diterima/redaktur ditolak. Target 100%
-di atas hanya berlaku pada kandidat yang memiliki materi dan foto berhak pakai;
-persentase tidak boleh menyembunyikan kegagalan resolver sumber atau downloader.
+karena bahan/visual, gagal teknis, dan diterima/redaktur ditolak. Target 100%
+di atas berlaku pada kandidat yang bahan dan asetnya siap; persentase tidak
+boleh menyembunyikan kegagalan discovery, bahan atau generator.
 
-Owner menilai setiap sampel pada empat aspek 1–5: visual, kelengkapan berita,
-keterbacaan caption, dan relevansi isu. **Usulan gate:** tiap aspek minimal 4,
+Owner menilai setiap sampel pada lima aspek 1–5: visual, kelengkapan penjelasan,
+orisinalitas angle/struktur/wording, keterbacaan caption, dan relevansi isu.
+**Usulan gate:** tiap aspek minimal 4,
 tanpa error faktual/atribusi yang belum diperbaiki. Angka ini menunggu penerimaan
 owner, bukan klaim penilaian yang sudah dilakukan.
 
 ## 13. Risiko, batas lingkup, dan keputusan terbuka
 
-- **Hak materi/foto:** akses publik bukan izin republication. Perlu kebijakan
-  penggunaan, credit, dan daftar sumber/unggahan yang diizinkan owner.
-- **Akses sumber:** halaman berbayar/blocked tetap bisa gagal. Gunakan alternatif
-  yang sah atau input redaktur; tidak membuka paywall/anti-bot.
-- **Kedalaman vs anggaran:** enrichment, multi-document dan caption lebih kaya
-  menambah waktu/token. Ukur per draf, cache artikel, kirim materi terstruktur,
-  gunakan provider yang teruji tanpa pemanggilan Verifikator tambahan.
+- **Hak metadata dan visual:** judul publik dan gambar AI tidak otomatis bebas
+  seluruh hak/merek. Hormati syarat feed dan provider; catat provenance visual.
+- **Fakta aktual:** judul saja tidak mendukung detail kejadian. Gunakan batas
+  klaim penjelasan umum atau catatan fakta yang tersedia, tanpa mengarang bukti.
+- **Kedalaman vs anggaran:** generasi naskah/gambar menambah waktu/token. Ukur
+  per draf, pertahankan aset terpilih, gunakan provider yang teruji tanpa
+  pemanggilan Verifikator tambahan.
 - **Penghapusan report:** tidak ada label verified lagi; redaktur bertanggung
   jawab pada konteks dan wording sebelum publish. Bukti sumber tetap terlihat.
 - **Dashboard terbuka:** sesuai keputusan owner sebelumnya, tidak menambahkan
@@ -542,23 +526,22 @@ owner, bukan klaim penilaian yang sudah dilakukan.
   scraping berbayar, integrasi Threads baru, multi-user/RBAC, kalender drag-drop,
   penghapusan posting remote, atau aktivasi autopost massal.
 
-Keputusan terbuka melalui R7: proporsi desk, contoh referensi visual owner, gaya
-foto penuh/kolase, batas panjang headline, tata letak credit, serta kebutuhan
-caption Facebook/Threads. Dasar hak penggunaan foto sudah wajib diputuskan
-lebih awal di R1–R3; foto belum tersedia tetap dapat diedit sebagai `needs_media`,
-bukan otomatis dianggap siap unggah. Mode produk tanpa foto, jika diinginkan,
-memerlukan keputusan eksplisit. Default sementara ini membantu blueprint
-ditinjau tanpa mengklaim preferensi owner telah tervalidasi.
+Keputusan terbuka melalui R7: proporsi desk, style ilustrasi AI, batas panjang
+headline, tata letak disclosure, biaya/latensi generator dan kebutuhan caption
+Facebook/Threads. Visual belum tersedia tetap dapat diedit sebagai `needs_media`,
+bukan otomatis siap unggah. Pilihan style diuji pada sampel; keputusan memakai
+ilustrasi AI dan naskah orisinal sudah ditetapkan owner.
 
 ## 14. Langkah konkret berikutnya
 
 Kontrak/corpus sintetis **R1** dan reader/snapshot **R2** tersedia setelah mandat
 owner; lihat [hasil R1](08_R1_EDITORIAL_CONTRACT.md) dan
-[hasil R2](09_R2_ARTICLE_MATERIALS.md). Langkah berikutnya **R3** adalah jalur
-aset foto nyata: pemilihan relevan berhak pakai, download lokal, credit,
-checksum, serta kontinuitas preview/render/fallback. Penulisan/carousel baru
-baru dihubungkan setelah materi dan aset memadai; ketersediaan parser bukan
-klaim bahwa semua sumber live sudah teruji.
+[hasil R2](09_R2_ARTICLE_MATERIALS.md). Langkah berikutnya **R3** mengikuti
+[keputusan konten orisinal](10_ORIGINAL_AI_EDITORIAL.md): revisi kontrak R1
+dengan TDD, provider ilustrasi AI, aset lokal/provenance/disclosure dan
+kontinuitas preview/render/fallback. R4/R6 menghubungkan input topik/judul
+serta naskah orisinal. Dokumen keputusan ini belum berarti runtime telah berubah
+atau generator/provider gambar telah tersedia.
 
 Otomatisasi produksi/publish tetap dijeda sampai owner menyetujui sampel. Lihat
 [laporan reset](../EDITORIAL_WORKSPACE_RESET_20261116.md) untuk backup, keadaan
