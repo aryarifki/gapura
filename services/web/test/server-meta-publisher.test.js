@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import pkg from 'pg';
 import { createMetaPublisherWorker, publicationConfigFromEnv } from '../../publisher/meta-worker.js';
 import { draftContentHash } from '../../common/draft-revision.js';
+import { createPublisher } from '../../publisher/publisher.js';
 
 const enabled = Boolean(process.env.GAPURA_TEST_BASE);
 const pool = enabled ? new pkg.Pool({ host: process.env.HME_DB_HOST, port: process.env.HME_DB_PORT, user: process.env.HME_DB_USER, password: process.env.HME_DB_PASSWORD, database: process.env.HME_DB_NAME }) : null;
@@ -11,7 +12,6 @@ const logger = { warn() {} };
 
 async function seed({ due = true, reviewed = true, accountId = '1784', platform = 'instagram' } = {}) {
   const { rows: [topic] } = await pool.query("INSERT INTO topics(title,url,primary_source,status) VALUES('Publisher fixture','https://www.bps.go.id/publisher-fixture','BPS','produced') RETURNING id");
-  await pool.query("INSERT INTO verification_reports(topic_id,status,confidence) VALUES($1,'verified',95)", [topic.id]);
   await pool.query("INSERT INTO topic_scores(topic_id,score_relevance,score_credibility,score_momentum,score_engagement,score_compliance,score_total,verdict,model) VALUES($1,30,25,20,15,10,100,'passed','fixture')", [topic.id]);
   const { rows: [draft] } = await pool.query("INSERT INTO drafts(topic_id,slides,caption,status,needs_review,copy_model,content_format) VALUES($1,$2,'Fixture caption','scheduled',false,'fixture','single') RETURNING id", [topic.id, JSON.stringify([{ no: 1, layout: 'cover-focus', teks: 'Approved text', data: {} }])]);
   const { rows: [schedule] } = await pool.query("INSERT INTO scheduled_posts(draft_id,mode,scheduled_at,status) VALUES($1,'auto',NOW()+($2::int*interval '1 hour'),'pending') RETURNING id", [draft.id, due ? -1 : 1]);
@@ -91,6 +91,24 @@ test('Meta database: an attempted or unknown publication prevents editing its ap
   assert.equal(response.status, 409);
   const { rows: [draft] } = await pool.query('SELECT caption FROM drafts WHERE id=$1', [item.draftId]);
   assert.equal(draft.caption, 'Fixture caption');
+});
+
+test('legacy publisher database: current human approval hash is required in both claim and locked publish', { skip: !enabled }, async () => {
+  const { rows: [topic] } = await pool.query("INSERT INTO topics(title,url,status) VALUES('Legacy fixture','https://example.org/legacy','produced') RETURNING id");
+  for (const approved of [false, true]) {
+    const { rows: [draft] } = await pool.query("INSERT INTO drafts(topic_id,slides,caption,hashtags,status,needs_review,copy_model,content_format) VALUES($1,$2,'Legacy approved caption',$3,'scheduled',false,'fixture','single') RETURNING *", [topic.id, JSON.stringify([{ no: 1, layout: 'cover-focus', teks: 'Legacy fixture', data: {} }]), ['#GapuraMedia']]);
+    await pool.query("INSERT INTO scheduled_posts(draft_id,mode,scheduled_at,status) VALUES($1,'auto',NOW()-interval '1 minute','pending')", [draft.id]);
+    if (approved) await pool.query("INSERT INTO audit_log(entity,entity_id,action,actor,payload) VALUES('draft',$1,'approved_auto','web_admin',$2)", [draft.id, JSON.stringify({ content_hash: draftContentHash(draft) })]);
+    const calls = [];
+    const runner = createPublisher({ pool, config: { baseUrl: 'https://gapura.example', igAccountId: 'fake-account', igAccessToken: 'fake-token', signingSecret: 'fixture-secret' }, logger, fetchImpl: async (url, options) => {
+      calls.push(String(url));
+      return Response.json(String(url).includes('/media_publish') ? { id: 'fixture-published' } : options?.method === 'GET' ? { status_code: 'FINISHED' } : { id: 'fixture-container' });
+    } });
+    const result = await runner.runPublisher();
+    assert.equal(calls.some((url) => url.includes('/media_publish')), approved);
+    assert.equal(result.published, approved ? 1 : 0);
+    assert.equal((await pool.query('SELECT status FROM drafts WHERE id=$1', [draft.id])).rows[0].status, approved ? 'published' : 'scheduled');
+  }
 });
 
 test.after(async () => { if (pool) await pool.end(); });

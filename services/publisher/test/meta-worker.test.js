@@ -1,4 +1,4 @@
-import test, { after } from 'node:test';
+import test, { after, afterEach, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -7,6 +7,13 @@ import { draftContentHash } from '../../common/draft-revision.js';
 
 const configRoot = fs.mkdtempSync('/tmp/opencode/gapura-meta-worker-config-');
 after(() => fs.rmSync(configRoot, { recursive: true, force: true }));
+const testedPools = new Set();
+beforeEach(t => t.mock.method(globalThis, 'fetch', () => { throw new Error('Only injected HTTP is allowed in tests'); }));
+afterEach(() => {
+  try {
+    for (const pool of testedPools) assert.doesNotMatch(pool.state.queries.join('\n'), /verification_reports|verification_status|verification_confidence/i);
+  } finally { testedPools.clear(); }
+});
 
 const baseEnv = {
   GAPURA_META_CONNECTION: path.join(configRoot, 'missing.json'),
@@ -43,32 +50,77 @@ function claimRow(overrides = {}) {
   const row = {
     id: 1, draft_id: 7, schedule_id: 1, platform: 'instagram', account_id: '17841471438781611', status: 'publishing',
     attempts: 1, caption: 'Halo Gapura', slides: [{ no: 1 }, { no: 2 }], content_format: 'carousel',
-    needs_review: false, draft_status: 'scheduled', human_approved: true, verification: { status: 'verified', confidence: 92 },
+    hashtags: ['#gapura'], needs_review: false, draft_status: 'scheduled', human_approved: true,
     source_url: 'https://www.bps.go.id/fixture', analyst_passed: true,
     ...overrides,
   };
-  return { ...row, approved_content_hash: draftContentHash(row), content_hash: draftContentHash(row) };
+  return { ...row, approved_content_hash: draftContentHash(row), content_hash: draftContentHash(row), ...overrides };
 }
 
-function fakePool(rows, { inserted = 1, failPublishedOnce = false } = {}) {
-  const queue = [...rows];
-  const state = { updates: [], audits: [], shadowResets: 0, inserts: 0, current: structuredClone(rows[0]) };
+function assertDueSchedule(q) {
+  assert.match(q, /sp\.status = 'pending' AND sp\.mode = 'auto' AND sp\.scheduled_at <= NOW\(\)/);
+  assert.match(q, /old\.status IN \('publishing', 'success'\)/);
+  assert.match(q, /old\.ig_creation_id IS NOT NULL/);
+  assert.match(q, /old\.ig_media_id IS NOT NULL OR old\.published_at IS NOT NULL/);
+}
+
+function assertReviewEvidence(q) {
+  assert.match(q, /AS human_approved/i);
+  assert.match(q, /AS approved_content_hash/i);
+  assert.match(q, /a\.action = 'approved_auto' AND a\.created_at >= d\.updated_at/);
+  assert.match(q, /a\.actor = 'web_admin'/);
+  assert.ok(q.includes('^telegram:[0-9]+$'));
+  assert.match(q, /ORDER BY a\.created_at DESC, a\.id DESC LIMIT 1/);
+  assert.match(q, /scores\.verdict = 'passed'/);
+  assert.match(q, /ORDER BY scores\.created_at DESC NULLS LAST, scores\.id DESC LIMIT 1/);
+  assert.match(q, /SELECT topic\.url FROM topics topic WHERE topic\.id = d\.topic_id/);
+  assert.match(q, /d\.hashtags/);
+}
+
+function fakePool(rows, { inserted = 1, failPublishedOnce = false, saveContainerCount = 1 } = {}) {
+  const queue = structuredClone(rows);
+  const state = { updates: [], audits: [], shadowResets: 0, inserts: 0, queries: [], current: structuredClone(rows[0]), scheduleActive: true };
   const client = {
     release() {},
     async query(sql, values = []) {
       const q = sql.replace(/\s+/g, ' ').trim();
+      state.queries.push(q);
       if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(q)) return { rows: [], rowCount: 0 };
-      if (/^SELECT t\.\*/i.test(q)) return { rows: state.current ? [state.current] : [], rowCount: state.current ? 1 : 0 };
-      if (/^UPDATE publication_targets SET container_id/i.test(q)) return { rowCount: 1 };
+      if (/^SELECT t\.\*/i.test(q)) {
+        assertReviewEvidence(q);
+        assertDueSchedule(q);
+        assert.match(q, /t\.status = 'publishing'/);
+        assert.match(q, /due\.id = t\.schedule_id AND due\.status = 'pending' AND due\.mode = 'auto' AND due\.scheduled_at <= NOW\(\)/);
+        assert.match(q, /FOR UPDATE OF t, d$/);
+        const current = state.current?.status === 'publishing' && state.scheduleActive ? structuredClone(state.current) : null;
+        return { rows: current ? [current] : [], rowCount: current ? 1 : 0 };
+      }
+      if (/^UPDATE publication_targets SET container_id/i.test(q)) {
+        assert.match(q, /WHERE id = \$2 AND status = 'publishing'/);
+        return { rowCount: saveContainerCount };
+      }
       if (/^UPDATE scheduled_posts sp SET status = 'success'/i.test(q)) return { rowCount: 1 };
       if (/^UPDATE drafts d SET status = 'published'/i.test(q)) return { rowCount: 1 };
-      if (/^INSERT INTO publication_targets/i.test(q)) { state.inserts++; return { rows: [], rowCount: inserted }; }
+      if (/^INSERT INTO publication_targets/i.test(q)) {
+        assertDueSchedule(q);
+        assert.match(q, /d\.status = 'scheduled'/);
+        assert.match(q, /a\.action='approved_auto' ORDER BY a\.created_at DESC,a\.id DESC LIMIT 1/);
+        assert.match(q, /publication_targets\.status IN \('pending', 'shadow', 'blocked', 'failed'\)/);
+        assert.match(q, /publication_targets\.remote_id IS NULL AND publication_targets\.container_id IS NULL AND publication_targets\.publish_attempted_at IS NULL/);
+        state.inserts++; return { rows: [], rowCount: inserted };
+      }
       if (/UPDATE publication_targets SET status = 'pending', updated_at = NOW\(\) WHERE status = 'shadow'/i.test(q)) {
         state.shadowResets++; return { rows: [], rowCount: 2 };
       }
       if (/^WITH candidate/i.test(q)) {
+        assertDueSchedule(q);
+        assertReviewEvidence(q);
+        assert.match(q, /t\.status = 'pending' AND d\.status = 'scheduled'/);
+        assert.match(q, /due\.id = t\.schedule_id AND due\.draft_id = d\.id AND due\.status = 'pending' AND due\.mode = 'auto' AND due\.scheduled_at <= NOW\(\)/);
         assert.match(q, /FOR UPDATE OF t SKIP LOCKED/);
+        assert.match(q, /SET status = 'publishing', attempts = t\.attempts \+ 1/);
         const next = queue.shift();
+        if (next) state.current = structuredClone(next);
         return { rows: next ? [next] : [], rowCount: next ? 1 : 0 };
       }
       if (/^UPDATE publication_targets SET status = \$1/i.test(q)) {
@@ -76,17 +128,21 @@ function fakePool(rows, { inserted = 1, failPublishedOnce = false } = {}) {
           failPublishedOnce = false;
           throw new Error('injected persistence failure');
         }
+        assert.match(q, /WHERE id = \$8 AND status = 'publishing'/);
         state.updates.push({
           id: values[7], status: values[0], remoteId: values[1], permalink: values[3],
           error: values[4], publishedAt: values[5], captionHash: values[6],
         });
+        if (state.current) state.current.status = values[0];
         return { rowCount: 1 };
       }
       if (/^INSERT INTO audit_log/i.test(q)) { state.audits.push({ draftId: values[0], payload: JSON.parse(values[1]) }); return { rowCount: 1 }; }
       throw new Error(`Unexpected SQL: ${q.slice(0, 80)}`);
     },
   };
-  return { state, async connect() { return client; } };
+  const pool = { state, async connect() { return client; } };
+  testedPools.add(pool);
+  return pool;
 }
 
 function graphFetch(responses) {
@@ -285,14 +341,54 @@ test('live mode publishes a carousel and stores the remote id and permalink', as
   assert.equal(calls.filter((call) => call.method === 'POST').length, 4);
 });
 
-test('the editorial gate blocks publishing before any Meta request', async () => {
-  const pool = fakePool([claimRow({ needs_review: true })]);
-  const { calls, fetchImpl } = graphFetch([]);
+test('publication requires explicit human approval, a cleared review flag and matching revision hashes', async () => {
+  for (const overrides of [
+    ...[false, null, undefined, 'true', 1].map(human_approved => ({ human_approved })),
+    ...[true, null, undefined, 0, 'false'].map(needs_review => ({ needs_review })),
+    ...['draft', 'approved', 'rejected', 'published'].map(draft_status => ({ draft_status })),
+    { approved_content_hash: null }, { approved_content_hash: 'stale-approval' },
+    { content_hash: null }, { content_hash: 'stale-target' },
+  ]) {
+    const pool = fakePool([claimRow(overrides)]);
+    const { calls, fetchImpl } = graphFetch([]);
+    const result = await createMetaPublisherWorker({ pool, config: liveConfig(), fetchImpl }).runOnce();
+    assert.equal(result.blocked, 1, JSON.stringify(overrides));
+    assert.equal(result.published, 0);
+    assert.equal(calls.length, 0);
+    assert.equal(pool.state.updates[0].status, 'blocked');
+    assert.equal(pool.state.audits.length, 0);
+  }
+});
+
+test('a revision changed after approval is blocked before creating any Meta container', async () => {
+  for (const change of [
+    row => { row.caption = 'Revised caption'; },
+    row => { row.slides[0].title = 'Revised slide'; },
+    row => { row.hashtags = ['#revised']; },
+    row => { row.content_format = 'single'; },
+  ]) {
+    const row = claimRow();
+    change(row);
+    assert.notEqual(draftContentHash(row), row.approved_content_hash);
+    const pool = fakePool([row]); const { calls, fetchImpl } = graphFetch([]);
+    const result = await createMetaPublisherWorker({ pool, config: liveConfig(), fetchImpl }).runOnce();
+    assert.equal(result.blocked, 1);
+    assert.equal(calls.length, 0);
+    assert.equal(pool.state.audits.length, 0);
+  }
+});
+
+test('concurrent workers publish one claimed target only once', async () => {
+  const pool = fakePool([claimRow()]);
+  const { calls, fetchImpl } = graphFetch([
+    { id: 'child-1' }, { id: 'child-2' }, { id: 'parent-1' }, { status_code: 'FINISHED' },
+    { id: 'media-once' }, { permalink: 'https://www.instagram.com/p/once/' },
+  ]);
   const worker = createMetaPublisherWorker({ pool, config: liveConfig(), fetchImpl });
-  const result = await worker.runOnce();
-  assert.equal(result.blocked, 1);
-  assert.equal(calls.length, 0);
-  assert.equal(pool.state.updates[0].status, 'blocked');
+  const results = await Promise.all([worker.runOnce(), worker.runOnce()]);
+  assert.equal(results.reduce((count, result) => count + result.published, 0), 1);
+  assert.equal(calls.filter(({ url }) => url.endsWith('/media_publish')).length, 1);
+  assert.equal(pool.state.audits.length, 1);
 });
 
 test('a retryable Meta failure returns the target to pending until the attempt budget is spent', async () => {
@@ -310,9 +406,9 @@ test('a retryable Meta failure returns the target to pending until the attempt b
   assert.equal(finalPool.state.updates[0].status, 'failed');
 });
 
-test('an ambiguous media_publish failure becomes unknown and is never retried', async () => {
+test('an ambiguous media_publish failure becomes unknown and is never retried or reset with shadow targets', async () => {
   const pool = fakePool([claimRow()]);
-  const { fetchImpl } = graphFetch([
+  const { calls, fetchImpl } = graphFetch([
     { id: 'child-1' }, { id: 'child-2' }, { id: 'parent-1' },
     { status_code: 'FINISHED' },
     new Error('socket hang up'),
@@ -322,6 +418,13 @@ test('an ambiguous media_publish failure becomes unknown and is never retried', 
   assert.equal(result.unknown, 1);
   assert.equal(pool.state.updates[0].status, 'unknown');
   assert.match(pool.state.updates[0].error, /rekonsiliasi manual/);
+  const replay = await worker.runOnce({ resetShadow: true });
+  assert.equal(replay.published, 0);
+  assert.equal(replay.retried, 0);
+  assert.equal(pool.state.current.status, 'unknown');
+  assert.equal(pool.state.updates.length, 1);
+  assert.equal(calls.filter(({ url }) => url.endsWith('/media_publish')).length, 1);
+  assert.equal(pool.state.audits.length, 0);
 });
 
 test('reset-shadow moves shadow targets back to pending and caption hashes are stable', async () => {
@@ -334,16 +437,56 @@ test('reset-shadow moves shadow targets back to pending and caption hashes are s
   assert.notEqual(captionHash('Halo'), captionHash('Halo!'));
 });
 
-test('a revoked review during container preparation prevents media_publish', async () => {
-  const pool = fakePool([claimRow()]);
+test('revoked approval, a changed revision or lost schedule during preparation prevents media_publish', async () => {
+  for (const change of [
+    state => { state.current.needs_review = true; },
+    state => { state.current.human_approved = false; },
+    state => { state.current.approved_content_hash = 'changed-approval'; },
+    state => { state.current.content_hash = 'changed-target'; },
+    state => { state.current.caption = 'Revised caption'; },
+    state => { state.current.slides[0].title = 'Revised slide'; },
+    state => { state.current.hashtags = ['#revised']; },
+    state => { state.current.content_format = 'single'; },
+    state => { state.current.draft_status = 'draft'; },
+    state => { state.current.draft_status = 'approved'; },
+    state => { state.current.draft_status = 'rejected'; },
+    state => { state.current.draft_status = 'published'; },
+    state => { state.current.account_id = 'different-account'; },
+    state => { state.current.analyst_passed = false; },
+    state => { state.current.source_url = 'http://127.0.0.1/article'; },
+    state => { state.scheduleActive = false; },
+    state => { state.current = null; },
+    state => {
+      state.current.caption = 'Revised and reapproved during container preparation';
+      state.current.content_hash = state.current.approved_content_hash = draftContentHash(state.current);
+    },
+  ]) {
+    const pool = fakePool([claimRow()]);
+    const { calls, fetchImpl } = graphFetch([
+      () => { change(pool.state); return Response.json({ id: 'child-1' }); },
+      { id: 'child-2' }, { id: 'parent-1' }, { status_code: 'FINISHED' }, { id: 'must-not-publish' },
+    ]);
+    const result = await createMetaPublisherWorker({ pool, config: liveConfig(), fetchImpl }).runOnce();
+    assert.equal(result.published, 0);
+    assert.equal(result.blocked, 1);
+    assert.equal(calls.some(({ url }) => url.endsWith('/media_publish')), false);
+    assert.equal(pool.state.updates.at(-1).status, 'blocked');
+    assert.equal(pool.state.audits.length, 0);
+    assert.ok(pool.state.queries.includes('ROLLBACK'));
+  }
+});
+
+test('a lost publication claim before container persistence prevents media_publish', async () => {
+  const pool = fakePool([claimRow()], { saveContainerCount: 0 });
   const { calls, fetchImpl } = graphFetch([
-    () => { pool.state.current.needs_review = true; return Response.json({ id: 'child-1' }); },
-    { id: 'child-2' }, { id: 'parent-1' }, { status_code: 'FINISHED' }, { id: 'must-not-publish' },
+    { id: 'child-1' }, { id: 'child-2' }, { id: 'parent-1' }, { status_code: 'FINISHED' },
   ]);
   const result = await createMetaPublisherWorker({ pool, config: liveConfig(), fetchImpl }).runOnce();
+  assert.equal(result.failed, 1);
   assert.equal(result.published, 0);
+  assert.equal(result.unknown, 0);
   assert.equal(calls.some(({ url }) => url.endsWith('/media_publish')), false);
-  assert.equal(pool.state.updates.at(-1).status, 'blocked');
+  assert.equal(pool.state.audits.length, 0);
 });
 
 test('database failure after remote success preserves the known remote id as unknown', async () => {
@@ -359,11 +502,15 @@ test('database failure after remote success preserves the known remote id as unk
 });
 
 test('publication still requires a public source and the latest passed analyst result', async () => {
-  for (const overrides of [{ analyst_passed: false }, { source_url: '' }, { source_url: 'http://127.0.0.1/article' }]) {
+  for (const overrides of [
+    ...[false, null, undefined, 'true', 1].map(analyst_passed => ({ analyst_passed })),
+    { source_url: '' }, { source_url: null }, { source_url: 'http://127.0.0.1/article' },
+  ]) {
     const pool = fakePool([claimRow(overrides)]);
     const { calls, fetchImpl } = graphFetch([]);
     const result = await createMetaPublisherWorker({ pool, config: liveConfig(), fetchImpl }).runOnce();
     assert.equal(result.blocked, 1);
     assert.equal(calls.length, 0);
+    assert.equal(pool.state.audits.length, 0);
   }
 });

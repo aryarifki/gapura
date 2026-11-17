@@ -22,7 +22,9 @@ test('uses only facts present in the article data in deterministic fallback copy
 test('flags missing source evidence and avoids manufacturing a body narrative', () => {
   const result = buildEvidenceBasedContent({ title: 'OJK menerbitkan aturan baru', summary: '', primary_source: '', url: '' });
   assert.equal(result.needs_review, true);
-  assert.match(result.caption, /Sumber primer belum tersedia/);
+  assert.equal(result.source_url, '');
+  assert.ok(result.caption.startsWith('OJK menerbitkan aturan baru\n\n'));
+  assert.doesNotMatch(result.caption, /Sumber primer|Status verifikasi/i);
   assert.equal(result.slides.filter((slide) => slide.layout === 'big-statement').length, 0);
 });
 

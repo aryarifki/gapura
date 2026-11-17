@@ -1,9 +1,6 @@
 import { chooseFormat, validateDesignOutput } from '../common/carousel.js';
-import { needsHumanReview } from '../common/editorial.js';
 import { isAllowedImageUrl, applyCoverIllustration } from '../common/images.js';
 
-const DISCLAIMER = 'Informasi ini untuk edukasi publik dan bukan rekomendasi investasi atau nasihat hukum.';
-const STATUSES = new Set(['verified', 'mostly_verified', 'needs_context', 'unverified', 'opinion', 'speculation', 'misleading', 'hoax_detected']);
 const LAYOUTS = new Set(['cover-focus', 'big-statement', 'stat-grid', 'chart-bar', 'chart-line', 'regulasi', 'timeline', 'comparison']);
 const LABELS = new Set(['Fakta sumber', 'Fakta yang tersedia', 'Konteks sumber', 'Data sumber', 'Lanjutan sumber']);
 const clean = (value) => String(value || '').replace(/\s+/g, ' ').trim();
@@ -66,23 +63,13 @@ function sourceUrl(value) {
   } catch { return ''; }
 }
 
-export function verificationCaptionBlock(verification) {
-  if (!verification) return '';
-  const status = STATUSES.has(verification.status) ? verification.status : 'unverified';
-  // Verification metadata is not an extra source of facts, quotes or speculation.
-  return `Status verifikasi: ${status}.`;
-}
-
-export function composeCaption(topic, { body, hashtags, verification = null, editorialBrief = null, disclaimer = '' } = {}) {
-  const source = clean(topic?.primary_source) || 'Media asal';
-  const url = sourceUrl(topic?.url);
+export function composeCaption(topic, { body, hashtags, editorialBrief = null, disclaimer = '' } = {}) {
   const tags = [...new Set((hashtags || ['#GapuraMedia', '#BeritaNasional', '#Indonesia'])
     .filter((tag) => typeof tag === 'string' && /^#[\p{L}\p{N}_]{1,40}$/u.test(tag)))].slice(0, 12);
-  const sourceLine = url ? `Sumber primer: ${source} · ${url}` : 'Sumber primer belum tersedia; verifikasi manual wajib sebelum publikasi.';
-  const disclaimers = [...new Set([disclaimer || DISCLAIMER, topic?.disclaimer, verification?.disclaimer].filter((text) => typeof text === 'string' && text.trim()).map((text) => text.trim()))];
-  const suffix = [sourceLine, verificationCaptionBlock(verification), ...disclaimers, tags.join(' ')].filter(Boolean).join('\n\n');
+  const disclaimers = [...new Set([disclaimer, topic?.disclaimer].filter((text) => typeof text === 'string' && text.trim()).map((text) => text.trim()))];
+  const suffix = [...disclaimers, tags.join(' ')].filter(Boolean).join('\n\n');
   const available = 2200 - suffix.length - 2;
-  if (available < 1) throw new Error('URL sumber dan disclaimer melebihi batas caption Instagram 2200 karakter.');
+  if (available < 1) throw new Error('Disclaimer dan hashtag melebihi batas caption Instagram 2200 karakter.');
   const candidates = body ? String(body).split(/\n+/).map(clean).filter(Boolean) : [clean(topic?.title), ...sourcePassages(topic, editorialBrief)];
   const selected = [];
   for (const paragraph of candidates) {
@@ -159,26 +146,25 @@ export function validateGroundedDesign(raw, topic, fallback) {
 }
 
 export function buildEvidenceBasedContent(topic, requestedFormat = topic?.format, options = {}) {
-  const { verification = topic?.verification || null, editorialBrief = null } = options;
+  const { editorialBrief = null } = options;
   const plan = editorialBrief?.plan || {};
   const requested = plan.format || requestedFormat;
   const title = clean(topic?.title) || 'Topik perlu dirumuskan redaksi';
   const passages = sourcePassages(topic, editorialBrief);
-  // Select source excerpts in editorial priority; the complete source URL remains in the caption.
+  // Select source excerpts in editorial priority; attribution remains in slide metadata.
   const chunks = passages.flatMap((text) => chunkText(text)).filter((text) => text.length <= 300).slice(0, 8);
-  const desired = ['single', 'carousel'].includes(requested) ? requested : chooseFormat({ ...topic, verification });
+  const desired = ['single', 'carousel'].includes(requested) ? requested : chooseFormat(topic);
   const format = desired === 'carousel' && chunks.length >= 2 ? 'carousel' : 'single';
   const source = clean(topic?.primary_source) || '@gapuramedia';
   const cover = { no: 1, layout: 'cover-focus', teks: title, data: { title }, source };
   // A relevant photo is optional. The designer may select it explicitly; fallback stays textual.
   const slides = [cover];
   if (format === 'carousel') chunks.forEach((text) => slides.push({ no: slides.length + 1, layout: 'big-statement', teks: text, data: {}, source }));
-  const captionData = composeCaption(topic, { verification, editorialBrief });
+  const captionData = composeCaption(topic, { editorialBrief });
   return applyCoverIllustration({
     ...validateDesignOutput({ format, slides }, topic), ...captionData,
-    disclaimer_type: /ojk|pojk|\buu\b|hukum|regulasi|peraturan/i.test(title) ? 'hukum' : 'keuangan',
-    needs_review: !topic?.summary || !topic?.primary_source || !sourceUrl(topic?.url) || needsHumanReview(verification),
-    verification_status: verification?.status || null,
+    disclaimer_type: topic?.desk === 'hukum' ? 'hukum' : topic?.desk === 'bursa' ? 'keuangan' : null,
+    needs_review: !topic?.summary || !topic?.primary_source || !sourceUrl(topic?.url),
     source_url: sourceUrl(topic?.url),
   }, topic?.cover_illustration);
 }

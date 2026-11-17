@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import pkg from 'pg';
 import { assignTopicCluster, loadTopicCluster } from '../../scout/clusters.js';
+import { inferDesk } from '../../common/discovery.js';
 
 const enabled = Boolean(process.env.GAPURA_TEST_BASE);
 const base = process.env.GAPURA_TEST_BASE;
@@ -63,6 +64,42 @@ test('source API persists desk, preserves it on partial updates and rejects an i
   });
   assert.equal(invalid.status, 400);
   await pool.query('DELETE FROM sources WHERE id = $1', [source.id]);
+});
+
+test('source API defaults new discovery to general issues and preserves a category omitted on edit', { skip: !enabled }, async () => {
+  const response = await fetch(`${base}/api/sources`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ name: 'National discovery default', url_or_query: 'https://example.org/national-default.xml' }),
+  });
+  assert.equal(response.status, 200);
+  const source = (await response.json()).source;
+  assert.equal(source.category, 'umum');
+  assert.equal(source.desk, null);
+  assert.equal(inferDesk({ category: source.category, title: 'DPR membahas perubahan kebijakan pemilu' }), 'politik');
+  await pool.query("UPDATE sources SET category='jdih_hukum' WHERE id=$1", [source.id]);
+  const updated = await fetch(`${base}/api/sources/${source.id}`, {
+    method: 'PUT', headers,
+    body: JSON.stringify({ name: source.name, type: source.type, url_or_query: source.url_or_query, is_active: false }),
+  });
+  assert.equal(updated.status, 200);
+  assert.equal((await updated.json()).source.category, 'jdih_hukum');
+  await pool.query('DELETE FROM sources WHERE id=$1', [source.id]);
+});
+
+test('national Trending seed covers all six desks, is idempotent and preserves existing settings', { skip: !enabled }, async () => {
+  const { rows: before } = await pool.query('SELECT * FROM trend_sources ORDER BY id');
+  const sql = await readFile(new URL('../../../database/migrations/20261117_trending_national_desks.sql', import.meta.url), 'utf8');
+  await pool.query(sql);
+  await pool.query(sql);
+  const { rows } = await pool.query('SELECT * FROM trend_sources ORDER BY id');
+  for (const old of before) assert.deepEqual(rows.find((row) => row.id === old.id), old);
+  for (const category of ['politik', 'sosial', 'hukum', 'lingkungan', 'ekonomi', 'bursa']) {
+    const candidates = rows.filter((row) => row.category === category && row.label.startsWith('Desk Gapura:'));
+    assert.equal(candidates.length, 1, category);
+    assert.equal(candidates[0].kind, 'news_query');
+    assert.equal(candidates[0].is_active, true);
+    assert.match(candidates[0].value, /Indonesia/);
+  }
 });
 
 test('topics filter by desk and expose cross-URL clusters without publisher body', { skip: !enabled }, async () => {

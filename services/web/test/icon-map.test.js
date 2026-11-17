@@ -56,7 +56,7 @@ test('sidebar views use native keyboard-operable buttons and retain their route 
   const items = [...nav.matchAll(/<(\w+)\b([^>]*\bdata-view="([^"]+)"[^>]*)>/g)];
   assert.deepEqual(items.map((item) => item[3]), [
     'view-overview', 'view-review', 'view-topics', 'view-sources', 'view-trends',
-    'view-verifications', 'view-studio-prompt', 'view-agents', 'view-n8n', 'view-tokens', 'view-audit',
+    'view-studio-prompt', 'view-agents', 'view-n8n', 'view-tokens', 'view-audit',
   ]);
   for (const [, tag, attributes, view] of items) {
     assert.equal(tag, 'button', `${view} must support Tab, Enter, and Space natively`);

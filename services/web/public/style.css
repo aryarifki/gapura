@@ -126,7 +126,7 @@ a {
 
 .topic-controls {
   display: grid;
-  grid-template-columns: auto minmax(220px, 1fr) minmax(140px, 190px);
+  grid-template-columns: auto minmax(220px, 1fr) minmax(140px, 190px) minmax(140px, 190px);
   align-items: center;
   gap: 10px;
   margin-bottom: 14px;
@@ -153,6 +153,7 @@ a {
 @media (max-width: 640px) {
   .topic-controls { grid-template-columns: 1fr 140px; }
   .topic-search-label { grid-column: 1 / -1; }
+  #topic-search { grid-column: 1 / -1; }
 }
 
 /* Sidebar (Desktop) */
@@ -1812,9 +1813,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 }
 
 /* ==============================================================================
-   AGEN VERIFIKATOR — LAPORAN VERIFIKASI
+   STUDIO — ANTRIAN PRODUKSI
 ============================================================================== */
-.verif-card {
+.studio-job-card {
   padding: 18px 20px;
   border-bottom: 1px solid var(--border);
   display: flex;
@@ -1822,11 +1823,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   gap: 8px;
 }
 
-.verif-card:last-child {
+.studio-job-card:last-child {
   border-bottom: none;
 }
 
-.verif-head {
+.studio-job-head {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1835,7 +1836,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   color: var(--muted);
 }
 
-.verif-badge {
+.studio-job-badge {
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.04em;
@@ -1843,71 +1844,54 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   border-radius: 4px;
 }
 
-.verif-badge.verified {
+.studio-job-badge.success {
   color: #34D399;
   background-color: rgba(16, 185, 129, 0.15);
 }
 
-.verif-badge.mostly {
-  color: #6EE7B7;
-  background-color: rgba(16, 185, 129, 0.1);
-}
-
-.verif-badge.context,
-.verif-badge.opinion,
-.verif-badge.speculation {
+.studio-job-badge.context {
   color: var(--amber);
   background-color: rgba(215, 147, 68, 0.14);
 }
 
-.verif-badge.unverified {
+.studio-job-badge.waiting {
   color: var(--muted);
   background-color: var(--card-subtle);
   border: 1px solid var(--border);
 }
 
-.verif-badge.misleading,
-.verif-badge.hoax {
+.studio-job-badge.danger {
   color: #F87171;
   background-color: rgba(239, 68, 68, 0.15);
 }
 
-.verif-confidence {
-  font-weight: 700;
-  color: var(--ink-secondary);
-}
-
-.verif-tier {
-  color: var(--muted);
-}
-
-.verif-time {
+.studio-job-time {
   margin-left: auto;
   color: var(--muted-light);
 }
 
-.verif-title {
+.studio-job-title {
   font-size: 15px;
   font-weight: 700;
   color: #fff;
   line-height: 1.4;
 }
 
-.verif-summary {
+.studio-job-summary {
   margin: 0;
   font-size: 13px;
   line-height: 1.6;
   color: var(--ink-secondary);
 }
 
-.verif-details {
+.studio-job-details {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background-color: var(--card-subtle);
   padding: 10px 14px;
 }
 
-.verif-details summary {
+.studio-job-details summary {
   cursor: pointer;
   font-size: 12px;
   font-weight: 700;
@@ -1915,23 +1899,22 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   list-style: none;
 }
 
-.verif-details summary::-webkit-details-marker {
+.studio-job-details summary::-webkit-details-marker {
   display: none;
 }
 
-.verif-deep,
-.verif-takeaway {
+.studio-job-takeaway {
   margin: 10px 0 0;
   font-size: 12.5px;
   line-height: 1.65;
   color: var(--ink-secondary);
 }
 
-.verif-subblock {
+.studio-job-subblock {
   margin-top: 12px;
 }
 
-.verif-subblock-title {
+.studio-job-subblock-title {
   display: block;
   font-size: 10.5px;
   font-weight: 800;
@@ -1941,7 +1924,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   margin-bottom: 5px;
 }
 
-.verif-list {
+.studio-job-list {
   margin: 0;
   padding-left: 18px;
   font-size: 12.5px;
@@ -1949,41 +1932,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   color: var(--ink-secondary);
 }
 
-.verif-list a {
-  color: var(--agent-scout);
-  text-decoration: none;
-}
-
-.verif-list a:hover {
-  text-decoration: underline;
-}
-
-.verif-flag-row {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.verif-flag {
-  font-size: 10.5px;
-  padding: 2px 7px;
-  border-radius: 4px;
-  color: #F87171;
-  background-color: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-}
-
-.verif-disclaimer {
-  margin: 12px 0 0;
-  padding-top: 10px;
-  border-top: 1px dashed var(--border);
-  font-size: 11.5px;
-  line-height: 1.55;
-  color: var(--muted);
-  font-style: italic;
-}
-
-.verif-footer {
+.studio-job-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1991,7 +1940,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   flex-wrap: wrap;
 }
 
-.verif-meta-line {
+.studio-job-meta-line {
   font-size: 11.5px;
   color: var(--muted);
 }

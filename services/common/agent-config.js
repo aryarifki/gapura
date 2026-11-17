@@ -90,7 +90,7 @@ export function validateAgentConfig(config) {
   const errors = [];
   if (!config || typeof config !== 'object' || Array.isArray(config)) return ['Config harus berupa object.'];
 
-  for (const name of ['analis', 'copywriter', 'designer', 'seo', 'verifikator', 'studio']) {
+  for (const name of ['analis', 'copywriter', 'designer', 'seo', 'studio']) {
     const agent = config[name];
     if (!agent) { errors.push(`${name}: konfigurasi wajib ada.`); continue; }
     errors.push(...validateAgent(name, agent));

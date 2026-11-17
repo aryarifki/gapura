@@ -5,7 +5,7 @@ import { buildAttempts, buildChatRequest, parseChatResponse, adaptChatBody, load
 import { loadProviderSecrets } from './secret-store.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-export const AGENT_KEYS = Object.freeze(['scout', 'analis', 'copywriter', 'designer', 'seo', 'verifikator', 'studio']);
+export const AGENT_KEYS = Object.freeze(['scout', 'analis', 'copywriter', 'designer', 'seo', 'studio']);
 
 function assertAgent(agent) {
   if (!AGENT_KEYS.includes(agent)) throw new Error('Nama agen tidak valid.');

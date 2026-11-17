@@ -8,7 +8,7 @@ const valid = () => ({
   analis: { provider: 'gemini', model: 'flash', endpoint: 'https://generativelanguage.googleapis.com', min_score_threshold: 76, weights: { relevance: 30, credibility: 25, momentum: 20, engagement: 15, compliance: 10 }, fast_fail_rules: 'hoaks\\s+detected' },
   copywriter: { provider: 'gemini', model: 'flash', slide_count: 5 },
   designer: { provider: 'gemini', model: 'flash' }, seo: { provider: 'gemini', model: 'flash' },
-  verifikator: { provider: 'gemini', model: 'flash' }, studio: { provider: 'gemini', model: 'flash' },
+  studio: { provider: 'gemini', model: 'flash' },
 });
 
 const validImageGeneration = () => ({

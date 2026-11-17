@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { isValidSignedStorageRequest } from '../../common/storage-signature.js';
+import { draftContentHash } from '../../common/draft-revision.js';
 import { createPublisher } from '../publisher.js';
 
 const config = {
@@ -13,19 +14,24 @@ const json = (body, status = 200) => ({ ok: status >= 200 && status < 300, statu
 function database(overrides = {}) {
   const state = {
     post: { id: 1, draft_id: 7, mode: 'auto', status: 'pending', ig_creation_id: null, ig_media_id: null,
-      published_at: null, manual_reminded_at: null, ...overrides.post },
+      published_at: null, manual_reminded_at: null, scheduled_at: '2000-01-01T00:00:00.000Z', ...overrides.post },
     draft: { id: 7, topic_id: 3, status: 'scheduled', needs_review: false, caption: '<b>Caption & data</b>',
-      slides: [{ no: 1 }], content_format: 'carousel', ...overrides.draft },
-    reports: overrides.reports ?? [{ id: 3, status: 'verified', confidence: 92 }], audit: [],
+      slides: [{ no: 1 }], hashtags: ['#gapura'], content_format: 'carousel', updated_at: '2026-11-17T00:00:00Z', ...overrides.draft },
+    audit: [], siblings: overrides.siblings ?? [],
     metaOwned: overrides.metaOwned ?? false,
   };
+  state.approvals = overrides.approvals ?? [{ id: 1, entity: 'draft', entity_id: 7,
+    action: state.post.mode === 'manual' ? 'approved_manual' : 'approved_auto', actor: 'web_admin',
+    created_at: '2026-11-17T00:00:01Z', payload: { content_hash: draftContentHash(state.draft) } }];
+  const queries = [];
   let finalized = false;
   return {
-    state,
+    state, queries,
     async connect() {
       let snapshot;
       return { release() {}, async query(sql, values = []) {
         const q = sql.replace(/\s+/g, ' ').trim();
+        queries.push(q);
         if (q === 'BEGIN') { snapshot = structuredClone(state); return { rows: [] }; }
         if (q === 'ROLLBACK') { Object.assign(state, snapshot); return { rows: [] }; }
         if (q === 'COMMIT') {
@@ -33,27 +39,40 @@ function database(overrides = {}) {
           snapshot = undefined;
           return { rows: [] };
         }
-        const latest = state.reports.at(-1) ?? null;
-        const row = () => ({ ...state.post, caption: state.draft.caption, slides: state.draft.slides,
-          content_format: state.draft.content_format, needs_review: state.draft.needs_review,
-          draft_status: state.draft.status, topic_id: state.draft.topic_id,
-          verification: latest, verification_status: latest?.status, verification_confidence: latest?.confidence });
+        const row = () => {
+          const approvals = state.approvals.filter(a => a.entity === 'draft' && a.entity_id === state.draft.id &&
+            a.action === (state.post.mode === 'manual' ? 'approved_manual' : 'approved_auto') &&
+            (a.actor === 'web_admin' || /^telegram:[0-9]+$/.test(a.actor)) && Date.parse(a.created_at) >= Date.parse(state.draft.updated_at))
+            .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at) || a.id - b.id);
+          // Project approval evidence only when the production SQL requests it.
+          // Otherwise a complete mock row could conceal a missing proof query.
+          return { ...state.post, caption: state.draft.caption, slides: structuredClone(state.draft.slides),
+            content_format: state.draft.content_format, needs_review: state.draft.needs_review,
+            draft_status: state.draft.status,
+            ...(/d\.hashtags\b/.test(q) ? { hashtags: structuredClone(state.draft.hashtags) } : {}),
+            ...(/AS human_approved/i.test(q) ? { human_approved: approvals.length > 0 } : {}),
+            ...(/AS approved_content_hash/i.test(q) ? { approved_content_hash: approvals.at(-1)?.payload?.content_hash ?? null } : {}),
+          };
+        };
         if (/^WITH /i.test(q) && /UPDATE scheduled_posts/i.test(q)) {
           assert.match(q, /LIMIT 1 FOR UPDATE OF sp, d SKIP LOCKED/);
           assert.match(q, /sp\.status = 'pending'/);
-          assert.match(q, /ORDER BY vr\.created_at DESC NULLS LAST, vr\.id DESC LIMIT 1/);
-          if (/publication_targets/.test(q) && state.metaOwned) return { rows: [] };
-          if (state.post.status !== 'pending' || state.draft.status !== 'scheduled' || state.post.manual_reminded_at || values[0]?.includes(state.post.id)) return { rows: [] };
+          assert.match(q, /sp\.scheduled_at <= NOW\(\)/);
+          assert.match(q, /d\.status = 'scheduled'/);
+          assert.match(q, /sp\.manual_reminded_at IS NULL/);
+          assert.match(q, /NOT EXISTS \(SELECT 1 FROM publication_targets target WHERE target\.draft_id = sp\.draft_id\)/);
+          assert.match(q, /active\.status IN \('publishing', 'success'\)/);
+          assert.match(q, /active\.ig_media_id IS NOT NULL OR active\.published_at IS NOT NULL/);
+          if (state.metaOwned || state.siblings.some(post => post.draft_id === state.post.draft_id && post.id !== state.post.id &&
+            (['publishing', 'success'].includes(post.status) || post.ig_media_id != null || post.published_at != null))) return { rows: [] };
+          if (state.post.status !== 'pending' || state.draft.status !== 'scheduled' || state.post.manual_reminded_at ||
+            Date.parse(state.post.scheduled_at) > Date.now() || values[0]?.includes(state.post.id)) return { rows: [] };
           state.post.status = 'publishing';
           return { rows: [row()], rowCount: 1 };
         }
         if (/^SELECT sp\.\*/.test(q)) {
-          if (/FOR UPDATE/.test(q)) {
-            assert.match(q, /ORDER BY vr\.created_at DESC NULLS LAST, vr\.id DESC LIMIT 1/);
-            return { rows: [row()] };
-          }
-          const historicallyVerified = state.reports.some(r => ['verified', 'mostly_verified'].includes(r.status) && r.confidence >= 60);
-          return { rows: state.post.status === 'pending' && historicallyVerified && !state.draft.needs_review ? [row()] : [] };
+          assert.match(q, /WHERE sp\.id = \$1 FOR UPDATE OF sp, d/);
+          return { rows: [row()] };
         }
         if (/UPDATE scheduled_posts/.test(q)) {
           if (/ig_post_id/.test(q)) throw new Error('column "ig_post_id" does not exist');
@@ -83,6 +102,7 @@ function database(overrides = {}) {
 
 function service(t, db, fetchImpl, configOverrides = {}) {
   t.mock.method(globalThis, 'fetch', () => { throw new Error('Only injected HTTP is allowed in tests'); });
+  t.after(() => assert.doesNotMatch(db.queries.join('\n'), /verification_reports|verification_status|verification_confidence/i));
   const deps = { pool: db, fetchImpl, config: { ...config, ...configOverrides }, sleep: async () => {}, logger: { log() {}, warn() {}, error() {} } };
   return createPublisher(deps);
 }
@@ -104,6 +124,7 @@ test('two workers claim the same scheduled post at most once', async t => {
   assert.equal(db.state.post.status, 'success');
   assert.equal(db.state.post.ig_media_id, 'ig-post-123');
   assert.equal(db.state.draft.status, 'published');
+  assert.equal(db.state.audit.length, 1);
 });
 
 test('legacy publisher leaves Meta-owned drafts to the multi-platform worker', async t => {
@@ -122,24 +143,112 @@ test('legacy runtime delegates completely when the Meta worker is configured', a
   assert.equal(db.state.post.status, 'pending');
 });
 
-test('latest verification revocation blocks an older qualifying report', async t => {
-  const db = database({ reports: [{ id: 1, status: 'verified', confidence: 98 }, { id: 2, status: 'hoax_detected', confidence: 99 }] });
-  const calls = []; await service(t, db, metaSuccess(calls)).runPublisher();
-  assert.equal(calls.length, 0);
-  assert.notEqual(db.state.post.status, 'success');
-});
-
-test('automatic delivery requires verified confidence >=80 and needs_review exactly false', async t => {
+test('delivery only claims due pending schedules whose draft is still scheduled', async t => {
   for (const overrides of [
-    { reports: [{ status: 'mostly_verified', confidence: 90 }] },
-    { reports: [{ status: 'verified', confidence: 79 }] },
-    { reports: [{ status: 'verified', confidence: null }] },
-    { reports: [{ status: 'verified', confidence: 'invalid' }] },
-    { draft: { needs_review: true } }, { draft: { needs_review: null } }, { reports: [] },
+    ...['draft', 'approved', 'rejected', 'published'].map(status => ({ draft: { status } })),
+    ...['publishing', 'success', 'failed'].map(status => ({ post: { status } })),
+    { post: { scheduled_at: '2999-01-01T00:00:00.000Z' } },
   ]) {
     const db = database(overrides); const calls = [];
-    await service(t, db, metaSuccess(calls)).runPublisher();
+    assert.deepEqual(await service(t, db, metaSuccess(calls)).runPublisher(), { published: 0, reminded: 0, blocked: 0, uncertain: 0 });
     assert.equal(calls.length, 0, JSON.stringify(overrides));
+    assert.equal(db.state.audit.length, 0);
+  }
+});
+
+test('automatic delivery requires human review cleared explicitly and a valid publish mode', async t => {
+  for (const overrides of [
+    ...[true, null, undefined, 0, 'false'].map(needs_review => ({ draft: { needs_review } })),
+    { post: { mode: 'invalid' } },
+  ]) {
+    const db = database(overrides); const calls = [];
+    const result = await service(t, db, metaSuccess(calls)).runPublisher();
+    assert.equal(calls.length, 0, JSON.stringify(overrides));
+    assert.equal(result.blocked, 1);
+    assert.equal(db.state.post.status, 'failed');
+    assert.equal(db.state.post.published_at, null);
+    assert.equal(db.state.audit.length, 0);
+  }
+});
+
+test('scheduled status alone cannot authorize automatic publication without human approval', async t => {
+  const db = database({ approvals: [] }); const calls = [];
+  const result = await service(t, db, metaSuccess(calls)).runPublisher();
+  assert.equal(calls.length, 0);
+  assert.equal(result.blocked, 1);
+  assert.equal(db.state.post.published_at, null);
+  assert.equal(db.state.draft.status, 'scheduled');
+  assert.equal(db.state.audit.length, 0);
+});
+
+test('only the latest current-revision approval by an authorized human can authorize publication', async t => {
+  for (const change of [
+    state => { state.approvals[0].actor = 'publisher_engine'; },
+    state => { state.approvals[0].actor = 'telegram:unknown'; },
+    state => { state.approvals[0].action = 'approved_manual'; },
+    state => { state.approvals[0].entity_id = 8; },
+    state => { state.approvals[0].created_at = '2026-11-16T23:59:59Z'; },
+    state => { state.approvals[0].payload = {}; },
+    state => { state.approvals.push({ ...state.approvals[0], id: 2, payload: { content_hash: 'newer-stale-approval' } }); },
+  ]) {
+    const db = database(); const calls = [];
+    change(db.state);
+    const result = await service(t, db, metaSuccess(calls)).runPublisher();
+    assert.equal(result.published, 0);
+    assert.equal(result.blocked, 1);
+    assert.equal(calls.length, 0);
+    assert.equal(db.state.post.published_at, null);
+    assert.equal(db.state.audit.length, 0);
+  }
+});
+
+test('automatic publication rejects a stale approval after a revision changes', async t => {
+  for (const change of [
+    draft => { draft.caption = 'Caption revised after approval'; },
+    draft => { draft.slides[0].title = 'Slide revised after approval'; },
+    draft => { draft.hashtags = ['#revised']; },
+    draft => { draft.content_format = 'single'; },
+  ]) {
+    const db = database(); const calls = [];
+    change(db.state.draft);
+    assert.notEqual(draftContentHash(db.state.draft), db.state.approvals[0].payload.content_hash);
+    const result = await service(t, db, metaSuccess(calls)).runPublisher();
+    assert.equal(calls.length, 0);
+    assert.equal(result.blocked, 1);
+    assert.equal(db.state.post.published_at, null);
+    assert.equal(db.state.audit.length, 0);
+  }
+});
+
+test('approval evidence is loaded for both the claim and locked pre-publication recheck', async t => {
+  const db = database(); const calls = [];
+  const result = await service(t, db, metaSuccess(calls)).runPublisher();
+  assert.equal(result.published, 1);
+  const reads = db.queries.filter(q => /^WITH /.test(q) || /^SELECT sp\.\*/.test(q));
+  assert.ok(reads.some(q => /FOR UPDATE OF sp, d$/.test(q)));
+  for (const q of reads) {
+    assert.match(q, /d\.hashtags\b/);
+    assert.match(q, /AS human_approved/i);
+    assert.match(q, /AS approved_content_hash/i);
+    assert.match(q, /FROM audit_log/);
+    assert.match(q, /approved_auto/);
+    assert.match(q, /created_at >= d\.updated_at/);
+    assert.match(q, /web_admin/);
+    assert.ok(q.includes('^telegram:[0-9]+$'));
+    assert.match(q, /ORDER BY a\.created_at DESC,\s*a\.id DESC LIMIT 1/);
+  }
+});
+
+test('another claimed or previously published schedule prevents duplicate delivery', async t => {
+  for (const evidence of [
+    { status: 'publishing' }, { status: 'success' },
+    { status: 'failed', ig_media_id: 'existing-media' }, { status: 'failed', published_at: 'earlier' },
+  ]) {
+    const db = database({ siblings: [{ id: 2, draft_id: 7, ...evidence }] }); const calls = [];
+    await service(t, db, metaSuccess(calls)).runPublisher();
+    assert.equal(calls.length, 0, JSON.stringify(evidence));
+    assert.equal(db.state.post.status, 'pending');
+    assert.equal(db.state.audit.length, 0);
   }
 });
 
@@ -200,24 +309,34 @@ test('a publish timeout leaves an ambiguous post claimed and never automatically
   assert.equal(calls.filter(c => c.url.includes('/media_publish')).length, 1);
 });
 
-test('a newer verification or changed draft during container preparation blocks the final publish', async t => {
+test('revoked human review or changed content and schedule during preparation blocks the final publish', async t => {
   for (const change of [
-    state => state.reports.push({ id: 4, status: 'hoax_detected', confidence: 99 }),
+    state => { state.approvals = []; },
+    state => { state.approvals[0].payload.content_hash = 'stale-hash'; },
     state => { state.draft.needs_review = true; },
+    state => { state.draft.needs_review = null; },
     state => { state.draft.status = 'rejected'; },
     state => { state.draft.status = 'draft'; },
+    state => { state.draft.status = 'approved'; },
+    state => { state.draft.status = 'published'; },
     state => { state.post.status = 'failed'; },
+    state => { state.post.mode = 'manual'; },
+    state => { state.post.ig_media_id = 'existing-media'; },
+    state => { state.post.published_at = 'earlier'; },
     state => { state.draft.caption = 'Changed after container creation'; },
     state => { state.draft.slides = [{ no: 1, title: 'Changed after rendering' }]; },
+    state => { state.draft.hashtags = ['#changed']; },
     state => { state.draft.content_format = 'single'; },
   ]) {
     const db = database(); const calls = []; const success = metaSuccess(calls);
-    await service(t, db, async (url, options) => {
+    const result = await service(t, db, async (url, options) => {
       if (options?.method === 'GET') change(db.state);
       return success(url, options);
     }).runPublisher();
+    assert.equal(result.blocked, 1);
     assert.equal(calls.filter(c => c.url.includes('/media_publish')).length, 0);
-    assert.equal(db.state.post.published_at, null);
+    assert.notEqual(db.state.post.published_at, 'now');
+    assert.equal(db.state.audit.length, 0);
   }
 });
 

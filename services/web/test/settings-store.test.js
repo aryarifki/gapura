@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { saveSettings } from '../settings-store.js';
 
-test('saves all seven agents and their skills without clearing stored keys', async (t) => {
+test('saves all six agents and their skills without clearing stored keys', async (t) => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'gapura-settings-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   const configPath = path.join(directory, 'agents.json');
@@ -31,4 +31,7 @@ test('rejects the entire save before any file write on invalid skills or setting
   await assert.rejects(() => saveSettings({ studio: { model: '' }, skills: { studio: 'must not write' } }, { configPath, skillsDir: path.join(directory, 'skills') }), /model wajib/);
   assert.equal(await fs.readFile(configPath, 'utf8'), original);
   await assert.rejects(() => saveSettings({ skills: { '../../outside': 'no' } }, { configPath, skillsDir: path.join(directory, 'skills') }), /skills.*valid/i);
+  await assert.rejects(() => saveSettings({ verifikator: { model: 'retired' } }, { configPath, skillsDir: path.join(directory, 'skills') }), /agen.*valid/i);
+  await assert.rejects(() => saveSettings({ skills: { verifikator: 'retired' } }, { configPath, skillsDir: path.join(directory, 'skills') }), /skills.*valid/i);
+  assert.equal(await fs.readFile(configPath, 'utf8'), original);
 });

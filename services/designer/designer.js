@@ -5,7 +5,7 @@ import { isAllowedImageUrl, applyCoverIllustration } from '../common/images.js';
 export async function designCarouselContent(topic, editorialBrief = null) {
   if (topic.cover_illustration) topic = { ...topic, image_url: null };
   const cfg = loadAgentsConfig();
-  const fallback = buildEvidenceBasedContent(topic, topic.format, { verification: topic.verification, editorialBrief });
+  const fallback = buildEvidenceBasedContent(topic, topic.format, { editorialBrief });
   const requestedFormat = editorialBrief?.plan?.format || topic.format;
   const input = { ...topic, ...(requestedFormat ? { format: requestedFormat } : {}) };
   try {

@@ -1,7 +1,7 @@
 // ==============================================================================
 // GME v2.1 - Minimal Zero-Dependency RSS / Atom Feed Utilities
 // File: /root/gapura/services/common/rss.js
-// Dipakai oleh Agen SEO (momentum berita & Google Trends) dan Agen Verifikator
+// Dipakai oleh Agen SEO (momentum berita & Google Trends).
 // (uji korroborasi lintas sumber). Sengaja tanpa dependensi eksternal.
 // ==============================================================================
 

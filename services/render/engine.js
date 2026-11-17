@@ -580,217 +580,6 @@ export class RenderEngine {
       case 'illustration':
         return this.renderIllustration(slide, slideIndex, totalSlides);
 
-      case 'verifikasi': {
-        const d = slide.data || {};
-        const verdictRaw = String(d.status || d.verdict || 'unverified').toLowerCase();
-        const verdictMap = {
-          verified: { label: 'TERVERIFIKASI', bg: palette.up || '#1a7a4f' },
-          valid: { label: 'TERVERIFIKASI', bg: palette.up || '#1a7a4f' },
-          terverifikasi: { label: 'TERVERIFIKASI', bg: palette.up || '#1a7a4f' },
-          mostly_verified: { label: 'SEBAGIAN BESAR TERVERIFIKASI', bg: palette.up || '#1a7a4f' },
-          opinion: { label: 'OPINI / PENDAPAT', bg: palette.highlight || '#d79344' },
-          opini: { label: 'OPINI / PENDAPAT', bg: palette.highlight || '#d79344' },
-          speculation: { label: 'SPEKULASI', bg: palette.highlight || '#d79344' },
-          needs_context: { label: 'PERLU KONTEKS', bg: palette.highlight || '#d79344' },
-          konteks: { label: 'PERLU KONTEKS', bg: palette.highlight || '#d79344' },
-          caution: { label: 'PERLU KONTEKS', bg: palette.highlight || '#d79344' },
-          misleading: { label: 'BERPOTENSI MENYESATKAN', bg: palette.down || '#b23a48' },
-          hoax: { label: 'HOAKS / TIDAK VALID', bg: palette.down || '#b23a48' },
-          hoax_detected: { label: 'HOAKS / TIDAK VALID', bg: palette.down || '#b23a48' },
-          unverified: { label: 'BELUM TERVERIFIKASI', bg: palette.muted || '#5a6b7c' },
-        };
-        const verdict = verdictMap[verdictRaw] || verdictMap.unverified;
-        const claim = String(d.claim || slide.teks || '').replace(/\s+/g, ' ').trim();
-        const explanation = String(d.explanation || d.finding || d.fakta || '').replace(/\s+/g, ' ').trim();
-        const misconception = String(d.misconception || d.miskonsepsi || '').replace(/\s+/g, ' ').trim();
-        const sources = Array.isArray(d.sources)
-          ? d.sources.filter(Boolean).slice(0, 3)
-          : d.source_note
-          ? [String(d.source_note)]
-          : [];
-
-        const claimSize = fitFontSize(claim, {
-          max: 32,
-          min: 22,
-          width: CONTENT_WIDTH - 88,
-          ratio: CHAR_RATIO.display,
-          maxLines: 4,
-        });
-        const bodySize = fitFontSize(explanation, {
-          max: 21,
-          min: 16,
-          width: CONTENT_WIDTH - 88,
-          ratio: CHAR_RATIO.body,
-          maxLines: 9,
-          step: 1,
-        });
-
-        return this.wrapSlide(
-          {
-            type: 'div',
-            props: {
-              style: { display: 'flex', flexDirection: 'column', gap: '22px', width: '100%' },
-              children: [
-                // Status verifikasi
-                {
-                  type: 'div',
-                  props: {
-                    style: { display: 'flex', alignItems: 'center', gap: '14px' },
-                    children: [
-                      {
-                        type: 'div',
-                        props: {
-                          style: {
-                            backgroundColor: verdict.bg,
-                            color: '#ffffff',
-                            fontFamily: 'Inter',
-                            fontWeight: 700,
-                            fontSize: '15px',
-                            letterSpacing: '1.2px',
-                            padding: '8px 18px',
-                            borderRadius: '20px',
-                          },
-                          children: verdict.label,
-                        },
-                      },
-                      d.credibility
-                        ? {
-                            type: 'div',
-                            props: {
-                              style: { fontSize: '14px', fontWeight: 700, color: palette.muted || '#5A6B7C', letterSpacing: '0.8px' },
-                              children: `Kredibilitas: ${d.credibility}`,
-                            },
-                          }
-                        : null,
-                    ].filter(Boolean),
-                  },
-                },
-                // Klaim yang diuji
-                {
-                  type: 'div',
-                  props: {
-                    style: {
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '10px',
-                      backgroundColor: '#ffffff',
-                      border: `1px solid ${palette.border || '#DED9CC'}`,
-                      borderLeft: `6px solid ${palette.highlight || '#D79344'}`,
-                      borderRadius: '10px',
-                      padding: '22px 26px',
-                    },
-                    children: [
-                      {
-                        type: 'div',
-                        props: {
-                          style: { fontSize: '13px', fontWeight: 700, letterSpacing: '1.5px', color: palette.muted || '#5A6B7C' },
-                          children: 'KLAIM YANG DIUJI',
-                        },
-                      },
-                      {
-                        type: 'div',
-                        props: {
-                          style: {
-                            fontFamily: 'Archivo Black',
-                            fontSize: `${claimSize}px`,
-                            lineHeight: '1.32',
-                            color: palette.ink || '#102B45',
-                          },
-                          children: claim || '(klaim tidak tersedia)',
-                        },
-                      },
-                    ],
-                  },
-                },
-                // Fakta & penjelasan
-                {
-                  type: 'div',
-                  props: {
-                    style: { display: 'flex', flexDirection: 'column', gap: '10px' },
-                    children: [
-                      {
-                        type: 'div',
-                        props: {
-                          style: { fontSize: '13px', fontWeight: 700, letterSpacing: '1.5px', color: palette.accent || '#1F7E81' },
-                          children: 'FAKTA & PENJELASAN',
-                        },
-                      },
-                      {
-                        type: 'div',
-                        props: {
-                          style: { fontSize: `${bodySize}px`, lineHeight: '1.55', color: palette.ink || '#102B45' },
-                          children: explanation || 'Belum ada penjelasan tambahan.',
-                        },
-                      },
-                    ],
-                  },
-                },
-                // Miskonsepsi umum
-                misconception
-                  ? {
-                      type: 'div',
-                      props: {
-                        style: {
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '8px',
-                          backgroundColor: '#ffffff',
-                          border: `1.5px solid ${palette.highlight || '#D79344'}`,
-                          borderRadius: '10px',
-                          padding: '18px 22px',
-                        },
-                        children: [
-                          {
-                            type: 'div',
-                            props: {
-                              style: { fontSize: '13px', fontWeight: 700, letterSpacing: '1.2px', color: palette.highlight || '#D79344' },
-                              children: 'YANG SERING DISALAHPAHAMI',
-                            },
-                          },
-                          {
-                            type: 'div',
-                            props: {
-                              style: { fontSize: '18px', lineHeight: '1.5', color: palette.ink || '#102B45', fontWeight: 500 },
-                              children: misconception,
-                            },
-                          },
-                        ],
-                      },
-                    }
-                  : null,
-                // Sumber rujukan
-                sources.length > 0
-                  ? {
-                      type: 'div',
-                      props: {
-                        style: { display: 'flex', flexDirection: 'column', gap: '6px' },
-                        children: [
-                          {
-                            type: 'div',
-                            props: {
-                              style: { fontSize: '12px', fontWeight: 700, letterSpacing: '1.2px', color: palette.muted || '#5A6B7C' },
-                              children: 'RUJUKAN',
-                            },
-                          },
-                          ...sources.map((src) => ({
-                            type: 'div',
-                            props: {
-                              style: { fontSize: '13px', lineHeight: '1.4', color: palette.muted || '#5A6B7C' },
-                              children: `• ${src}`,
-                            },
-                          })),
-                        ],
-                      },
-                    }
-                  : null,
-              ].filter(Boolean),
-            },
-          },
-          { slideNo: slideIndex, totalSlides, source: slide.source, imageData: slide.data, category: 'VERIFIKASI' }
-        );
-      }
-
-
       case 'cover-stat': {
         const hasStat = Boolean(slide.data?.value || slide.data?.stat);
         const statVal = hasStat ? String(slide.data?.value || slide.data?.stat) : '';
@@ -1553,7 +1342,7 @@ export class RenderEngine {
         const headline = slide.teks || 'SIMPAN DATA INI UNTUK REFERENSI';
         const ctaHeadlineSize = fitFontSize(headline, { max: 56, min: 24, maxLines: 4 });
         const ctaText = slide.data?.cta || `Ikuti ${this.tokens.brand?.handle || '@gapuramedia'} untuk konteks isu publik harian.`;
-        const disclaimer = slide.data?.disclaimer || 'Informasi disajikan untuk kepentingan publik; bukan rekomendasi investasi atau nasihat hukum.';
+        const disclaimer = slide.data?.disclaimer;
 
         return this.wrapSlide(
           {
@@ -1700,8 +1489,8 @@ export class RenderEngine {
                     ],
                   },
                 },
-                // Compliance Box
-                {
+                // Explicit editorial disclaimer, when supplied.
+                ...(disclaimer?.trim() ? [{
                   type: 'div',
                   props: {
                     style: {
@@ -1713,9 +1502,9 @@ export class RenderEngine {
                       lineHeight: '1.45',
                       color: palette.muted || '#5A6B7C',
                     },
-                    children: `DISCLAIMER RESMI: ${String(disclaimer).replace(/^disclaimer\s*(resmi)?\s*:\s*/i, '')}`,
+                    children: disclaimer,
                   },
-                },
+                }] : []),
               ],
             },
           },
@@ -2237,21 +2026,6 @@ export class RenderEngine {
                 ],
               },
             },
-            {
-              type: 'div',
-              props: {
-                style: {
-                  backgroundColor: '#ffffff',
-                  border: `1px solid ${palette.border || '#DED9CC'}`,
-                  borderRadius: '10px',
-                  padding: '14px 18px',
-                  fontSize: '13px',
-                  lineHeight: '1.45',
-                  color: palette.muted || '#5A6B7C',
-                },
-                children: `Catatan editorial: disusun ulang oleh Gapura Media dari topik publik. Bukan rekomendasi investasi atau nasihat hukum individual.`,
-              },
-            },
           ],
         },
       });
@@ -2273,6 +2047,24 @@ export class RenderEngine {
             textAlign: 'center',
           },
           children: data.cta,
+        },
+      });
+    }
+
+    if (data.disclaimer?.trim()) {
+      children.push({
+        type: 'div',
+        props: {
+          style: {
+            backgroundColor: '#ffffff',
+            border: `1px solid ${palette.border || '#DED9CC'}`,
+            borderRadius: '10px',
+            padding: '14px 18px',
+            fontSize: '13px',
+            lineHeight: '1.45',
+            color: palette.muted || '#5A6B7C',
+          },
+          children: data.disclaimer,
         },
       });
     }

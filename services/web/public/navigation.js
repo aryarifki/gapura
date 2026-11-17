@@ -2,7 +2,7 @@ const DEFAULT_ROUTE = Object.freeze({ view: 'view-overview' });
 const ROUTE_STATE_KEY = 'gapuraRoute';
 const VALID_VIEWS = new Set([
   'view-overview', 'view-review', 'view-topics', 'view-sources', 'view-trends',
-  'view-verifications', 'view-studio-prompt', 'view-agents', 'view-n8n',
+  'view-studio-prompt', 'view-agents', 'view-n8n',
   'view-tokens', 'view-audit',
 ]);
 

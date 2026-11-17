@@ -123,11 +123,11 @@ test('draft edit and preview hydrate/preserve asset IDs and hashes; export inclu
   assert.equal((await pool.query('SELECT slides FROM drafts WHERE id=$1', [draft.id])).rows[0].slides[0].data.asset_id, asset.id);
 });
 
-test('production pins selected illustration and text regeneration preserves it after topic visual changes', { skip: !enabled }, async (t) => {
+test('production without verification reports pins the selected illustration and preserves it on text regeneration', { skip: !enabled }, async (t) => {
   const item = await topic(t);
-  await pool.query("UPDATE topics SET status='scored',verification_status='verified' WHERE id=$1", [item.id]);
+  await pool.query("UPDATE topics SET status='scored' WHERE id=$1", [item.id]);
   await pool.query("INSERT INTO topic_scores(topic_id,score_relevance,score_credibility,score_momentum,score_engagement,score_compliance,score_total,verdict,model) VALUES($1,30,25,20,10,10,95,'passed','fixture')", [item.id]);
-  await pool.query("INSERT INTO verification_reports(topic_id,status,confidence) VALUES($1,'verified',90)", [item.id]);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM verification_reports WHERE topic_id=$1', [item.id])).rows[0].n, 0);
   const service = createIllustrationService({ pool, storagePath, generate: mockGenerate });
   const first = await service.generate(item.id, { request_id: randomUUID() });
   const response = await fetch(`${base}/api/topics/${item.id}/auto-produce`, { method: 'POST', headers, body: '{}' });
@@ -151,9 +151,8 @@ test('production pins selected illustration and text regeneration preserves it a
 
 test('missing or failed illustration blocks production before a text-only draft is written', { skip: !enabled }, async (t) => {
   const item = await topic(t);
-  await pool.query("UPDATE topics SET status='scored',verification_status='verified' WHERE id=$1", [item.id]);
+  await pool.query("UPDATE topics SET status='scored' WHERE id=$1", [item.id]);
   await pool.query("INSERT INTO topic_scores(topic_id,score_relevance,score_credibility,score_momentum,score_engagement,score_compliance,score_total,verdict,model) VALUES($1,30,25,20,10,10,95,'passed','fixture')", [item.id]);
-  await pool.query("INSERT INTO verification_reports(topic_id,status,confidence) VALUES($1,'verified',90)", [item.id]);
   const service = createIllustrationService({ pool, storagePath, generate: async () => { throw new Error('illustration_provider_http_429'); } });
   await service.generate(item.id, { request_id: randomUUID() });
   const response = await fetch(`${base}/api/topics/${item.id}/auto-produce`, { method: 'POST', headers, body: '{}' });

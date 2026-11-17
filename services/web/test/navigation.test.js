@@ -31,6 +31,16 @@ test('parses a draft route and safely falls back for unknown routes', () => {
   assert.deepEqual(parseRoute('#view-review/draft/not-an-id'), { view: 'view-overview' });
 });
 
+test('retired verification routes fall back to the overview instead of opening an empty page', () => {
+  assert.deepEqual(parseRoute('#view-verifications'), { view: 'view-overview' });
+  assert.equal(routeHash({ view: 'view-verifications' }), '#view-overview');
+  const window = createWindow('#view-verifications');
+  const router = createNavigationController({ window });
+  assert.deepEqual(router.initialize(), { view: 'view-overview' });
+  assert.equal(window.location.hash, '#view-overview');
+  router.destroy();
+});
+
 test('serializes route state without losing the draft identifier', () => {
   assert.equal(routeHash({ view: 'view-review', draftId: 42 }), '#view-review/draft/42');
   assert.equal(routeHash({ view: 'view-topics' }), '#view-topics');

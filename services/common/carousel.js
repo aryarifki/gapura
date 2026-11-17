@@ -1,11 +1,10 @@
 const COMPLEXITY = /regulasi|peraturan|pasal|putusan|sanksi|dampak|analisis|mekanisme|kronologi|perbandingan|triliun|triwulan|kuartal|dibanding|sementara itu/i;
 
-export function chooseFormat({ title = '', summary = '', verification = null, trendScore = 0 } = {}) {
+export function chooseFormat({ title = '', summary = '', trendScore = 0 } = {}) {
   const text = `${title} ${summary}`.trim();
   const sentences = (String(summary).match(/[.!?](?:\s|$)/g) || []).length;
   const compact = text.length <= 230 && sentences <= 2 && !COMPLEXITY.test(text);
-  const verified = !verification || ['verified', 'mostly_verified'].includes(verification.status);
-  return compact && verified && Number(trendScore) < 80 ? 'single' : 'carousel';
+  return compact && Number(trendScore) < 80 ? 'single' : 'carousel';
 }
 
 export function normalizeDesign(raw, topic, fallbackSlides = []) {

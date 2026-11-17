@@ -1,11 +1,12 @@
 # 🏛️ Gapura Media Engine (GME v2.1)
-> **Sistem Otomasi Konten Instagram Data-Editorial & Regulasi Finansial**  
+> **Ruang Redaksi Politik, Sosial, Hukum, Lingkungan & Ekonomi Nasional termasuk Bursa Saham**
 > Akun Instagram Resmi: **[`@gapuramedia`](https://instagram.com/gapuramedia)**  
 > Portal Dashboard: **[https://gapura.avenia.my.id](https://gapura.avenia.my.id)** · Canvas / Fallback Manual n8n: **[https://n8n.avenia.my.id](https://n8n.avenia.my.id)**
 
-**Mode evaluasi editorial — 16 November 2026:** hasil draf/desain dan antrean
+**Mode evaluasi editorial — 17 November 2026:** hasil draf/desain dan antrean
 publikasi telah dikosongkan dengan backup/restore teruji. Timer intake dan
-publisher dijeda (`disabled`), worker Studio background dinonaktifkan, dashboard
+publisher tetap `disabled/inactive`, worker background dijeda dengan
+`GAPURA_DISABLE_WORKERS=true`, dashboard
 dan koneksi Instagram tetap tersedia. Perubahan desain/isi berikutnya mengikuti
 [blueprint editorial baru](docs/plans/07_EDITORIAL_REDESIGN_BLUEPRINT.md) dan
 [laporan reset](docs/EDITORIAL_WORKSPACE_RESET_20261116.md). Kontrak dan corpus
@@ -16,58 +17,46 @@ snapshot materi dan API pengayaan manual, tanpa backfill/draf baru.
 RSS menjadi pemicu topik/judul; agen menulis naskah/angle/visual Gapura sendiri.
 Spesifikasi R3–R8 sudah diselaraskan. [R3](docs/plans/11_R3_AI_ILLUSTRATIONS.md)
 menambahkan generator ilustrasi, aset lokal dan disclosure yang teruji; uji
-Gemini nyata tertahan 429/kuota gambar Free Tier 0. Input/naskah orisinal seluruh
-agen dan penghapusan Verifikator tetap pekerjaan R4–R6.
+Gemini nyata tertahan 429/kuota gambar Free Tier 0; tidak ada permintaan ulang
+atau perpindahan provider gambar. [R4](docs/plans/12_R4_SOURCES_DESKS.md) selesai
+untuk discovery enam desk dan proyeksi metadata Analis/cluster.
+[R5](docs/plans/13_R5_REMOVE_VERIFICATOR.md) selesai: Verifikator dilepas dari
+jalur aktif; koreksi niche enam desk terpasang dan seluruh gate teknis lulus.
+**R6 belum diterapkan:** dua mode naskah orisinal, payload penulisan/desain tanpa
+body/summary penerbit, default enam slide carousel-first, serta caption isi
+1.200–1.900 karakter. Tidak ada publikasi nyata atau aktivasi otomatisasi.
 
 ---
 
 ## 📌 Ringkasan Proyek
 
-**Gapura Media Engine (GME v2.1)** adalah platform otomasi ruang redaksi modern (*newsroom automation*) untuk isu nasional Indonesia pada enam desk: **politik, sosial, hukum, lingkungan, ekonomi nasional, dan bursa saham**. Sumber discovery hanya memasok topik dan metadata; naskah serta ilustrasi editorial disusun ulang secara orisinal oleh agen Gapura Media.
+**Gapura Media Engine (GME v2.1)** adalah platform otomasi ruang redaksi modern (*newsroom automation*) untuk isu nasional Indonesia pada enam desk: **politik, sosial, hukum, lingkungan, ekonomi nasional, dan bursa saham**. Arah produknya adalah topik dan metadata discovery yang dikembangkan menjadi naskah serta ilustrasi orisinal Gapura Media. Proyeksi discovery R4 sudah tersedia; penggantian jalur penulisan lama menjadi naskah orisinal end-to-end tetap pekerjaan R6.
 
-Platform ini menggabungkan **7 agen** dengan pengawasan manusia (*Human-in-the-Loop*), mesin render deterministik berbasis SVG-to-PNG (*Satori + Sharp*), serta dashboard editorial berbasis web yang responsif. Scout dan SEO mengumpulkan serta menilai momentum secara deterministik; agen produksi memakai model sesuai konfigurasi provider.
+Platform ini menggabungkan **6 agen: Scout, Analis, Copywriter, Designer, SEO, dan Studio**, dengan pengawasan manusia (*Human-in-the-Loop*), mesin render deterministik berbasis SVG-to-PNG (*Satori + Sharp*), serta dashboard editorial berbasis web yang responsif. Scout dan SEO mengumpulkan serta menilai momentum secara deterministik; agen produksi memakai model sesuai konfigurasi provider.
 
-```
-   ┌──────────────┐   ┌──────────────┐   ┌──────────────────┐
-   │  AGEN SCOUT  │   │   AGEN SEO   │   │ AGEN VERIFIKATOR │
-   │ (Kurasi RSS) │   │(Trending/X)  │   │ (Fact-Check)     │
-   └──────┬───────┘   └──────┬───────┘   └─────────┬────────┘
-          │                  │                     │
-          └──────────► ┌─────▼──────┐ ◄────────────┘
-                       │ AGEN ANALIS│
-                       │(Skor 0-100)│
-                       └─────┬──────┘
-                             │
-                             ▼
-                    ┌────────────────┐     ┌────────────────┐
-                    │ AGEN DESIGNER  │ ──► │AGEN COPYWRITER │
-                    │(AI Dir. Visual)│     │ (Prosa Berita) │
-                    └────────────────┘     └───────┬────────┘
-                                                   │
-                                                   ▼
-                                        ┌─────────────────────┐
-                                        │ RENDER MICROSERVICE │
-                                        │   (Satori + Sharp)  │
-                                        └──────────┬──────────┘
-                                                   │
-                                                   ▼
-                                        ┌─────────────────────┐
-                                        │    WEB DASHBOARD    │
-                                        │ (Review & Posting)  │
-                                        └─────────────────────┘
+```mermaid
+flowchart TD
+    Scout[Scout: discovery sumber] --> Analis[Analis: kurasi dan skor]
+    SEO[SEO: momentum isu] --> Analis
+    Analis --> Produksi[Copywriter dan Designer: draf dan visual]
+    Analis --> Studio[Studio: prompt dan rencana editorial]
+    Studio --> Produksi
+    Produksi --> Render[Render: Satori dan Sharp]
+    Render --> Review[Dashboard: review manusia atas revisi terkini]
+    Review --> Ekspor[Unduh atau persetujuan jadwal]
 ```
 
 ---
 
-## ✨ Fitur-Fitur Utama yang Telah Aktif & Siap Produksi
+## ✨ Fitur Utama & Batas Implementasi Saat Ini
 
 1. **Dashboard Review Editorial Realtime**
    - Panel pemantauan metrik kurasi: jumlah item mentah, topik lolos analisis, draf siap review, dan postingan terbit.
    - Status kesehatan layanan real-time (Web Dashboard, Render Engine, Database PostgreSQL, dan n8n). Kesehatan n8n menunjukkan ketersediaan canvas manual; status scheduler diperiksa dari timer systemd.
 2. **Radar Topik Enam Desk & 1-Click Auto-Produce**
    - Agregasi topik lintas politik, sosial, hukum, lingkungan, ekonomi nasional, dan bursa, dengan sumber resmi sebagai atribusi primer saat tersedia.
-   - Filter topik: *Semua Topik*, *Lolos (≥76)*, *Gugur / Fast-Fail*, dan *Diproduksi*.
-    - **1-Click Auto-Produce:** Produksi topik yang lolos Analis dan memiliki laporan verifikasi menjadi draf, lalu buka editor untuk review. Durasi bergantung pada model, jaringan, dan jumlah slide.
+   - Filter status: *Semua Topik*, *Lolos (≥76)*, *Gugur / Fast-Fail*, dan *Diproduksi*, disertai filter dan badge enam desk.
+   - **Buat draf review:** Produksi topik yang lolos Analis tanpa laporan mesin, lalu buka editor untuk review. Kebutuhan aset dan durasi tetap bergantung pada konfigurasi, model, jaringan, dan jumlah slide.
 3. **Editor Draf & Pratinjau Carousel Live**
    - Menampilkan visual slide beresolusi tinggi (1080×1350 px rasio 4:5).
    - Strip thumbnail interaktif untuk navigasi cepat antar slide.
@@ -75,16 +64,18 @@ Platform ini menggabungkan **7 agen** dengan pengawasan manusia (*Human-in-the-L
    - **Simpan & Render Ulang Seketika:** Render ulang slide tunggal dalam < 200 ms dengan pembaruan pratinjau live tanpa reload halaman.
 4. **AI Creative Director (Designer Otonom)**
    - Perancangan arsitektur visual berbasis AI (`gemini-3.5-flash-lite`) yang bebas dan tidak kaku dengan template tertentu.
-    - Single memakai 1 slide; carousel 3–9 slide mengikuti kecukupan bukti.
+   - Jalur lama masih mendukung single 1 slide dan carousel 3–9 slide. Default enam slide carousel-first merupakan target R6, belum perilaku produksi yang selesai.
    - **Tombol Regenerate AI Instan:** Rancang ulang seluruh carousel secara adaptif dalam 1 klik tanpa dialog popup yang memblokir.
 5. **Studio Desain & Pembuatan Postingan Kustom**
    - Membuat postingan mandiri on-the-fly dari form Studio Desain.
    - Pratinjau live perubahan token desain (palet warna `#102B45` Navy, `#1F7E81` Deep Teal, `#D79344` Golden Amber) di kanvas simulator ponsel.
-6. **Kustomisasi Penuh 7 Agen AI & Skills.md**
+6. **Kustomisasi 6 Agen & Skills.md**
+   - Scout, Analis, Copywriter, Designer, SEO, dan Studio; tidak ada tab/config/skill agen Verifikator pada jalur aktif R5.
    - Konfigurasi independen untuk setiap agen: Provider (Gemini / OpenAI Compatible), Endpoint, API Key, Model, dan System Prompt.
    - **Editor `skills.md` Kustom:** Setiap agen dapat disematkan berkas panduan eksekusi mandiri di `/root/gapura/config/skills/`.
 7. **Manajemen Sumber Discovery Enam Desk**
-   - Tambah, edit, aktifkan/nonaktifkan feed RSS dan sumber resmi secara dinamis dari dashboard, termasuk penetapan desk eksplisit atau inferensi dari judul.
+    - Tambah, edit, aktifkan/nonaktifkan feed RSS dan sumber resmi secara dinamis dari dashboard, termasuk penetapan desk eksplisit atau inferensi dari judul.
+    - Kategori sumber baru default `umum` (**Umum / Lintas Isu**), terpisah dari Desk Editorial. Update API yang tidak mengirim kategori mempertahankan nilai sebelumnya; tidak ada backfill arsip.
 8. **Render Microservice Deterministik (Satori + Sharp)**
    - Footprint memori sangat ringan (~65 MB RAM, tanpa Chromium headless).
    - Menghasilkan gambar PNG jernih 1080×1350 px 96 DPI dengan font resmi: `Archivo Black` dan `Inter`.
@@ -96,11 +87,12 @@ Platform ini menggabungkan **7 agen** dengan pengawasan manusia (*Human-in-the-L
     - Memindai akun X (`@handle`), query X, Google Trends geo, dan momentum Google News; daftar sumber dapat ditambah/diubah langsung dari dashboard (**Radar Trending**).
     - Skor virality menimbang bobot sumber, kesegaran, angka, dan relevansi enam desk; item teratas dapat dipromosikan menjadi topik editorial dengan satu klik.
     - Tanpa `X_BEARER_TOKEN`, jalur X otomatis dialihkan ke Google News dan provider yang benar-benar dipakai dicatat pada setiap item (tidak menyamar sebagai data X).
+    - Dropdown kategori sumber tren mencakup enam desk serta pilihan umum/lintas isu.
 
-11. **Agen Verifikator — Fact-Check & Anti-Miskonsepsi**
-    - Memisahkan fakta, opini, spekulasi, konten menyesatkan, dan hoaks melalui sinyal deterministik (tier sumber, klaim angka, hedge/clickbait), korroborasi lintas media (Google News RSS + kemiripan judul lokal `pg_trgm`), dan rubrik LLM.
-    - Setiap laporan memuat klaim yang diuji, penjelasan mendalam, miskonsepsi yang perlu diluruskan, sinyal risiko, rujukan, dan disclaimer redaksi.
-    - Status `hoax_detected` memblokir produksi dan persetujuan (HTTP 409), termasuk permintaan force; konteks verifikasi disertakan dalam draf.
+11. **Review Manusia atas Revisi Konten**
+    - Produksi dan review tidak meminta report, badge kebenaran atau confidence mesin. API/UI/fungsi/config Verifikator dilepas di R5; tabel dan kolom historis tetap sebagai arsip tanpa schema removal atau backfill.
+    - Persetujuan harus eksplisit atas revisi terkini. Edit membatalkan approval/jadwal; konten yang berubah harus ditinjau kembali.
+    - Disclaimer hukum/investasi bersifat opsional dan sesuai konteks hukum/bursa, bukan boilerplate untuk semua desk.
 
 12. **Katalog Provider & Model Multi-Provider**
     - Registry provider (`services/common/providers.js`) mendukung Gemini, OpenAI-compatible, dan Anthropic: MASB, 9router, OpenRouter, NVIDIA, agent router, endpoint custom, serta provider resmi.
@@ -113,31 +105,33 @@ Platform ini menggabungkan **7 agen** dengan pengawasan manusia (*Human-in-the-L
     - State publikasi per draf/platform/akun di tabel `publication_targets`; hasil ambigu disimpan sebagai `unknown` dan tidak pernah di-retry buta.
     - Mode `shadow` (default) mencatat rencana publikasi tanpa panggilan jaringan; mode `live` hanya aktif lewat `META_PUBLISH_MODE=live`.
     - Derivatif JPEG `slide_<n>.jpg` dibuat otomatis di samping PNG dan disajikan lewat URL bertanda tangan berbatas waktu.
-    - Gate editorial (`needs_review=false`, verifikasi `verified` + confidence ≥ 80) tetap wajib; publisher berjalan pada timer sendiri, bukan pada siklus intake 15 menit.
+    - Gate publikasi memakai audit persetujuan manusia `approved_auto`, `content_hash` yang cocok dengan revisi terkini, `needs_review=false`, serta pemeriksaan sumber/skor Analis, jadwal dan akun yang berlaku. Meta dan publisher legacy memeriksa ulang konten dalam row lock sebelum panggilan publikasi akhir; report/confidence mesin tidak dipakai.
+    - Timer publisher tetap dijeda, terpisah dari siklus intake. Gate R5 lulus: 606 unit, 56 DB/API, 10 akses, Chromium serta 84 renderer; suite beririsan dan tidak dijumlahkan.
 
 14. **Studio Prompt (v2.2)** — produksi konten dari satu prompt admin:
-    - Admin menulis permintaan bebas (analisis mendalam, verifikasi fakta, perspektif alternatif, opini, dll).
+    - Admin menulis arahan editorial (penjelasan isu, analisis, perspektif alternatif, opini, dll).
     - AI menyusun rencana terstruktur (judul, sudut pandang, tujuan, poin isi) yang bisa diedit manual, di-generate ulang dengan instruksi revisi, atau langsung diproduksi.
-    - Job queue berbasis Postgres (`prompt_jobs` + `job_logs` + `llm_usage`): topik -> verifikasi -> draft + render -> Telegram review.
+    - Job queue berbasis Postgres (`prompt_jobs` + `job_logs` + `llm_usage`): topik -> rencana -> draft + render -> review manusia; tidak ada tahap Verifikator.
     - Mode `review` menunggu ACC admin; publikasi terjadwal tetap mengikuti gate editorial dan persetujuan redaktur.
-    - Progres real-time per langkah lewat SSE di dashboard; `hoax_detected` memblokir produksi job.
+    - Progres per langkah lewat SSE tersedia; worker background saat ini dijeda dengan `GAPURA_DISABLE_WORKERS=true`. Telegram tetap bergantung pada konfigurasi bot.
 
 ---
 
 ## 🚀 Panduan Cepat Penggunaan Aplikasi
 
 Panduan lengkap langkah demi langkah tersedia di:  
-👉 **[`docs/PANDUAN_PENGGUNAAN.md`](file:///root/gapura/docs/PANDUAN_PENGGUNAAN.md)**
+👉 **[`docs/PANDUAN_PENGGUNAAN.md`](docs/PANDUAN_PENGGUNAAN.md)**
 
 ### Alur Kerja Harian Redaktur:
 1. Buka dashboard di browser: **`https://gapura.avenia.my.id`**.
 2. (Opsional) Buka **Radar Trending** untuk memindai berita/percakapan naik daun, lalu promosikan trend menjadi topik editorial.
-3. Masuk ke menu **Radar Topik**, pilih berita terverifikasi yang menarik, dan klik judulnya.
-4. Sistem menjalankan Agen Verifikator, lalu AI Designer & Copywriter; draf terbuka di **Antrian Review**.
+3. Masuk ke menu **Radar Topik**, gunakan filter desk dan status, lalu pilih topik yang lolos Analis.
+4. Gunakan **Buat draf review**; Designer & Copywriter menyiapkan draf tanpa meminta laporan mesin. Jika aset belum tersedia, selesaikan kendala yang ditampilkan; quota gambar saat ini masih 0.
 5. Periksa visual slide, gunakan tombol panah atau strip thumbnail untuk memeriksa slide 1 sampai penutup.
 6. Jika ingin sudut pandang visual baru, klik **`✨ Regenerate AI (Desain Ulang)`**.
 7. Sesuaikan teks jika diperlukan, lalu klik **`🔄 Simpan & Render Ulang Slide`**.
 8. Salin caption melalui tombol **`📋 Salin Caption & Hashtags`** atau unduh seluruh gambar melalui **`📥 Download Semua Slide (ZIP)`**.
+9. Persetujuan memerlukan konfirmasi review dan revisi terkini; perubahan konten harus direview ulang. Selama evaluasi ini jangan mengaktifkan timer atau menjalankan publish nyata.
 
 Dashboard langsung terbuka tanpa login atau token admin. API dashboard juga
 tersedia tanpa autentikasi. Validasi Origin, redaksi API key, dan gate review
@@ -152,7 +146,7 @@ layanan internal bukan kredensial login dashboard.
 - **Render Engine:** `@vercel/satori` (JSX to SVG) + `sharp` (SVG to PNG)
 - **Basis Data:** PostgreSQL 17 (Database `hme` untuk konten & `n8n` untuk canvas/riwayat workflow manual)
 - **AI Models:** Registry multi-provider (`config/providers.json` + key per provider) — Gemini, OpenAI-compatible, Anthropic; model catalog live per provider
-- **Orkestrasi Alur Kerja:** Systemd timer native (`gapura-pipeline.timer` kalender 15 menit, `gapura-publisher.timer` monotonic 10 menit); unit terpasang dan status runtime systemd menjadi sumber kebenaran operasional. n8n Community Edition tetap berjalan sebagai canvas/fallback manual
+- **Orkestrasi Alur Kerja:** Systemd timer native (`gapura-pipeline.timer` kalender 15 menit, `gapura-publisher.timer` monotonic 10 menit), saat ini keduanya `disabled/inactive`; unit terpasang dan status runtime systemd menjadi sumber kebenaran operasional. n8n Community Edition tetap canvas/fallback manual
 - **Reverse Proxy & Edge:** Cloudflare Tunnel + Cloudflare Edge (`cloudflared`)
 - **Process Manager:** Systemd Linux Services (`hme-web.service`, `hme-render.service`, `hme-n8n.service`)
 
@@ -161,7 +155,7 @@ layanan internal bukan kredensial login dashboard.
 ## 📋 Status Pengembangan, Isu & Roadmap
 
 Dokumen evaluasi teknis, daftar permasalahan yang telah diselesaikan, dan fitur yang belum selesai dapat dibaca di:  
-👉 **[`docs/STATUS_DAN_ROADMAP_FITUR.md`](file:///root/gapura/docs/STATUS_DAN_ROADMAP_FITUR.md)**
+👉 **[`docs/STATUS_DAN_ROADMAP_FITUR.md`](docs/STATUS_DAN_ROADMAP_FITUR.md)**
 
 ### Ringkasan Status Fitur:
 - [x] Workspace desain/konten bersih dan backup teruji untuk evaluasi ulang
@@ -173,15 +167,19 @@ Dokumen evaluasi teknis, daftar permasalahan yang telah diselesaikan, dan fitur 
 - [x] AI Creative Director (Agen Designer adaptif bebas template kaku)
 - [x] 1-Click Auto-Produce dari Radar Topik
 - [x] Eliminasi Masalah Cloudflare Cache Staling & Dialog `confirm()`
-- [x] Kustomisasi Penuh 7 Agen AI & berkas `skills.md` per agen
+- [x] Kustomisasi 6 agen: Scout, Analis, Copywriter, Designer, SEO, Studio
 - [x] Manajemen Sumber Discovery Enam Desk (desk eksplisit + inferensi judul)
 - [x] Agen SEO (Radar Trending) dengan sumber X/Google Trends yang dapat dikustomisasi
-- [ ] Penghapusan Agen Verifikator seluruh fungsi/dependensi sesuai blueprint (kode lama masih ada selama fase perencanaan)
+- [x] R4 — discovery enam desk, cluster judul dan proyeksi metadata Analis/cluster
+- [x] R5 — penghapusan Verifikator dari jalur aktif; arsip schema dipertahankan
+- [x] R5 — gate unit/DB/API/browser/render dan koreksi niche enam desk lulus; web/render dimuat ulang, timer tetap dijeda
+- [ ] R6 — naskah orisinal dua mode tanpa body/summary penerbit; carousel-first enam slide dan caption isi 1.200–1.900 karakter
+- [ ] R7 — sampel ilustrasi AI nyata dan review visual owner (quota gambar 0 masih menghalangi)
 - [x] Katalog Provider & Model multi-provider (registry + fallback lintas provider + uji dari dashboard)
 - [x] P2 — [audit skor historis & validasi constraint](docs/P2_SCORE_INTEGRITY_AUDIT.md): 1.062 baris valid, 0 perubahan data; `topic_scores_component_total` tervalidasi
 - [x] P2 — scheduler native terverifikasi dan terdokumentasi: unit systemd terpasang menjadi sumber kebenaran; tanpa penambahan cron atau aktivasi workflow otomatis n8n
 - [x] Publisher Meta multi-platform tersedia; Instagram Unified terhubung, timer publisher dijeda dan mode shadow dipertahankan selama evaluasi
-- [ ] Aktivasi publish Meta live *(menunggu izin Meta App)*
+- [ ] R8 / aktivasi publish Meta live *(setelah review owner, batch/shadow, izin platform, dan persetujuan uji terpisah)*
 - [ ] Bot Notifikasi & Approval Telegram *(engine siap, menunggu `TELEGRAM_BOT_TOKEN`)*
 - [ ] UI Kalender Konten Interaktif (Drag & Drop Scheduler)
 - [ ] Sistem Autentikasi Pengguna & Hak Akses Berjenjang (Multi-Role)
@@ -196,16 +194,16 @@ systemd**, termasuk drop-in jika ada. Berkas terlacak di [`deploy/`](deploy/)
 merupakan template untuk redeploy; perubahan template belum mengubah unit yang
 sedang terpasang. **Keadaan terbaru setelah reset evaluasi:** kedua timer
 `disabled/inactive`, serta `hme-web` memiliki drop-in `editorial-review.conf`
-untuk menjeda worker background. Tabel berikut adalah snapshot historis P2
-sebelum penjedaan; jangan menafsirkannya sebagai status aktif saat ini. Lihat
+dengan `GAPURA_DISABLE_WORKERS=true` untuk menjeda worker background. Tabel
+berikut mencatat keadaan evaluasi yang dipertahankan selama R5. Lihat
 [laporan reset](docs/EDITORIAL_WORKSPACE_RESET_20261116.md) sebelum re-enable.
 
-| Unit terpasang | Jadwal / tugas | Snapshot verifikasi 16 November 2026 |
+| Unit terpasang | Jadwal / tugas | Keadaan evaluasi yang dipertahankan |
 | :--- | :--- | :--- |
-| [`gapura-pipeline.timer`](deploy/gapura-pipeline.timer) | Kalender `OnCalendar=*:0/15`, `Persistent=false`, `RandomizedDelaySec=30`; slot yang terlewat saat timer nonaktif tidak dikejar. | `enabled`, `active (waiting)` |
-| [`gapura-pipeline.service`](deploy/gapura-pipeline.service) | Oneshot `scripts/run_pipeline.sh`, `GAPURA_ENABLE_DELIVERY=false`; script memakai `flock -n` dengan default lock `/tmp/opencode/gapura-pipeline.lock` untuk melewati eksekusi bertumpuk. | Terakhir `Result=success`, `ExecMainStatus=0`; `inactive (dead)` setelah selesai |
-| [`gapura-publisher.timer`](deploy/gapura-publisher.timer) | Monotonic `OnBootSec=3min`, `OnUnitActiveSec=10min`, `AccuracySec=30s`; interval dihitung dari aktivasi service. | `enabled`, `active (waiting)` |
-| [`gapura-publisher.service`](deploy/gapura-publisher.service) | Oneshot `services/publisher/meta-worker.js`; mode publikasi mengikuti konfigurasi runtime, terkonfirmasi `shadow` pada journal pemeriksaan P2. | Terakhir `Result=success`, `ExecMainStatus=0`; `inactive (dead)` setelah selesai |
+| [`gapura-pipeline.timer`](deploy/gapura-pipeline.timer) | Kalender `OnCalendar=*:0/15`, `Persistent=false`, `RandomizedDelaySec=30`; slot yang terlewat saat timer nonaktif tidak dikejar. | `disabled/inactive` |
+| [`gapura-pipeline.service`](deploy/gapura-pipeline.service) | Oneshot `scripts/run_pipeline.sh`, `GAPURA_ENABLE_DELIVERY=false`; script memakai `flock -n` dengan default lock `/tmp/opencode/gapura-pipeline.lock` untuk melewati eksekusi bertumpuk. | Tidak dijalankan dalam pekerjaan R5 |
+| [`gapura-publisher.timer`](deploy/gapura-publisher.timer) | Monotonic `OnBootSec=3min`, `OnUnitActiveSec=10min`, `AccuracySec=30s`; interval dihitung dari aktivasi service. | `disabled/inactive` |
+| [`gapura-publisher.service`](deploy/gapura-publisher.service) | Oneshot `services/publisher/meta-worker.js`; mode publikasi mengikuti konfigurasi runtime `shadow`, bukan timer. | Tidak dijalankan dalam pekerjaan R5; tidak ada publish nyata |
 
 `GET /api/workflow` mengembalikan status scheduler **intake** dari systemd:
 `kind`, `active`, `next_run`, `last_run`, `interval_minutes`, dan
@@ -224,9 +222,6 @@ tanpa menambahkan cron atau mengaktifkan workflow otomatis n8n.
 ```bash
 # Cek status layanan
 systemctl status hme-web.service hme-render.service hme-n8n.service
-
-# Restart web dashboard & render engine
-systemctl restart hme-render.service && systemctl restart hme-web.service
 
 # Live monitoring log web dashboard
 journalctl -u hme-web.service -f
@@ -266,11 +261,16 @@ tidak dimasukkan ke Git. `META_PUBLISH_MODE=shadow` dan
 `META_PLATFORMS=instagram,facebook` adalah konfigurasi runtime aktif; journal
 pemeriksaan P2 mengonfirmasi `mode=shadow`. Mode shadow tidak ditetapkan oleh timer. Publikasi live
 menunggu izin `instagram_content_publish` dan `pages_manage_posts`, serta satu
-draf yang sudah diverifikasi dan disetujui redaktur. Threads membutuhkan token
+draf dengan audit persetujuan manusia atas hash revisi terkini, sumber/skor
+Analis yang memenuhi gate, aset siap, jadwal/akun yang sesuai, dan recheck dalam
+row lock sebelum publish. Threads membutuhkan token
 dan user ID tersendiri.
 
 Langkah pemberian izin, review, uji live, serta rekonsiliasi tersedia di
 [`docs/META_PUBLISHING_RUNBOOK.md`](docs/META_PUBLISHING_RUNBOOK.md).
+Ketentuan review R5 pada [laporan R5](docs/plans/13_R5_REMOVE_VERIFICATOR.md)
+dan README ini menggantikan syarat report/confidence pada runbook historis.
+Aktivasi tetap mengikuti urutan R7–R8 dalam blueprint dan mandat eksplisit owner.
 
 ---
-*© 2026 Gapura Media — Portal Data, Hukum & Ekonomi Bursa Indonesia.*
+*© 2026 Gapura Media — Politik, Sosial, Hukum, Lingkungan & Ekonomi Nasional termasuk Bursa Saham.*

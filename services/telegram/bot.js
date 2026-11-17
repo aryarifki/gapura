@@ -104,18 +104,12 @@ export function createTelegramBot({ pool, fetchImpl = globalThis.fetch, config =
       let status = 'rejected';
       let scheduledAt;
       if (action !== 'reject') {
-        const { rows: reports } = await client.query(
-          `SELECT status, confidence FROM verification_reports WHERE topic_id = $1
-           ORDER BY created_at DESC NULLS LAST, id DESC LIMIT 1`, [draft.topic_id],
-        );
         const mode = action === 'approve_auto' ? 'auto' : 'manual';
-        const verification = reports[0] ?? null;
         const gate = validateDraftApproval({ status: draft.status, needsReview: draft.needs_review !== false,
-          verification, mode, acknowledgeReview: false });
-        const confidence = Number(verification?.confidence);
-        if (!gate.allowed || (mode === 'auto' && (!Number.isFinite(confidence) || confidence > 100))) {
+          mode, acknowledgeReview: false });
+        if (!gate.allowed) {
           await client.query('ROLLBACK');
-          return { allowed: false, reason: gate.reason ?? 'invalid_confidence' };
+          return { allowed: false, reason: gate.reason };
         }
         status = mode === 'auto' ? 'scheduled' : 'approved';
         if (mode === 'auto') {

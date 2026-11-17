@@ -6,7 +6,20 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { validateDraftApproval } from '../common/editorial.js';
+import { draftContentHash } from '../common/draft-revision.js';
 import { publishFormat, signedPublishImageUrl } from './media.js';
+
+const APPROVAL_EVIDENCE = `
+    EXISTS (
+      SELECT 1 FROM audit_log a WHERE a.entity = 'draft' AND a.entity_id = d.id
+        AND a.action = 'approved_auto' AND a.created_at >= d.updated_at
+        AND (a.actor = 'web_admin' OR a.actor ~ '^telegram:[0-9]+$')
+    ) AS human_approved,
+    (SELECT a.payload->>'content_hash' FROM audit_log a
+      WHERE a.entity = 'draft' AND a.entity_id = d.id AND a.action = 'approved_auto'
+        AND a.created_at >= d.updated_at
+        AND (a.actor = 'web_admin' OR a.actor ~ '^telegram:[0-9]+$')
+      ORDER BY a.created_at DESC, a.id DESC LIMIT 1) AS approved_content_hash`;
 
 const CLAIM_NEXT = `
   WITH candidate AS (
@@ -28,13 +41,8 @@ const CLAIM_NEXT = `
   UPDATE scheduled_posts sp SET status = 'publishing'
   FROM candidate c, drafts d
   WHERE sp.id = c.id AND d.id = sp.draft_id AND sp.status = 'pending'
-  RETURNING sp.*, d.caption, d.slides, d.content_format, d.needs_review,
-    d.status AS draft_status,
-    (SELECT row_to_json(v) FROM (
-      SELECT vr.status, vr.confidence FROM verification_reports vr
-      WHERE vr.topic_id = d.topic_id
-      ORDER BY vr.created_at DESC NULLS LAST, vr.id DESC LIMIT 1
-    ) v) AS verification`;
+  RETURNING sp.*, d.caption, d.slides, d.hashtags, d.content_format, d.needs_review,
+    d.status AS draft_status, ${APPROVAL_EVIDENCE}`;
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -42,13 +50,14 @@ function escapeHtml(value) {
 
 function publicationGate(post) {
   if (post.draft_status !== 'scheduled') return false;
-  const gate = validateDraftApproval({
-    // A scheduled draft has already passed operator approval.
+  if (post.mode === 'auto' && (post.human_approved !== true ||
+      post.approved_content_hash !== draftContentHash(post))) return false;
+  return validateDraftApproval({
     status: 'draft',
-    needsReview: post.needs_review !== false, verification: post.verification, mode: post.mode, acknowledgeReview: false,
-  });
-  const confidence = Number(post.verification?.confidence);
-  return gate.allowed && !(post.mode === 'auto' && (!Number.isFinite(confidence) || confidence > 100));
+    needsReview: post.needs_review !== false,
+    mode: post.mode,
+    acknowledgeReview: false,
+  }).allowed;
 }
 
 export function createPublisher({ pool, fetchImpl = globalThis.fetch, config = {}, sleep: wait = sleep, logger = console }) {
@@ -187,18 +196,16 @@ export function createPublisher({ pool, fetchImpl = globalThis.fetch, config = {
             await client.query('BEGIN');
             transactionOpen = true;
             const { rows: current } = await client.query(
-              `SELECT sp.*, d.status AS draft_status, d.needs_review, d.caption, d.slides, d.content_format,
-                 (SELECT row_to_json(v) FROM (
-                   SELECT vr.status, vr.confidence FROM verification_reports vr WHERE vr.topic_id = d.topic_id
-                   ORDER BY vr.created_at DESC NULLS LAST, vr.id DESC LIMIT 1
-                 ) v) AS verification
+              `SELECT sp.*, d.status AS draft_status, d.needs_review, d.caption, d.slides, d.hashtags, d.content_format,
+                 ${APPROVAL_EVIDENCE}
                FROM scheduled_posts sp JOIN drafts d ON d.id = sp.draft_id
                WHERE sp.id = $1 FOR UPDATE OF sp, d`, [post.id],
             );
             if (!current[0] || current[0].status !== 'publishing' || current[0].mode !== 'auto' ||
                 current[0].ig_media_id || current[0].published_at || !publicationGate(current[0]) ||
                 current[0].caption !== post.caption || current[0].content_format !== post.content_format ||
-                JSON.stringify(current[0].slides) !== JSON.stringify(post.slides)) {
+                JSON.stringify(current[0].slides) !== JSON.stringify(post.slides) ||
+                draftContentHash(current[0]) !== draftContentHash(post)) {
               throw new Error('Draft or editorial gate changed before publishing.');
             }
           }, () => { publishAttempted = true; });

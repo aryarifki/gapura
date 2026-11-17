@@ -4,14 +4,17 @@ import { chooseFormat, normalizeDesign, validateDesignOutput } from '../carousel
 
 const topic = { title: 'BPS mencatat inflasi Indonesia sebesar 2,1%', summary: 'Inflasi tahunan mencapai 2,1% menurut BPS.' };
 
-test('chooses one image for a compact, simple, verified announcement', () => {
+test('chooses one image for a compact, simple announcement', () => {
   assert.equal(chooseFormat(topic), 'single');
 });
 
-test('chooses a carousel for complex, high-momentum, or low-confidence coverage', () => {
+test('chooses a carousel for complex or high-momentum coverage', () => {
   assert.equal(chooseFormat({ ...topic, title: 'OJK menetapkan regulasi baru', summary: 'Mekanisme dan dampak aturan baru.' }), 'carousel');
   assert.equal(chooseFormat({ ...topic, trendScore: 90 }), 'carousel');
-  assert.equal(chooseFormat({ ...topic, verification: { status: 'needs_context' } }), 'carousel');
+});
+
+test('a leftover verification field cannot influence format choice', () => {
+  assert.equal(chooseFormat({ ...topic, verification: { status: 'needs_context' } }), 'single');
 });
 
 test('normalizes a selected single format to exactly one cover slide without a CTA slide', () => {

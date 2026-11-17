@@ -20,7 +20,7 @@ import { renderPayload } from '../common/images.js';
 import { validatePublicSourceUrl, parsePublicSourceUrl } from '../common/sources.js';
 import { validateDesignOutput } from '../common/carousel.js';
 import { draftContentHash } from '../common/draft-revision.js';
-import { evaluateProductionGate, needsHumanReview, validateDraftApproval } from '../common/editorial.js';
+import { validateDraftApproval } from '../common/editorial.js';
 import { validateAgent, validateAgentConfig } from '../common/agent-config.js';
 import { buildAttempts, loadProvidersConfig, saveProvidersConfig, validateProvidersConfig } from '../common/providers.js';
 import { loadProviderSecrets, saveProviderSecret } from '../common/secret-store.js';
@@ -35,7 +35,6 @@ import { runScout } from '../scout/scout.js';
 import { validateSourceType } from '../scout/sources.js';
 import { runSeoScan, listTrends, promoteTrendToTopic } from '../seo/seo.js';
 import { buildTrendHealth } from '../seo/health.js';
-import { verifyTopic, getLatestVerification, listVerifications } from '../verificator/verificator.js';
 import { createPlan, regeneratePlan, updatePlan, executeJob, processQueuedJobs, listJobs, getJob } from '../studio/studio.js';
 import { validateStudioTopic } from '../studio/validation.js';
 import { runtimeSecret } from '../common/runtime-secret.js';
@@ -396,12 +395,12 @@ app.post('/api/drafts/create-from-custom', async (req, res) => {
       else if (loadAgentsConfig().designer?.image_generation?.enabled === true) throw new DraftError('needs_media: Ilustrasi topik belum siap.', 409);
     }
     // 2. Simpan draft as a review-only design preview; it is not marked as scored.
-    const defaultCaption = caption || `${title}\n\n${summary || ''}\n\nSumber Data: ${primary_source || '@gapuramedia'}\n\n---\nDisclaimer: Informasi disajikan untuk tujuan edukasi publik dan bukan merupakan rekomendasi investasi beli/jual saham atau nasihat hukum resmi.`;
+    const defaultCaption = caption || [title, summary].filter(Boolean).join('\n\n');
     const defaultHashtags = Array.isArray(hashtags) && hashtags.length > 0 ? hashtags : ['#GapuraMedia', '#BeritaNasional', '#IsuPublik', '#Indonesia'];
 
     const { rows: draftRows } = await client.query(
       `INSERT INTO drafts (topic_id, slides, content_format, caption, hashtags, disclaimer_type, status, needs_review, tokens_version, copy_model)
-       VALUES ($1, $2, $3, $4, $5, 'keuangan', 'draft', true, 'v1.0', 'studio-ai-designer') RETURNING id`,
+        VALUES ($1, $2, $3, $4, $5, NULL, 'draft', true, 'v1.0', 'studio-ai-designer') RETURNING id`,
       [topicId, JSON.stringify(pinnedSlides), req.body?.format === 'single' && slides.length === 1 ? 'single' : 'carousel', defaultCaption, defaultHashtags]
     );
     const draftId = draftRows[0].id;
@@ -487,14 +486,9 @@ app.post('/api/drafts/:id/approve', async (req, res) => {
         await client.query('ROLLBACK');
         return res.status(409).json({ error: 'Konfirmasi review konten wajib diisi sebelum menyetujui.' });
       }
-      const { rows: verificationRows } = await client.query(
-        'SELECT status, confidence FROM verification_reports WHERE topic_id = $1 ORDER BY created_at DESC LIMIT 1',
-        [lockedDrafts[0].topic_id]
-      );
       const gate = validateDraftApproval({
         status: lockedDrafts[0].status,
         needsReview: lockedDrafts[0].needs_review,
-        verification: verificationRows[0] || null,
         mode,
         acknowledgeReview: req.body.reviewed === true,
       });
@@ -1056,7 +1050,6 @@ app.get('/api/agents/config', (req, res) => {
       copywriter: loadAgentSkills('copywriter'),
       designer: loadAgentSkills('designer'),
       seo: loadAgentSkills('seo'),
-      verifikator: loadAgentSkills('verifikator'),
       studio: loadAgentSkills('studio'),
     };
     res.json(redactAgentConfig(config));
@@ -1083,7 +1076,7 @@ app.post('/api/agents/config', async (req, res) => {
       } catch (error) { warnings.push(`Konfigurasi tersimpan; sinkronisasi render perlu diulang: ${error.message}`); }
     }
     await writeAudit('ai_agents', 1, 'update_config', 'web_admin', { updated_agents: Object.keys(req.body).filter((key) => key !== 'skills') });
-    res.json({ status: 'success', message: 'Konfigurasi tujuh agen dan skills tersimpan.', warnings });
+    res.json({ status: 'success', message: 'Konfigurasi enam agen dan skills tersimpan.', warnings });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -1098,7 +1091,7 @@ app.post('/api/agents/config/test', async (req, res) => {
     if (!Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isFinite(threshold) || threshold < 0.5 || threshold > 1) return res.status(400).json({ error: 'Batas item atau ambang deduplikasi Scout tidak valid.' });
     return res.json({ status: 'passed', message: 'Scout deterministik: batas item dan deduplikasi valid. Tidak ada panggilan LLM atau penulisan data.' });
   }
-  const allowedAgents = new Set(['analis', 'copywriter', 'designer', 'seo', 'verifikator', 'studio']);
+  const allowedAgents = new Set(['analis', 'copywriter', 'designer', 'seo', 'studio']);
   if (!allowedAgents.has(agent)) return res.status(400).json({ error: 'Nama agen tidak valid.' });
   if (typeof prompt !== 'string' || prompt.length < 5 || prompt.length > 300) return res.status(400).json({ error: 'Prompt uji harus 5-300 karakter.' });
   if (!candidate?.[agent]) return res.status(400).json({ error: 'Payload konfigurasi agen tidak ditemukan.' });
@@ -1162,7 +1155,7 @@ app.get('/api/audit-log', async (req, res) => {
 // 11. Workflow API
 app.get('/api/workflow', async (req, res) => {
   const status = await scheduler.status();
-  res.json({ ...status, json: { schedule: 'every 15 minutes', command: 'scripts/run_pipeline.sh', steps: ['Scout', 'Trending', 'Analis', 'Verifikator', 'Copywriter + Render', 'Review'], delivery: 'operator opt-in only', lock: 'flock' } });
+  res.json({ ...status, json: { schedule: 'every 15 minutes', command: 'scripts/run_pipeline.sh', steps: ['Scout', 'Trending', 'Analis', 'Copywriter + Render', 'Review'], delivery: 'operator opt-in only', lock: 'flock' } });
 });
 
 app.post('/api/workflow/toggle', async (req, res) => {
@@ -1201,12 +1194,13 @@ app.get('/api/sources', async (req, res) => {
 
 // Add new news source
 app.post('/api/sources', async (req, res) => {
-  const { name, type = 'rss', url_or_query, category = 'news_pasar', desk = null, poll_interval_mins = 30, is_active = true } = req.body;
+  const { name, type = 'rss', url_or_query, category = 'umum', desk = null, poll_interval_mins = 30, is_active = true } = req.body;
   if (!name || !url_or_query) {
     return res.status(400).json({ error: 'Nama sumber dan URL/Query wajib diisi.' });
   }
   const sourceError = validateSourceType(type, url_or_query);
   if (sourceError) return res.status(400).json({ error: sourceError });
+  if (typeof category !== 'string' || !category.trim()) return res.status(400).json({ error: 'Kategori sumber wajib berupa teks.' });
   if (desk !== null && desk !== '' && (typeof desk !== 'string' || !normalizeDesk(desk))) {
     return res.status(400).json({ error: 'Desk sumber tidak valid.' });
   }
@@ -1242,12 +1236,13 @@ app.post('/api/sources', async (req, res) => {
 // Update existing news source
 app.put('/api/sources/:id', async (req, res) => {
   const id = parseInt(req.params.id);
-  const { name, type = 'rss', url_or_query, category = 'news_pasar', poll_interval_mins = 30, is_active = true } = req.body;
+  const { name, type = 'rss', url_or_query, category, poll_interval_mins = 30, is_active = true } = req.body;
   if (!name || !url_or_query) {
     return res.status(400).json({ error: 'Nama sumber dan URL/Query wajib diisi.' });
   }
   const sourceError = validateSourceType(type, url_or_query);
   if (sourceError) return res.status(400).json({ error: sourceError });
+  if (category !== undefined && (typeof category !== 'string' || !category.trim())) return res.status(400).json({ error: 'Kategori sumber wajib berupa teks.' });
   const hasDesk = Object.hasOwn(req.body, 'desk');
   if (hasDesk && req.body.desk !== null && req.body.desk !== ''
     && (typeof req.body.desk !== 'string' || !normalizeDesk(req.body.desk))) {
@@ -1258,7 +1253,7 @@ app.put('/api/sources/:id', async (req, res) => {
   try {
     const query = `
       UPDATE sources
-      SET name = $1, type = $2, url_or_query = $3, category = $4, poll_interval_mins = $5, is_active = $6,
+      SET name = $1, type = $2, url_or_query = $3, category = COALESCE($4, category), poll_interval_mins = $5, is_active = $6,
           desk = CASE WHEN $7::boolean THEN $8::varchar ELSE desk END, updated_at = NOW()
       WHERE id = $9
       RETURNING *;
@@ -1267,7 +1262,7 @@ app.put('/api/sources/:id', async (req, res) => {
       name.trim(),
       type.trim(),
       url_or_query.trim(),
-      category.trim(),
+      category?.trim() ?? null,
       parseInt(poll_interval_mins) || 30,
       Boolean(is_active),
       hasDesk,
@@ -1332,7 +1327,7 @@ app.post('/api/sources/poll', async (req, res) => {
 });
 
 // ==============================================================================
-// 12. Agen SEO — Radar Trending
+// 13. Agen SEO — Radar Trending
 // ==============================================================================
 app.get('/api/trend-sources', async (req, res) => {
   try {
@@ -1470,45 +1465,6 @@ app.post('/api/seo/trends/:id/promote', async (req, res) => {
 });
 
 // ==============================================================================
-// 13. Agen Verifikator — Fact-Check
-// ==============================================================================
-app.post('/api/topics/:id/verify', async (req, res) => {
-  const topicId = parseInt(req.params.id, 10);
-  try {
-    console.log(`[Web API] Verifikasi topik #${topicId}...`);
-    const report = await verifyTopic(topicId);
-    res.json({ status: 'success', report });
-  } catch (err) {
-    console.error('[Web API] Verifikasi error:', err);
-    await writeAudit('topic', topicId, 'error_verify', 'web_admin', { error: err.message });
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.get('/api/topics/:id/verification', async (req, res) => {
-  const topicId = parseInt(req.params.id, 10);
-  try {
-    const report = await getLatestVerification(topicId);
-    if (!report) return res.status(404).json({ error: 'Belum ada laporan verifikasi untuk topik ini.' });
-    res.json(report);
-  } catch (err) {
-    await writeAudit('topic', topicId, 'error_get_verification', 'web_admin', { error: err.message });
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.get('/api/verifications', async (req, res) => {
-  try {
-    const rows = await listVerifications({ limit: req.query.limit || 50, status: req.query.status || null });
-    res.json(rows);
-  } catch (err) {
-    await writeAudit('verifications', 0, 'error_list', 'web_admin', { error: err.message });
-    res.status(500).json({ error: err.message });
-  }
-});
-
-
-// ==============================================================================
 // 14. Studio Prompt — prompt-driven production (plan -> draft -> publish)
 // ==============================================================================
 app.post('/api/studio/jobs', async (req, res) => {
@@ -1523,7 +1479,7 @@ app.post('/api/studio/jobs', async (req, res) => {
   if (!Number.isInteger(topicId) || topicId < 1) return res.status(400).json({ error: 'Pilih topik Radar yang sudah lolos Analis dan memiliki sumber primer.' });
   try {
     const { rows: topicRows } = await pool.query(
-      `SELECT t.id, t.status, t.url, t.title, t.verification_status, ts.score_total, ts.verdict AS score_verdict
+      `SELECT t.id, t.status, t.url, t.title, ts.score_total, ts.verdict AS score_verdict
        FROM topics t LEFT JOIN LATERAL (
          SELECT score_total,verdict FROM topic_scores WHERE topic_id = t.id ORDER BY created_at DESC,id DESC LIMIT 1
        ) ts ON TRUE WHERE t.id = $1`, [topicId]

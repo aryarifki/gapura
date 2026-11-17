@@ -11,6 +11,8 @@ test('server integration: dashboard settings are available immediately without l
   assert.equal(Boolean(config.analis), true);
   assert.equal(config.analis.api_key, '');
   assert.equal(Boolean(config.skills.studio), true);
+  assert.equal(Object.hasOwn(config, 'verifikator'), false);
+  assert.equal(Object.hasOwn(config.skills, 'verifikator'), false);
 });
 
 test('server integration: configuration writes reject cross-origin browser requests', async () => {
@@ -52,10 +54,22 @@ test('server integration: UI opens without an access gate or inert container', a
 });
 
 test('server integration: malformed IDs and query shapes return actionable validation errors', async () => {
-  for (const url of ['/api/drafts/not-a-number', '/api/topics/2bad/verification', '/api/agents/invalid/skills', '/api/topics?q[]=x']) {
+  for (const url of ['/api/drafts/not-a-number', '/api/topics/2bad/cluster', '/api/agents/invalid/skills', '/api/topics?q[]=x']) {
     const response = await fetch(`${BASE}${url}`);
     assert.equal(response.status, 400, `${url}: ${await response.text()}`);
   }
+});
+
+test('server integration: retired verification endpoints are unavailable', async () => {
+  for (const [method, url] of [['GET', '/api/verifications'], ['GET', '/api/topics/1/verification'], ['POST', '/api/topics/1/verify']]) {
+    const response = await fetch(`${BASE}${url}`, { method });
+    assert.equal(response.status, 404, `${method} ${url}`);
+  }
+  const response = await fetch(`${BASE}/api/agents/config/test`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ agent: 'verifikator', prompt: 'retired test' }),
+  });
+  assert.equal(response.status, 400);
 });
 
 test('server integration: retired admin access endpoints do not accept or issue sessions', async () => {

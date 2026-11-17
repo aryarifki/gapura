@@ -106,13 +106,44 @@ test('illustration body keeps the provided headline, prose and image without inv
 });
 
 test('unknown layouts and the direct fluid fallback retain the same AI image and disclosure', () => {
-  const slide = makeSlide('editorial-fallback', 2);
-  assertIllustrationTree(engine.resolveLayout(slide, 2, 3));
-  assertIllustrationTree(engine.renderFluidLayout(slide, 2, 3));
+  for (const layout of ['editorial-fallback', 'verifikasi']) {
+    const slide = makeSlide(layout, 2);
+    Object.assign(slide.data, { status: 'verified', verdict: 'hoax', credibility: '99%' });
+    const tree = engine.resolveLayout(slide, 2, 3);
+    assertIllustrationTree(tree);
+    assert.deepEqual(tree, engine.renderFluidLayout(slide, 2, 3));
+    assert.doesNotMatch(texts(tree).join('\n'), /TERVERIFIKASI|HOAKS|Kredibilitas:/);
+  }
+});
+
+test('retired verifikasi layout ignores machine verdicts and uses the ordinary fluid fallback', () => {
+  const decisions = [{}, ...['status', 'verdict'].flatMap((field) =>
+    ['verified', 'mostly_verified', 'opinion', 'speculation', 'needs_context', 'misleading', 'hoax', 'unverified']
+      .map((value) => ({ [field]: value })))];
+  for (const decision of decisions) {
+    const slide = {
+      no: 2, layout: 'verifikasi',
+      teks: 'Penjelasan mekanisme kebijakan dari catatan redaksi.',
+      source: 'Catatan redaksi',
+      data: {
+        title: 'Bagaimana kebijakan bekerja',
+        claim: 'Klaim mesin lama', explanation: 'Penilaian mesin lama',
+        misconception: 'Miskonsepsi mesin lama', credibility: '99%',
+        sources: ['Rujukan mesin lama'], ...decision,
+      },
+    };
+    assert.doesNotThrow(() => validateSlide(slide));
+    const tree = engine.resolveLayout(slide, 2, 3);
+    assert.doesNotMatch(texts(tree).join('\n'), /TERVERIFIKASI|HOAKS|SPEKULASI|OPINI \/ PENDAPAT|PERLU KONTEKS|MENYESATKAN|Kredibilitas:|KLAIM YANG DIUJI|FAKTA & PENJELASAN|mesin lama/);
+    assert.deepEqual(tree, engine.resolveLayout({ ...slide, layout: 'editorial-fallback' }, 2, 3));
+    assert.deepEqual(tree, engine.renderFluidLayout(slide, 2, 3));
+    assert.ok(texts(tree).includes(slide.data.title));
+    assert.ok(texts(tree).includes(slide.teks));
+  }
 });
 
 test('AI assets keep their label when attached to an existing body layout', () => {
-  for (const layout of ['big-statement', 'stat-grid', 'chart-bar', 'chart-line', 'regulasi', 'timeline', 'comparison', 'cta-close', 'verifikasi']) {
+  for (const layout of ['big-statement', 'stat-grid', 'chart-bar', 'chart-line', 'regulasi', 'timeline', 'comparison', 'cta-close']) {
     assertIllustrationTree(engine.resolveLayout(makeSlide(layout, 2), 2, 3));
   }
 });
@@ -168,7 +199,7 @@ for (const image_data of [
   });
 }
 
-for (const [layout, no] of [['cover-focus', 1], ['illustration', 2], ['editorial-fallback', 2], ['big-statement', 2]]) {
+for (const [layout, no] of [['cover-focus', 1], ['illustration', 2], ['editorial-fallback', 2], ['verifikasi', 2], ['big-statement', 2]]) {
   test(`${layout} preview paints the AI raster and disclosure without network access`, async (t) => {
     t.mock.method(globalThis, 'fetch', async () => { throw new Error('External requests disabled'); });
     const slide = makeSlide(layout, no);
@@ -188,7 +219,7 @@ test('disk export produces real PNG and JPEG files retaining the image and visib
   t.mock.method(globalThis, 'fetch', async () => { throw new Error('External requests disabled'); });
   const output = fs.mkdtempSync('/tmp/opencode/gapura-r3-render-');
   t.after(() => fs.rmSync(output, { recursive: true, force: true }));
-  const slides = [makeSlide(), makeSlide('illustration', 2), makeSlide('editorial-fallback', 3)];
+  const slides = [makeSlide(), makeSlide('illustration', 2), makeSlide('editorial-fallback', 3), makeSlide('verifikasi', 4)];
   const results = await engine.renderCarouselToDisk(41, slides, output);
   assert.equal(results.length, slides.length);
   for (const [index, slide] of slides.entries()) {

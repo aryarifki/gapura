@@ -3,18 +3,31 @@
 > **Brand Identity:** `@gapuramedia` · **Portal Live:** [https://gapura.avenia.my.id](https://gapura.avenia.my.id)
 
 **Status terbaru: evaluasi desain/editorial.** Hasil produksi dan antrean lokal
-sudah kosong, intake/publisher otomatis dijeda, dan worker Studio background
-dinonaktifkan. Dashboard, render, n8n manual, sumber/config dan koneksi Instagram
+sudah kosong, timer intake/publisher tetap `disabled/inactive`, dan worker
+background tetap `GAPURA_DISABLE_WORKERS=true`. Dashboard, render, n8n manual,
+sumber/config dan koneksi Instagram
 tetap tersedia. [Blueprint baru](plans/07_EDITORIAL_REDESIGN_BLUEPRINT.md)
 mencakup delapan permintaan owner. Reset/jeda, kontrak offline
 [R1](plans/08_R1_EDITORIAL_CONTRACT.md), dan reader/snapshot materi
-[R2](plans/09_R2_ARTICLE_MATERIALS.md) tersedia. Penulisan produksi belum memakai
-kontrak berita baru dan Verifikator runtime belum dihapus.
+[R2](plans/09_R2_ARTICLE_MATERIALS.md) tersedia.
 [Keputusan owner terbaru](plans/10_ORIGINAL_AI_EDITORIAL.md): sumber hanya
 memasok topik/judul dan metadata; naskah serta ilustrasi dibuat agen AI secara
 orisinal. Blueprint/roadmap sudah diselaraskan. [R3](plans/11_R3_AI_ILLUSTRATIONS.md)
-menambahkan jalur ilustrasi lokal/disclosure; naskah lama belum diganti dan
-generasi gambar nyata tertahan kuota provider.
+menambahkan jalur ilustrasi lokal/disclosure; generasi raster nyata tetap
+tertahan **429/Free Tier quota 0**, tanpa permintaan ulang atau perpindahan
+provider gambar. [R4](plans/12_R4_SOURCES_DESKS.md) discovery enam desk dan
+proyeksi metadata Analis/cluster selesai. [R5](plans/13_R5_REMOVE_VERIFICATOR.md)
+melepas Verifikator dari runtime/API/UI/config dan gate produksi/review.
+Validasi unit/DB/API/browser/render serta DOM layanan aktif lulus. Web/render
+telah dimuat ulang; timer tetap dijeda dan tidak ada publish nyata.
+
+Enam agen aktif adalah **Scout, Analis, Copywriter, Designer, SEO, dan Studio**.
+Persetujuan manusia harus eksplisit atas revisi terkini, dicatat bersama hash
+konten dan diperiksa ulang dalam row lock sebelum publish. Tabel/kolom report
+historis dipertahankan, tanpa schema removal atau backfill. **R6 belum
+diterapkan:** naskah orisinal dua mode, input seluruh agen penulisan/desain tanpa
+body/summary penerbit, carousel-first enam slide, serta caption isi
+1.200–1.900 karakter.
 [Bukti reset dan backup](EDITORIAL_WORKSPACE_RESET_20261116.md).
 
 ---
@@ -27,13 +40,13 @@ generasi gambar nyata tertahan kuota provider.
 | **Micro-Service Render** | ✅ **Selesai & Aktif** | Render deterministik Satori + Sharp (1080×1350 px rasio 4:5, footprint memori ~65MB RAM). |
 | **Brand Identity Gapura Media** | ✅ **Selesai & Aktif** | Sesuai Brand Guidelines resmi: Navy `#102B45`, Deep Teal `#1F7E81`, Golden Amber `#D79344`. Seluruh aset lama `@homelessmedia` telah diganti penuh ke `@gapuramedia`. |
 | **Radar Topik & Auto-Produce** | ✅ **Selesai & Aktif** | Filter topik berita lolos/gugur, 1-click Auto Produce langsung menghasilkan draf dan slide PNG, serta membuka editor. |
-| **AI Creative Director (Designer)** | ✅ **Selesai & Aktif** | Agen AI otonom penentu arsitektur visual (jumlah slide bebas 3–8, layout dinamis non-kaku) bertenaga `gemini-3.5-flash-lite`. |
+| **AI Creative Director (Designer)** | ✅ **Jalur legacy tersedia** | Layout dinamis; single 1 slide atau carousel 3–9 menurut konfigurasi lama. Default enam slide carousel-first menunggu R6. |
 | **Regenerate AI On-The-Fly** | ✅ **Selesai & Aktif** | Tombol rancang ulang carousel via AI tanpa dialog konfirmasi yang memblokir, dengan invalidasi cache otomatis. |
 | **Slide Editor & Dynamic Layout** | ✅ **Selesai & Aktif** | Edit teks slide, ubah tata letak (cover, stat-grid, quote, dual-perspective, regulasi, takeaway), live preview, dan tombol simpan & render ulang seketika. |
 | **Studio Desain & Custom Draf** | ✅ **Selesai & Aktif** | Pembuatan postingan mandiri dari form Studio Desain dengan live preview dan export langsung ke Antrian Review. |
-| **Kustomisasi 7 Agen AI & Skills.md** | ✅ **Selesai & Aktif** | Pengaturan provider, endpoint, model, system prompt, dan berkas `skills.md` per agen. Pengujian sementara tidak menyimpan perubahan. |
+| **Kustomisasi 6 Agen & Skills.md** | ✅ **R5 selesai** | Scout, Analis, Copywriter, Designer, SEO dan Studio; config/tab/skill Verifikator dilepas. Gate teknis lulus. |
 | **Katalog Provider & Model** | ✅ **Selesai & Aktif** | Registry Gemini/OpenAI-compatible/Anthropic, katalog model live, fallback lintas provider, dan key terpisah dari konfigurasi publik. MASB dan Xingchi tercatat dengan status kegagalan chat yang teramati. |
-| **Manajemen Sumber Discovery Enam Desk** | ✅ **Selesai & Aktif** | Menambah, mengedit, melihat status, dan menonaktifkan feed RSS/sumber resmi; desk eksplisit per sumber atau inferensi judul untuk feed lintas isu. |
+| **Manajemen Sumber Discovery Enam Desk** | ✅ **R4 dan koreksi R5 selesai** | Desk eksplisit atau inferensi judul. Default kategori UI/API `umum`; kategori yang tidak dikirim saat PUT dipertahankan. Filter/badge desk dan dropdown enam desk tersedia; seed menambah enam query nasional pada 12 sumber Trending lama. |
 | **Bypass Cache CDN (Cloudflare)** | ✅ **Selesai & Aktif** | Middleware HTTP `no-store, no-cache`, query string bust unik `?t=...`, dan asset versioning `v=3.5.0` mencegah browser/CDN menyajikan file usang. |
 | **Audit Log & Activity Tracker** | ✅ **Selesai & Aktif** | Pencatatan setiap aksi editorial (create, edit_slide, approve, reject, regenerated_ai) ke tabel `audit_log` PostgreSQL. |
 | **Audit skor historis & constraint (P2)** | ✅ **Selesai** | Snapshot 16 November 2026, 18:23:55 WIB: 1.062 baris hingga ID 1062; mismatch/rentang invalid/NULL masing-masing 0. Mapping identitas, 0 `UPDATE`; `convalidated=true` sebelum dan sesudah validasi eksplisit. [Laporan audit](P2_SCORE_INTEGRITY_AUDIT.md). |
@@ -44,7 +57,10 @@ generasi gambar nyata tertahan kuota provider.
 | **R1 — Kontrak editorial** | ✅ **Offline tersedia** | Enam desk, normalizer headline, referensi materi unik, kontrak media/rights, carousel 3–9, caption/tag assembler; enam fixture sintetis berisi 36 paragraf/36 slide dan raster lokal. Belum dipasang ke produksi. [Kontrak R1](plans/08_R1_EDITORIAL_CONTRACT.md). |
 | **R2 — Materi artikel** | ✅ **Reader dan snapshot tersedia** | Body feed dipertahankan, HTML/JSON-LD diekstrak terpisah dari summary, tanggal/URL/status akses eksplisit, snapshot hash idempotent dan endpoint GET/enrich manual. Migrasi tambahan tanpa backfill; galeri tetap kosong. [Hasil R2](plans/09_R2_ARTICLE_MATERIALS.md). |
 | **R3 — Ilustrasi AI** | 🟡 **Kode/API/render tersedia; kuota tertahan** | Adapter Gemini text-only, versi aset immutable/idempotent, preview/editor/fallback/regenerasi dan label AI teruji. Migrasi additive terpasang, 20 tabel historis identik. Provider nyata 429 dengan Free Tier limit 0; belum ada gambar nyata atau draf produksi baru. [Hasil R3](plans/11_R3_AI_ILLUSTRATIONS.md). |
-| **R4–R8 — Konten orisinal** | 🟡 **Spesifikasi diperbarui** | Proyeksi judul saja bagi seluruh agen, clustering enam desk, naskah/angle orisinal serta penghapusan Verifikator belum diterapkan. Review owner dan aktivasi mengikuti gate yang sama. [Keputusan/acceptance](plans/10_ORIGINAL_AI_EDITORIAL.md). |
+| **R4 — Discovery enam desk** | ✅ **Selesai** | Proyeksi metadata Analis/cluster dan kurasi sumber enam desk terpasang. Tidak mengubah seluruh input penulisan legacy, tidak backfill desk/cluster topik arsip. [Hasil R4](plans/12_R4_SOURCES_DESKS.md). |
+| **R5 — Lepas Verifikator** | ✅ **Selesai; gate teknis lulus** | Tidak ada Verifikator pada API/UI/config, produksi, Studio, Telegram atau publisher aktif; report/confidence bukan gate. Review manusia, audit hash, invalidasi approval dan locked recheck tetap wajib. Tabel/kolom/enum arsip dipertahankan. [Laporan R5](plans/13_R5_REMOVE_VERIFICATOR.md). |
+| **R6 — Naskah/desain orisinal dua mode** | ⏳ **Belum diterapkan** | Penjelasan umum vs aktual dengan referensi, tanpa body/summary penerbit pada payload generasi; carousel-first default enam slide dan caption isi 1.200–1.900 karakter. Penghapusan verbatim/fallback lama masih diperlukan. |
+| **R7–R8 — Penerimaan dan aktivasi** | ⏳ **Belum dijalankan** | Sampel enam desk dengan raster AI nyata, review owner, batch 20 draf, shadow dan satu uji publish yang disetujui terpisah. Quota gambar 0 dan R6 belum selesai menghalangi acceptance ini. |
 | **Telegram Approval Bot** | ⏳ **Belum Dikonfigurasi** | Engine dan kode notifikasi Telegram telah siap, namun menunggu input token Bot Telegram (`TELEGRAM_BOT_TOKEN`) dan Chat ID admin dari owner agar bot dapat aktif di polling. |
 | **Kalender Konten Interaktif** | ⏳ **Belum Dikerjakan** | Jadwal tersimpan di PostgreSQL; kalender visual dengan drag-and-drop belum tersedia. |
 | **Multi-User Role** | ⏳ **Belum Dikerjakan** | Dashboard dibuka langsung tanpa login/token admin atas permintaan owner. Validasi Origin dan redaksi API key tetap aktif; akun pengguna dan pembagian role belum tersedia. |
@@ -144,6 +160,38 @@ yang dapat diulang. `VALIDATE CONSTRAINT topic_scores_component_total` berhasil;
 SQLSTATE `23514` dan tidak memperbaiki skor otomatis. Mapping, checksum
 sebelum–sesudah, lokasi backup privat, dan bukti pengujian ada di laporan audit.
 
+### 7. Koreksi Niche Enam Desk dan R5 (Selesai)
+
+Niche yang diminta owner mencakup politik, sosial, hukum, lingkungan, ekonomi
+nasional dan bursa saham. Sisa identitas finansial muncul karena **token tagline
+yang tersimpan masih memakai wording lama**, label kategori `umum` jatuh ke
+**Ekonomi**, dan form/API sumber baru memakai default `news_pasar`. Mengganti
+teks halaman saja belum menyelaraskan nilai yang dibaca kembali dari token.
+
+Koreksi menyelaraskan tagline persisten dan teks aktif dengan
+enam desk, memberi label umum/lintas isu pada `umum`, menetapkan default kategori
+UI/API `umum`, serta mempertahankan kategori lama bila PUT tidak mengirim field
+tersebut. Radar Topik mendapat filter dan badge enam desk, dropdown tren
+mencakup keenam desk, dan disclaimer hukum/bursa menjadi opsional sesuai konteks.
+Fallback renderer yang otomatis memakai boilerplate finansial/hukum turut
+dibersihkan. Ini tidak memindahkan atau mengklasifikasikan ulang arsip.
+
+R5 menghapus agen/fungsi/API/UI/config dan consumer report Verifikator.
+Produksi dan review berlangsung tanpa laporan mesin; approval tetap meminta
+konfirmasi manusia atas revisi terkini. Celah pada publisher legacy yang belum
+memeriksa audit hash juga diperbaiki agar persetujuan palsu/stale tidak cukup
+untuk publish. Pengujian terarah publisher/Telegram dilaporkan **63 lulus**;
+angka itu beririsan dengan suite akhir: **606 unit lulus/1 skip, 56 DB/API,
+10 akses, 1 Chromium dan 84 renderer lulus**. DOM layanan aktif menunjukkan
+tagline nasional, enam agen/filter desk, preview 1080×1350 dan 18 sumber Trending.
+Audit referensi aktif, sintaks/whitespace dan backup restore lulus; tidak ada
+consumer verifier aktif. Domain publik sempat 503/1033 sebelum tunnel pulih,
+kemudian HTTP 200. Bukti lengkap ada pada laporan R5.
+
+Tidak ada migrasi penghapusan schema, penulisan ulang report, backfill topik,
+permintaan gambar nyata tambahan, publish nyata, atau aktivasi timer. Rincian
+bukti dan batas penerimaan ada di [laporan R5](plans/13_R5_REMOVE_VERIFICATOR.md).
+
 ---
 
 ## 3. Fitur yang Belum Lengkap / Belum Dikerjakan (Roadmap Sisa)
@@ -154,20 +202,39 @@ Berikut adalah rincian fungsionalitas yang masih dalam antrean pengembangan untu
 
 Adapter berada di `services/publisher/meta.js`; worker terpisah di `services/publisher/meta-worker.js`. Page Gapura Media (`102321216076547`) dan Instagram `@gapuramedia` (`17841471438781611`) dapat dibaca menggunakan Page token yang tersimpan di `/etc/gapura/runtime.env` (mode `0600`). File `.env` proyek merupakan symlink ke berkas runtime tersebut.
 
-Mode operasional saat ini `META_PUBLISH_MODE=shadow`, `META_PLATFORMS=instagram,facebook`. Tidak ada posting live yang diuji. Dua draf historis berstatus `scheduled` belum mempunyai laporan verifikasi; empat target platformnya diblokir gate. Pengujian unit membuktikan jalur shadow dan publish menggunakan fixture, bukan publikasi nyata.
+Mode operasional tetap `META_PUBLISH_MODE=shadow`,
+`META_PLATFORMS=instagram,facebook`, dengan timer publisher `disabled/inactive`.
+Tidak ada posting live yang diuji dalam R5. Antrean lokal telah dikosongkan pada
+reset evaluasi; deskripsi draf scheduled historis bukan keadaan antrean saat
+ini. Pengujian publisher memakai fixture, bukan publikasi nyata.
 
-Target terikat ke `schedule_id` dan hash konten yang disetujui. Worker hanya mengklaim akun aktif dengan jadwal yang sudah jatuh tempo, satu percobaan per target per siklus. Konten dan gate diperiksa kembali dalam row lock tepat sebelum publish; timeout atau kegagalan pencatatan setelah percobaan remote menghasilkan `unknown`. Publikasi foto Facebook tunggal mengikuti aturan yang sama. Publisher legacy menyerahkan pekerjaan ketika `META_PLATFORMS` terpasang, dan tidak dipanggil dari pipeline intake.
+Target terikat ke `schedule_id` dan hash konten yang disetujui. Persetujuan
+otomatis harus berasal dari aksi manusia `approved_auto` pada `audit_log`
+(aktor web/Telegram yang diizinkan), berlaku bagi revisi terkini, dengan
+`content_hash` sama dengan isi draf dan target serta `needs_review=false`.
+Mengganti status database saja tidak memenuhi gate. Worker hanya mengklaim
+akun aktif dengan jadwal jatuh tempo, satu percobaan per target per siklus.
+Konten dan gate diperiksa kembali dalam row lock sebelum panggilan publish
+akhir; timeout atau kegagalan pencatatan setelah percobaan remote menghasilkan
+`unknown`. Publikasi foto Facebook tunggal mengikuti aturan yang sama. Publisher
+legacy juga memeriksa audit hash dan locked recheck, menyerahkan pekerjaan
+ketika `META_PLATFORMS` terpasang, dan tidak dipanggil dari pipeline intake.
 
 Langkah yang masih diperlukan:
 
-1. Berikan `instagram_content_publish` dan `pages_manage_posts` pada aplikasi/token Meta yang benar. Token saat ini tidak memiliki kedua izin tersebut; pemeriksaan `content_publishing_limit` menghasilkan code 10.
-2. Redaktur meninjau dan menyetujui draf yang mempunyai laporan `verified`, confidence 80–100, serta sumber dan skor Analis yang memenuhi gate. Jangan membuat laporan verifikasi palsu atau mengubah status untuk melewati review.
-3. Setelah izin dan draf uji tersedia, jalankan satu target yang disetujui; simpan `remote_id` dan permalink sebelum mengaktifkan siklus live rutin. Status `unknown`/`publishing` membutuhkan rekonsiliasi manual dan tidak boleh direset secara otomatis.
+1. Setelah R6 dan review sampel R7 selesai, periksa izin `instagram_content_publish` dan `pages_manage_posts` pada aplikasi/token Meta yang digunakan. Hasil pemeriksaan izin lama tidak menggantikan pemeriksaan saat aktivasi; tidak ada perubahan token atau izin dalam pekerjaan R5.
+2. Redaktur meninjau seluruh draf/aset dan mengonfirmasi review revisi terkini secara eksplisit. Sumber dan skor Analis harus memenuhi gate Meta. Audit approval manusia dan hash konten menggantikan report/confidence Verifikator; edit membatalkan approval dan memerlukan review baru.
+3. Setelah batch/shadow R8 serta izin dan draf uji siap, satu target memerlukan persetujuan uji publish terpisah. Simpan `remote_id` dan permalink; jangan mengaktifkan timer hanya karena tes lulus. Status `unknown`/`publishing` membutuhkan rekonsiliasi manual dan tidak boleh direset secara otomatis.
 4. Threads membutuhkan `META_THREADS_USER_ID` dan `META_THREADS_ACCESS_TOKEN` tersendiri. Platform ini tetap nonaktif sampai kredensial dan akses resminya terverifikasi.
 
-PNG tetap digunakan untuk preview dan ZIP; JPEG publikasi sudah dibuat untuk 184 slide historis. URL JPEG bertanda tangan terbukti dapat diakses dari domain publik (HTTP 200 `image/jpeg`), sedangkan URL tanpa signature ditolak 403.
+PNG tetap digunakan untuk preview dan ZIP; JPEG digunakan untuk publikasi dengan
+URL bertanda tangan. Bukti 184 slide serta respons HTTP media pada runbook lama
+merupakan snapshot historis sebelum reset, bukan klaim stok render sekarang.
 
 Konfigurasi operasional dan unit systemd tersedia di [README](../README.md) dan direktori [deploy](../deploy/).
+Ketentuan review pada [laporan R5](plans/13_R5_REMOVE_VERIFICATOR.md) menggantikan
+syarat report/confidence pada runbook historis. Tabel/kolom report arsip tidak
+dihapus atau di-backfill dan tidak menjadi sumber keputusan publisher.
 
 ### 2. Aktivasi Bot Notifikasi & Approval Telegram
 - **Kondisi Saat Ini:**

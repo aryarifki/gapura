@@ -1,7 +1,8 @@
 # Blueprint pembaruan editorial dan desain Gapura Media
 
-Versi 2.2 · 17 November 2026 · Status: R0–R4 selesai; R3 kode/aset lokal tersedia,
-generasi nyata tertahan kuota; R5–R8 mengikuti arah orisinal owner.
+Versi 2.4 · 17 November 2026 · Status: R0–R5 tersedia sesuai batas masing-masing;
+R3 generasi nyata tertahan quota 0; R5 gate teknis dan koreksi niche enam desk
+lulus; R6–R8 belum diterapkan/diterima.
 
 Dokumen ini menjadi acuan perubahan konten berikutnya. [Keputusan konten orisinal
 dan ilustrasi AI](10_ORIGINAL_AI_EDITORIAL.md) menggantikan kewajiban memakai
@@ -17,8 +18,21 @@ buktinya tercantum di
 dan disclosure, tanpa menyatakan naskah orisinal R4–R6 sudah terpasang.
 [R4](12_R4_SOURCES_DESKS.md) membatasi input Analis pada metadata discovery,
 menetapkan enam desk pada sumber/topik, menambahkan cluster judul lintas URL dan
-membersihkan sisa identitas niche finansial di konfigurasi/UI; R4 tidak
-menghapus Verifikator atau menulis ulang naskah.
+menyelaraskan identitas enam desk pada konfigurasi/UI. Koreksi lanjutan menutup
+tagline persisten yang masih lama, label `umum` yang jatuh ke Ekonomi dan default
+sumber `news_pasar`. [R5](13_R5_REMOVE_VERIFICATOR.md) melepas Verifikator dari
+runtime/API/UI/config serta gate produksi/review/publish, tanpa schema removal
+atau backfill. Unit penuh, DB/API, akses/browser, renderer dan DOM layanan aktif
+lulus. Enam agen aktif: **Scout, Analis, Copywriter, Designer,
+SEO, dan Studio**.
+
+**R6 belum diterapkan:** dua mode naskah orisinal, input generasi bebas
+body/summary penerbit, carousel-first default enam slide dan caption isi
+1.200–1.900 karakter. Target pada bagian 4–8 dan matriks penerimaan di bawah
+tidak berarti perilaku produksi tersebut sudah aktif. Kedua timer tetap
+`disabled/inactive`, worker `GAPURA_DISABLE_WORKERS=true`, dan tidak ada publish
+nyata. Quota raster AI 0 tetap menghalangi sampel nyata; tidak ada permintaan
+tambahan atau perpindahan provider gambar.
 
 ## 1. Keputusan produk dan tujuan
 
@@ -90,13 +104,20 @@ jumlah produksi dan verifikasi backup mengikuti laporan reset, bukan fixture.
 | 7 | Fokus diperluas | Seed, kategori UI, heuristik, prompt, dan hashtag tetap ekonomi/regulasi finansial | Satu taxonomy enam desk digunakan dari source sampai dashboard dan caption |
 | 8 | Hapus verifikasi seluruh fungsi | Verifier ada di produksi, Studio, API, UI, config, Telegram, dan kedua publisher | Lepaskan dependensi runtime secara terpadu, hapus fitur/config/polling, migrasi schema setelah consumer dibersihkan |
 
+Pekerjaan R5 mengoreksi rencana schema pada baris 8: consumer aktif dilepas,
+tetapi tabel, kolom dan enum historis tetap diarsipkan. Tidak ada schema removal,
+backfill report, atau migrasi penghapusan dalam lingkup ini.
+
 Sebelum reset terakhir tersedia 142 draf dan 269 slide. Snapshot audit saat
 pipeline baru dihentikan menunjukkan 32 carousel dari 140 draf berstatus draft,
 dan 12 draf memuat `image_url`. Jadi masalah single/gambar dominan terkonfirmasi,
 tetapi pernyataan bahwa seluruh draf selalu single tidak tepat untuk seluruh
 riwayat. Tidak ada klaim tingkat keberhasilan foto render dari hitungan URL saja.
 
-### Lokasi kode yang menjelaskan akar masalah
+### Lokasi kode yang menjelaskan akar masalah historis
+
+Pemetaan ini berasal dari audit awal; pernyataan consumer verifier di bawah
+bukan deskripsi runtime R5 saat ini.
 
 - [scout/sources.js](../../services/scout/sources.js): `normalizeFeedItem`
   memilih description sebelum isi lebih lengkap lalu memotong 1.000 karakter;
@@ -139,6 +160,14 @@ riwayat. Tidak ada klaim tingkat keberhasilan foto render dari hitungan URL saja
 | Ekonomi nasional / `ekonomi` | Fiskal, moneter, harga, pangan, industri, perdagangan | Data terbaru, konteks periode, mekanisme dampak pada masyarakat |
 | Bursa / `bursa` | BEI, emiten, keterbukaan informasi, sektor dan indeks | Peristiwa korporasi, data/satuan/periode, risiko; tanpa ajakan transaksi |
 
+Desk editorial terpisah dari kategori registry sumber. Default kategori sumber
+baru pada UI/API adalah `umum` (**Umum / Lintas Isu**); kategori itu tidak diberi
+label Ekonomi atau dipaksakan menjadi Bursa. PUT yang tidak mengirim kategori
+mempertahankan nilai sebelumnya; nilai kosong/invalid ditolak. Desk yang tidak
+dikirim juga dipertahankan, sedangkan desk `null`/kosong memilih inferensi.
+Radar Topik menampilkan filter dan badge enam desk, dan dropdown kategori tren
+mencakup keenam desk. Perubahan UI ini tidak melakukan backfill arsip topik.
+
 Prioritas isu mengikuti kepentingan publik, kebaruan/perubahan nyata, jangkauan
 dampak, kekuatan materi, serta kejelasan penjelasan yang bisa diberikan. Viralitas
 hanya sinyal discovery, bukan bukti atau alasan mengabaikan konteks.
@@ -179,6 +208,10 @@ konteks Indonesia, variasi aktor/kebijakan dan recency. Cluster laporan tentang
 peristiwa yang sama agar satu isu tidak memenuhi galeri dengan duplikat.
 
 ## 4. Alur produksi yang dituju
+
+Alur berikut adalah target R6. R5 menghapus Verifikator dan mempertahankan review
+manusia; R5 belum mengganti seluruh jalur penulisan/desain legacy dengan dua
+mode orisinal ini.
 
 ```mermaid
 flowchart TD
@@ -347,8 +380,9 @@ tetap tersedia di editor/audit. Atribusi natural seperti `Menurut ...` dan
 credit hak penggunaan tidak dilarang; itu berbeda dari blok diagnostik.
 
 Tidak memaksakan disclaimer finansial/hukum pada isu sosial/politik/lingkungan.
-Peringatan relevan untuk konten investasi dapat ditempatkan ringkas sesuai
-kebijakan editorial, bukan otomatis menyita hampir seluruh caption.
+Disclaimer bersifat opsional sesuai konteks hukum/bursa; fallback renderer tidak
+boleh memasukkannya otomatis untuk semua desk. Peringatan relevan untuk konten
+investasi dapat ditempatkan ringkas sesuai kebijakan editorial.
 
 Simpan **caption body** terpisah dari hashtags, reference internal, dan varian
 platform. Satu assembler menghasilkan teks akhir yang sama bagi preview,
@@ -363,43 +397,56 @@ diam-diam. Pembuatan thread berseri dapat menyusul jika memang diperlukan.
 
 ## 9. Penghapusan Verifikator secara menyeluruh
 
-Penghapusan bukan sekadar menyembunyikan menu atau memaksa semua status menjadi
-verified. Tahap implementasi ini menghapus consumer dan kontrak report/confidence
-dari jalur aktif, lalu membersihkan schema dan dokumentasi yang berlaku.
+**Status R5: selesai; validasi teknis dan koreksi niche enam desk lulus.**
+Consumer dan kontrak report/confidence dilepas dari jalur aktif. Enam agen yang
+tersisa adalah Scout, Analis, Copywriter, Designer, SEO, dan Studio. Tidak ada
+agen penilai kebenaran pengganti atau report palsu untuk melewati gate.
 
-| Permukaan | Pekerjaan |
+| Permukaan | Kontrak perubahan R5 |
 | --- | --- |
 | Runtime | Hapus `services/verificator/`, pemanggilan batch di pipeline, import dan export layanan |
 | Production | Hapus syarat report, query latest verification, recheck report setelah render, audit `verification_id` |
-| Shared policy | Ganti parameter report/confidence menjadi prasyarat sumber/materi, struktur draf dan review revisi; tidak ada label kebenaran otomatis |
+| Shared policy | Hapus parameter report/confidence; tetap validasi struktur/status draf dan persetujuan manusia atas revisi terkini, tanpa label kebenaran otomatis |
 | Studio | Hapus `verifying`, `verification_requested`, `verification_id`, report query, progress dan pesan terkait |
 | Web/API | Hapus halaman, badge, tombol verify, polling, endpoint `/api/verifications` dan `/api/topics/:id/verify|verification` |
 | Agen/settings | Hapus agen verifikator, config/skills/prompt/tab/validator; perbarui AGENT_KEYS dan daftar yang dipersyaratkan |
-| Publisher/Telegram | Hapus SQL report/status/confidence; tetap cek bukti persetujuan manusia, revision hash, jadwal/akun dan hasil ambigu |
+| Publisher/Telegram | Hapus SQL report/status/confidence; audit `approved_auto` manusia dan `content_hash` wajib cocok dengan revisi terkini, termasuk publisher legacy; Meta juga mencocokkan hash target, jadwal/akun, sumber dan skor Analis |
 | Desain/caption | Hapus slide layout verifikasi, helper/status text, prompt dan metadata publik yang menyebut hasil verifikasi |
-| Schema | Arsipkan report historis, lalu hapus `verification_reports`, `topics.verification_status`, `prompt_jobs.verification_id` dari schema aktif sesudah semua consumer dilepas |
-| Tests/docs/workflow | Ganti ekspektasi verifier-required dengan human-reviewed material, perbarui workflow canvas dan dokumen; migrasi historis tetap dicatat sebagai sejarah |
+| Schema | Pertahankan `verification_reports`, `topics.verification_status`, `prompt_jobs.verification_id` dan enum lama sebagai arsip; tidak ada DROP/ALTER penghapusan, rewrite atau backfill; tidak dibaca oleh gate runtime |
+| Tests/docs/workflow | Ganti ekspektasi verifier-required dengan review manusia dan bukti hash; perbarui dokumentasi aktif. Migrasi dan rencana/workflow historis tetap catatan sejarah, bukan instruksi menjalankan verifier |
 
-`agent_type` enum lama boleh mempertahankan nilai historis yang tidak digunakan
+`agent_type` enum lama mempertahankan nilai historis yang tidak digunakan
 untuk menjaga audit lama; tidak ada consumer yang boleh menjalankan agen itu.
-UI Studio memakai beberapa class CSS `.verif-*` generik: pindahkan styling
-bersama sebelum membuang CSS agar kartu Studio tidak ikut rusak.
+Styling Studio telah dipindahkan dari `.verif-*` menjadi `.studio-job-*`;
+route lama diarahkan ke Overview dan kartu/job Studio tetap berfungsi.
 
-Review publikasi yang tetap diperlukan: bahan tersedia, angka/kutipan sesuai
-materi, aset/renders lengkap, redaktur menyetujui current content/material hash,
-edit membatalkan approval, target akun dan jadwal cocok, lock mencegah duplikat,
-serta hasil `unknown` wajib rekonsiliasi. Jangan menyamakan hilangnya Verifikator
-dengan izin autopost konten yang belum direview manusia.
+Review publikasi yang tetap diperlukan: redaktur memeriksa bahan, angka/kutipan,
+aset/render dan caption, lalu mengonfirmasi review secara eksplisit atas revisi
+yang dilihat. Endpoint approval mencocokkan `expected_revision` dengan hash
+terkini dalam row lock, meminta `reviewed=true`, lalu menyimpan hash konten pada
+audit manusia. Edit membatalkan approval/jadwal; target akun dan jadwal harus
+cocok. Meta dan publisher legacy memeriksa kembali audit/hash dan gate dalam
+row lock sebelum panggilan publikasi akhir. Hasil `unknown`/`publishing` ambigu
+memerlukan rekonsiliasi manual. Tidak ada izin autopost dari hilangnya Verifikator.
+
+Hash saat ini mencakup slides (termasuk descriptor aset), caption, hashtags dan
+content format. Perluasan hash materi merupakan rencana lanjutan bila mode R6
+membutuhkannya, bukan klaim implementasi R5. Tabel report arsip tidak ikut query
+keputusan runtime. Bukti, koreksi niche dan total suite akhir dicatat di
+[laporan R5](13_R5_REMOVE_VERIFICATOR.md): 606 unit lulus/1 skip, 56 DB/API,
+10 akses, 1 Chromium dan 84 renderer; suite beririsan, tidak dijumlahkan.
 
 ## 10. Perubahan data dan kompatibilitas
 
 - Bahan mentah, sumber, audit historis dan skor tidak dipurge dalam reset desain.
   Berita lama tidak otomatis diproduksi kembali; gunakan batch fixture/berita baru
   yang dipilih untuk eksperimen.
-- Migrasi dilakukan bertahap: tambah material/media/revision fields → migrasi
-  consumer produksi → lepas verifier → arsip/drop schema aktif lama.
-- Revision hash diperluas mencakup materi dan aset terpilih selain caption/slides/
-  hashtags; perubahan yang memengaruhi output memerlukan review ulang.
+- Migrasi additive R1–R4 tetap historis; R5 melepas consumer verifier tanpa
+  schema removal. Tabel/kolom/enum dan report historis dipertahankan, tanpa
+  backfill atau penulisan ulang arsip.
+- Hash konten saat ini mencakup caption/slides/hashtags/content format dan
+  descriptor aset pada slides. Jika R6 menambah materi yang memengaruhi output,
+  kontrak revisi perlu mencakupnya. Perubahan output memerlukan review ulang.
 - Tidak ada reset ID sequence. ID konten baru tidak bertabrakan dengan riwayat
   lama yang masih tersimpan dalam audit/backup.
 - Kredensial Unified Instagram, Page token Facebook, Threads, provider, dan
@@ -420,9 +467,9 @@ Semua perubahan kode dimulai dari tes merah yang mereproduksi masalah.
 | R1 — Kontrak editorial | Taxonomy enam desk, material/media contract, kebijakan hak/credit minimum, aturan headline/caption/carousel, corpus fixture | **Tersedia offline**, lihat [kontrak R1](08_R1_EDITORIAL_CONTRACT.md); bukan acceptance foto berita live/visual owner |
 | R2 — Pengambilan materi | Feed body penuh yang tersedia, publisher article resolver, metadata, akses status, snapshot hash idempotent | **Tersedia**, lihat [hasil R2](09_R2_ARTICLE_MATERIALS.md); validasi fixture dan migrasi tanpa rewrite. Clustering peristiwa lintas URL menyusul bersama kurasi sumber R4 |
 | R3 — Ilustrasi AI end-to-end | Revisi kontrak visual R1, adapter gambar, asset ID lokal, provenance/disclosure, hydration | **Kode/API/render teruji**, lihat [R3](11_R3_AI_ILLUSTRATIONS.md); fixture raster/label bertahan pada normal/fallback/regenerasi. Generasi provider nyata **tertahan kuota 0**, belum acceptance visual live |
-| R4 — Sources dan Analis | Topik/judul dan metadata saja, cluster enam desk, angle/kepentingan publik | **Selesai**, lihat [R4](12_R4_SOURCES_DESKS.md); proyeksi allowlist sembilan field, 12 feed baru, 34 sumber berdesk (29 eksplisit/5 auto), migrasi/backup terverifikasi. Filter desk arsip baru terisi setelah ingest; body masih dipakai jalur Copywriter lama sampai R6 |
-| R5 — Lepas Verifikator | Seluruh runtime/API/UI/config/SQL consumer report hilang | Produksi/review tanpa report berhasil; publish tanpa review tetap ditolak |
-| R6 — Penulisan dan desain | Hapus verbatim/fallback salin sumber; angle/naskah/caption orisinal; mode umum/aktual | Sampel enam desk tidak mengarang fakta, 3–9 slide bermakna dan render lulus |
+| R4 — Sources dan Analis | Topik/judul dan metadata saja bagi Analis/cluster, kurasi enam desk | **Selesai**, lihat [R4](12_R4_SOURCES_DESKS.md); allowlist sembilan field, 12 feed baru, 34 sumber (29 desk eksplisit/5 auto), migrasi/backup terverifikasi. Tidak backfill desk/cluster topik lama; input naskah legacy belum diganti |
+| R5 — Lepas Verifikator | Seluruh runtime/API/UI/config dan consumer report dilepas; archive schema dipertahankan | **Selesai, gate teknis lulus**, lihat [R5](13_R5_REMOVE_VERIFICATOR.md). Produksi/review tanpa report; human audit hash dan locked recheck wajib; koreksi niche dan seed enam query nasional terpasang tanpa mengubah data lama |
+| R6 — Penulisan dan desain | Naskah orisinal dua mode (umum/aktual), tanpa body/summary penerbit; default enam slide carousel-first dan caption isi 1.200–1.900 | **Belum diterapkan**. Hapus verbatim/fallback salin sumber; sampel enam desk tidak mengarang fakta, 3–9 slide bermakna dan render lulus |
 | R7 — Review visual owner | Satu carousel per desk dengan ilustrasi AI dan variasi cover/layout | Owner menyetujui orisinalitas/style/isi/disclosure; perbaiki sebelum batch |
 | R8 — Aktivasi bertahap | 20 draf berurutan, shadow, satu publish uji yang disetujui | Tidak ada drop ilustrasi, foto sumber, single/boilerplate; approval/hash/idempotency lulus |
 
@@ -487,7 +534,9 @@ reset tidak otomatis memberikan mandat untuk menyalakan timer.
 ### Penghapusan verifier dan review
 
 - Pencarian referensi aktif `verifyTopic`, `verification_reports`, confidence dan
-  state `verifying` tidak menemukan consumer selain migrasi/audit historis.
+  state `verifying` tidak menemukan consumer runtime. Referensi schema/enum,
+  migrasi, fixture pengujian arsip dan audit historis boleh tetap ada tanpa
+  menjadi input keputusan produksi/review/publish.
 - Agen Verifikator tidak dapat dipilih/dipanggil lewat pipeline, Studio, API,
   Telegram, publisher, konfigurasi maupun prompt aktif. Produksi tidak membuat
   report atau panggilan LLM verifier; tidak ada polling/job background verifier.
@@ -496,6 +545,10 @@ reset tidak otomatis memberikan mandat untuk menyalakan timer.
 - Produksi materi cukup tanpa report berhasil. Human review tetap wajib;
   approve stale revision, edit saat publish, akun tidak cocok, jadwal belum tiba,
   retry duplikat, dan timeout ambigu tetap ditolak/ditangani.
+- Web approval membutuhkan `reviewed=true` dan `expected_revision` terkini;
+  audit manusia dengan hash tidak cocok/missing tidak boleh meloloskan Meta
+  ataupun publisher legacy. Keduanya melakukan recheck dalam row lock sebelum
+  panggilan publish akhir. R5 tidak menghapus tabel/kolom atau backfill report.
 - Koneksi Meta status connected tetap sama; tidak ada token/secret di respons/log.
 
 ### Batch penerimaan
@@ -548,8 +601,13 @@ owner; lihat [hasil R1](08_R1_EDITORIAL_CONTRACT.md) dan
 menyediakan adapter gambar, aset lokal/provenance/disclosure serta kontinuitas
 preview/render/fallback yang diuji dengan TDD. Kuota gambar provider nyata
 masih tertahan; kelulusan fixture tidak menggantikan sampel nyata R7.
-Pekerjaan kode berikutnya R4/R6 menghubungkan input topik/judul dan naskah
-orisinal, disertai penghapusan Verifikator R5. Naskah produksi lama belum diubah.
+R4 discovery/Analis/cluster dan R5 penghapusan Verifikator sudah selesai.
+Gate teknis R5 lulus; lanjut implementasikan **R6**:
+dua mode naskah orisinal, seluruh payload penulisan/desain tanpa body/summary
+penerbit, default enam slide carousel-first, caption isi 1.200–1.900 karakter,
+dan penghapusan verbatim/fallback salin sumber. Jalur naskah legacy saat ini
+belum memenuhi kontrak tersebut. Tidak ada permintaan gambar nyata tambahan
+atau provider swap; quota 0 tetap penghalang sampel R7.
 
 Otomatisasi produksi/publish tetap dijeda sampai owner menyetujui sampel. Lihat
 [laporan reset](../EDITORIAL_WORKSPACE_RESET_20261116.md) untuk backup, keadaan

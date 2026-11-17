@@ -12,9 +12,9 @@ test('accepts only analyzed topics above threshold with public source URL', () =
   assert.equal(validateStudioTopic(null).reason, 'topic_not_found');
 });
 
-test('normalizes a valid plan and always requires source verification', () => {
-  const result = normalizeStudioPlan({ title: 'Analisis inflasi', sections: ['Data BPS', 'Dampak'] , verification_requested: false });
-  assert.equal(result.verification_requested, true);
+test('normalizes a valid plan without any verification field', () => {
+  const result = normalizeStudioPlan({ title: 'Analisis inflasi', sections: ['Data BPS', 'Dampak'], verification_requested: false });
+  assert.equal(result.verification_requested, undefined);
 });
 
 test('rejects plans that omit useful sections or exceed the story limit', () => {
@@ -22,8 +22,8 @@ test('rejects plans that omit useful sections or exceed the story limit', () => 
   assert.throws(() => normalizeStudioPlan({ title: 'Judul', sections: Array(7).fill('poin') }), /2-6 poin/);
 });
 
-test('rejects hoax sources and invalid/failed scoring metadata', () => {
-  assert.equal(validateStudioTopic({ ...scoredTopic, verification_status: 'hoax_detected' }).reason, 'hoax_detected');
+test('rejects invalid or failed scoring metadata and ignores archival verification status', () => {
+  assert.equal(validateStudioTopic({ ...scoredTopic, verification_status: 'hoax_detected' }).valid, true);
   assert.equal(validateStudioTopic({ ...scoredTopic, score_verdict: 'rejected' }).reason, 'score_not_passed');
   assert.equal(validateStudioTopic({ ...scoredTopic, score_total: 101 }).reason, 'score_below_threshold');
 });

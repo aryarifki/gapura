@@ -11,21 +11,26 @@ function database(overrides = {}) {
     draft: { id: 7, topic_id: 3, status: 'draft', needs_review: false, telegram_dispatched_at: null,
       slides: [{ no: 1 }], title: '<i>Judul & berita</i>', primary_source: '<Sumber>', score_total: 90,
       reasoning: '<b>Alasan</b>', caption: 'Caption <data> & fakta', hashtags: ['#a&b'], ...overrides.draft },
-    reports: overrides.reports ?? [{ id: 3, status: 'verified', confidence: 92 }],
     slides: overrides.slides ?? [{ render_path: '/mock/slide_1.png', slide_no: 1 }],
-    schedules: [], audit: [], queries: [],
+    schedules: structuredClone(overrides.schedules ?? []), audit: [], queries: [],
   };
+  const queries = state.queries;
   let locked = false;
   const waiters = [];
   return { state, async connect() {
     let ownsLock = false; let snapshot;
     const unlock = () => { if (ownsLock) { ownsLock = false; locked = false; waiters.shift()?.(); } };
     return { release: unlock, async query(sql, values = []) {
-      const q = sql.replace(/\s+/g, ' ').trim(); state.queries.push(q);
+      const q = sql.replace(/\s+/g, ' ').trim(); queries.push(q);
       if (q === 'BEGIN') return { rows: [] };
-      if (q === 'ROLLBACK') { if (snapshot) Object.assign(state, snapshot); unlock(); return { rows: [] }; }
+      if (q === 'ROLLBACK') { if (snapshot) Object.assign(state, snapshot, { queries }); unlock(); return { rows: [] }; }
       if (q === 'COMMIT') { snapshot = undefined; unlock(); return { rows: [] }; }
       if (/SELECT .*FROM drafts/.test(q) && /WHERE d?\.?id = \$1/.test(q)) {
+        assert.match(q, /WHERE d\.id = \$1 FOR UPDATE OF d/);
+        if (/JOIN topics/.test(q)) {
+          assert.match(q, /FROM topic_scores WHERE topic_id = t\.id ORDER BY created_at DESC NULLS LAST, id DESC LIMIT 1/);
+          assert.match(q, /SKIP LOCKED/);
+        }
         if (/FOR UPDATE/.test(q)) {
           if (locked && /SKIP LOCKED/.test(q)) return { rows: [] };
           while (locked) await new Promise(resolve => waiters.push(resolve));
@@ -34,20 +39,25 @@ function database(overrides = {}) {
         }
         return { rows: values[0] === state.draft.id ? [{ ...state.draft }] : [] };
       }
-      if (/FROM verification_reports/.test(q)) {
-        assert.match(q, /ORDER BY created_at DESC NULLS LAST, id DESC LIMIT 1/);
-        return { rows: state.reports.length ? [state.reports.at(-1)] : [] };
-      }
       if (/FROM draft_slides/.test(q)) return { rows: state.slides };
-      if (/SELECT .*FROM scheduled_posts/.test(q)) return { rows: state.schedules.filter(s => ['pending', 'publishing', 'success'].includes(s.status)) };
+      if (/SELECT .*FROM scheduled_posts/.test(q)) {
+        assert.match(q, /status IN \('pending', 'publishing', 'success'\)/);
+        assert.match(q, /ig_creation_id IS NOT NULL OR ig_media_id IS NOT NULL OR published_at IS NOT NULL/);
+        return { rows: state.schedules.filter(s => ['pending', 'publishing', 'success'].includes(s.status) ||
+          s.ig_creation_id != null || s.ig_media_id != null || s.published_at != null) };
+      }
       if (/INSERT INTO scheduled_posts/.test(q)) {
+        assert.match(q, /VALUES \(\$1, 'auto', \$2, 'pending'\)/);
         const row = { id: state.schedules.length + 1, draft_id: values[0], mode: 'auto', status: 'pending' };
         state.schedules.push(row); return { rows: [row], rowCount: 1 };
       }
       if (/UPDATE drafts/.test(q)) {
         if (/telegram_dispatched_at = NOW\(\)/.test(q)) state.draft.telegram_dispatched_at = 'now';
         const status = /status = '(\w+)'/.exec(q)?.[1];
-        if (status && !/SET telegram_dispatched_at/.test(q)) state.draft.status = status;
+        if (status && !/SET telegram_dispatched_at/.test(q)) {
+          assert.match(q, /WHERE id = \$1 AND status = 'draft' RETURNING id/);
+          state.draft.status = status;
+        }
         return { rows: [{ id: state.draft.id }], rowCount: 1 };
       }
       if (/INSERT INTO audit_log/.test(q)) {
@@ -62,6 +72,7 @@ function database(overrides = {}) {
 
 function service(t, db, fetchImpl = async () => { throw new Error('Unexpected outbound request'); }, configOverrides = {}) {
   t.mock.method(globalThis, 'fetch', () => { throw new Error('Only injected HTTP is allowed in tests'); });
+  t.after(() => assert.doesNotMatch(db.state.queries.join('\n'), /verification_reports|verification_status|verification_confidence/i));
   const deps = { pool: db, fetchImpl, config: { ...config, ...configOverrides },
     fsImpl: { existsSync: () => true, readFileSync: () => Buffer.from('mock-png') }, logger: { log() {}, warn() {}, error() {} } };
   return createTelegramBot(deps);
@@ -84,18 +95,50 @@ test('approval fails closed without an authorized user AND matching delivery cha
   }
 });
 
-test('auto approval enforces shared editorial gate including latest verification', async t => {
-  for (const overrides of [
-    { draft: { needs_review: true } }, { draft: { needs_review: null } },
-    { reports: [{ status: 'verified', confidence: 79 }] },
-    { reports: [{ status: 'mostly_verified', confidence: 99 }] },
-    { reports: [{ status: 'verified', confidence: 'invalid' }] },
-    { reports: [{ status: 'verified', confidence: 99 }, { status: 'hoax_detected', confidence: 99 }] }, { reports: [] },
-  ]) {
-    const db = database(overrides); const result = await service(t, db).handleApprovalAction('approve_auto', 7, actor);
-    assert.equal(result.allowed, false, JSON.stringify(overrides));
+test('auto approval requires human review cleared explicitly and cannot acknowledge it from Telegram', async t => {
+  for (const needs_review of [true, null, undefined, 0, 'false']) {
+    const db = database({ draft: { needs_review } }); const result = await service(t, db).handleApprovalAction('approve_auto', 7, actor);
+    assert.equal(result.allowed, false, String(needs_review));
+    assert.equal(result.reason, 'human_review_required');
+    assert.equal(db.state.draft.needs_review, needs_review);
     assert.equal(db.state.draft.status, 'draft');
     assert.equal(db.state.schedules.length, 0);
+    assert.equal(db.state.audit.length, 0);
+  }
+});
+
+test('an explicit operator approval records the current revision without reading verification archives', async t => {
+  for (const action of ['approve_auto', 'approve_manual']) {
+    const db = database(); const oldHash = draftContentHash(db.state.draft);
+    db.state.draft.caption = 'Revisi caption oleh redaktur';
+    db.state.draft.hashtags = ['#revisi'];
+    const currentHash = draftContentHash(db.state.draft);
+    const result = await service(t, db).handleApprovalAction(action, 7, actor);
+    assert.equal(result.allowed, true);
+    assert.equal(result.status, action === 'approve_auto' ? 'scheduled' : 'approved');
+    assert.notEqual(oldHash, currentHash);
+    assert.equal(db.state.audit.length, 1);
+    assert.deepEqual(db.state.audit[0].slice(0, 3), [7, action === 'approve_auto' ? 'approved_auto' : 'approved_manual', 'telegram:42']);
+    assert.equal(JSON.parse(db.state.audit[0][3]).content_hash, currentHash);
+    assert.equal(db.state.schedules.length, action === 'approve_auto' ? 1 : 0);
+  }
+});
+
+test('active schedules and previous publication evidence require reconciliation before any new decision', async t => {
+  for (const action of ['approve_auto', 'approve_manual', 'reject']) {
+    for (const evidence of [
+      { status: 'pending' }, { status: 'publishing' }, { status: 'success' },
+      { status: 'failed', ig_creation_id: 'old-container' }, { status: 'failed', ig_media_id: 'old-media' },
+      { status: 'failed', published_at: 'earlier' },
+    ]) {
+      const db = database({ schedules: [{ id: 1, draft_id: 7, ...evidence }] });
+      const result = await service(t, db).handleApprovalAction(action, 7, actor);
+      assert.equal(result.allowed, false);
+      assert.equal(result.reason, 'existing_schedule_requires_review');
+      assert.equal(db.state.draft.status, 'draft');
+      assert.equal(db.state.schedules.length, 1);
+      assert.equal(db.state.audit.length, 0);
+    }
   }
 });
 
@@ -117,18 +160,28 @@ test('audit failure rolls back approval and scheduling together', async t => {
   assert.equal(db.state.schedules.length, 0);
 });
 
-test('manual approval preserves operator confirmation; hoaxes and terminal drafts cannot be approved', async t => {
-  const db = database({ draft: { needs_review: true }, reports: [{ status: 'needs_context', confidence: 60 }] });
+test('manual approval preserves the review flag and requires operator confirmation after posting', async t => {
+  const db = database({ draft: { needs_review: true } });
   const bot = service(t, db); const result = await bot.handleApprovalAction('approve_manual', 7, actor);
   assert.equal(result.status, 'approved');
   assert.equal(db.state.draft.status, 'approved');
+  assert.equal(db.state.draft.needs_review, true);
   assert.equal(db.state.schedules.length, 0);
+  assert.equal(db.state.audit[0][1], 'approved_manual');
+  assert.equal(JSON.parse(db.state.audit[0][3]).content_hash, draftContentHash(db.state.draft));
   assert.equal((await bot.handleApprovalAction('approve_manual', 7, actor)).allowed, false);
-  const hoax = database({ reports: [{ status: 'hoax_detected', confidence: 99 }] });
-  assert.equal((await service(t, hoax).handleApprovalAction('approve_manual', 7, actor)).allowed, false);
-  const published = database({ draft: { status: 'published' } });
-  assert.equal((await service(t, published).handleApprovalAction('reject', 7, actor)).allowed, false);
-  assert.equal(published.state.draft.status, 'published');
+});
+
+test('approved, scheduled and terminal drafts cannot receive another Telegram decision', async t => {
+  for (const status of ['approved', 'scheduled', 'rejected', 'published']) {
+    for (const action of ['approve_auto', 'approve_manual', 'reject']) {
+      const db = database({ draft: { status } });
+      assert.deepEqual(await service(t, db).handleApprovalAction(action, 7, actor), { allowed: false, reason: 'draft_not_reviewable' });
+      assert.equal(db.state.draft.status, status);
+      assert.equal(db.state.schedules.length, 0);
+      assert.equal(db.state.audit.length, 0);
+    }
+  }
 });
 
 test('callback parser rejects bot actors, foreign chats and malformed draft ids without DB or HTTP', async t => {
@@ -185,6 +238,11 @@ test('dispatch sends one photo via sendPhoto and writes dedup marker only after 
   const message = JSON.parse(calls[1].options.body);
   assert.ok(message.text.includes('&lt;i&gt;Judul &amp; berita&lt;/i&gt;'));
   assert.ok(message.text.includes('Caption &lt;data&gt; &amp; fakta'));
+  assert.ok(message.text.includes('<b>Skor Analis:</b> 90/100'));
+  assert.ok(message.text.includes('&lt;b&gt;Alasan&lt;/b&gt;'));
+  assert.doesNotMatch(message.text, /verifik|confidence|hoax/i);
+  assert.deepEqual(message.reply_markup.inline_keyboard.flat().map(button => button.callback_data),
+    ['approve_auto:7', 'approve_manual:7', 'reject:7']);
   assert.ok(calls.every(c => c.options.signal instanceof AbortSignal));
 });
 

@@ -77,16 +77,12 @@ function gateAllows(row) {
   if (row.draft_status !== 'scheduled' || row.human_approved !== true ||
       row.approved_content_hash !== draftContentHash(row) || row.content_hash !== row.approved_content_hash || row.analyst_passed !== true ||
       validatePublicSourceUrl(row.source_url)) return false;
-  const gate = validateDraftApproval({
+  return validateDraftApproval({
     status: 'draft',
     needsReview: row.needs_review !== false,
-    verification: row.verification,
     mode: 'auto',
     acknowledgeReview: false,
-  });
-  if (!gate.allowed) return false;
-  const confidence = Number(row.verification?.confidence);
-  return Number.isFinite(confidence) && confidence <= 100;
+  }).allowed;
 }
 
 const DRAFT_EVIDENCE = `
@@ -102,12 +98,7 @@ const DRAFT_EVIDENCE = `
       WHERE a.entity = 'draft' AND a.entity_id = d.id AND a.action = 'approved_auto'
         AND a.created_at >= d.updated_at
         AND (a.actor = 'web_admin' OR a.actor ~ '^telegram:[0-9]+$')
-      ORDER BY a.created_at DESC, a.id DESC LIMIT 1) AS approved_content_hash,
-    (SELECT row_to_json(v) FROM (
-      SELECT vr.status, vr.confidence FROM verification_reports vr
-      WHERE vr.topic_id = d.topic_id
-      ORDER BY vr.created_at DESC NULLS LAST, vr.id DESC LIMIT 1
-    ) v) AS verification`;
+      ORDER BY a.created_at DESC, a.id DESC LIMIT 1) AS approved_content_hash`;
 
 const DUE_SCHEDULE = `EXISTS (
   SELECT 1 FROM scheduled_posts sp WHERE sp.draft_id = d.id

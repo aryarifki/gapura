@@ -72,7 +72,7 @@ try {
   const fixtureUrl = `http://127.0.0.1:${fixture.address().port}`;
   env.RENDER_SERVICE_URL = fixtureUrl;
   const config = JSON.parse(await fs.readFile(path.join(root, 'config/agents.json'), 'utf8'));
-  for (const key of ['analis', 'copywriter', 'designer', 'seo', 'verifikator', 'studio']) Object.assign(config[key], { provider: 'custom', endpoint: fixtureUrl, api_key: 'fixture-key', model: 'fixture-model' });
+  for (const key of ['analis', 'copywriter', 'designer', 'seo', 'studio']) Object.assign(config[key], { provider: 'custom', endpoint: fixtureUrl, api_key: 'fixture-key', model: 'fixture-model' });
   config.designer.image_generation = { enabled: true, provider: 'gemini', model: 'fixture-image', rights_reference: 'https://ai.google.dev/gemini-api/terms', timeout_ms: 30000 };
   await fs.writeFile(env.AGENTS_CONFIG_PATH, JSON.stringify(config));
   await fs.writeFile(env.PROVIDERS_CONFIG_PATH, JSON.stringify({

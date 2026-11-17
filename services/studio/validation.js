@@ -2,7 +2,6 @@ import { validatePublicSourceUrl } from '../common/sources.js';
 
 export function validateStudioTopic(topic, threshold = 76) {
   if (!topic) return { valid: false, reason: 'topic_not_found' };
-  if (topic.verification_status === 'hoax_detected') return { valid: false, reason: 'hoax_detected' };
   if (topic.status !== 'scored') return { valid: false, reason: 'topic_not_scored' };
   if (topic.score_verdict !== undefined && topic.score_verdict !== 'passed') return { valid: false, reason: 'score_not_passed' };
   const score = Number(topic.score_total);
@@ -20,7 +19,7 @@ export function normalizeStudioPlan(plan) {
     throw new Error('Rencana perlu judul (maksimal 120 karakter) dan 2-6 poin isi.');
   }
   if (plan.format !== undefined && !['single', 'carousel'].includes(plan.format)) throw new Error('Format rencana harus single atau carousel.');
-  const result = { title, sections, verification_requested: true };
+  const result = { title, sections };
   for (const key of ['angle', 'goal', 'caption_tone', 'revision_instruction']) {
     if (plan[key] !== undefined) {
       if (typeof plan[key] !== 'string' || plan[key].length > 1000) throw new Error(`${key} harus teks maksimal 1000 karakter.`);

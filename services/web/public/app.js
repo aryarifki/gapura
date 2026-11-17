@@ -147,15 +147,6 @@ function collectAgentConfigPayload() {
         min_virality_score: parseInt(document.getElementById('seo-min-virality')?.value || '55'),
         system_prompt: document.getElementById('seo-prompt')?.value || '',
       },
-      verifikator: {
-        provider: document.getElementById('verifikator-provider')?.value || 'gemini',
-        endpoint: document.getElementById('verifikator-endpoint')?.value || 'https://generativelanguage.googleapis.com',
-        api_key: document.getElementById('verifikator-api-key')?.value || '',
-        model: document.getElementById('verifikator-model')?.value || 'gemini-3.8-flash',
-        min_confidence_publish: parseInt(document.getElementById('verifikator-min-confidence')?.value || '60'),
-        block_hoax: document.getElementById('verifikator-block-hoax')?.checked !== false,
-        system_prompt: document.getElementById('verifikator-prompt')?.value || '',
-      },
       studio: {
         ...window.gapuraAgentStudioConfig,
         provider: document.getElementById('studio-agent-provider')?.value || 'gemini',
@@ -170,7 +161,6 @@ function collectAgentConfigPayload() {
         copywriter: document.getElementById('copywriter-skills-md')?.value || '',
         designer: document.getElementById('designer-skills-md')?.value || '',
         seo: document.getElementById('seo-skills-md')?.value || '',
-        verifikator: document.getElementById('verifikator-skills-md')?.value || '',
         studio: document.getElementById('studio-agent-skills')?.value || '',
       },
   };
@@ -304,6 +294,8 @@ function setupNavigation() {
   });
   const topicSort = document.getElementById('topic-sort');
   if (topicSort) topicSort.onchange = () => { currentTopicOffset = 0; loadTopics(); };
+  const topicDesk = document.getElementById('topic-desk');
+  if (topicDesk) topicDesk.onchange = () => { currentTopicOffset = 0; loadTopics(); };
   const loadMore = document.getElementById('btn-topics-load-more');
   if (loadMore) loadMore.onclick = () => loadTopics({ append: true });
 
@@ -397,23 +389,12 @@ function setupNavigation() {
     };
   });
 
-  // Agen Verifikator Controls
-  bindClick('btn-refresh-verifications', loadVerifications);
-
   // Studio Prompt Controls
   bindClick('btn-studio-submit', submitStudioPrompt);
   bindClick('btn-studio-refresh', loadStudioJobs);
-  document.querySelectorAll('.btn-verif-filter').forEach((btn) => {
-    btn.onclick = () => {
-      document.querySelectorAll('.btn-verif-filter').forEach((b) => b.classList.remove('active'));
-      btn.classList.add('active');
-      activeVerifStatus = btn.dataset.status || '';
-      loadVerifications();
-    };
-  });
 
-  // Badge ringkas di sidebar (trending & verifikasi)
-  refreshSeoVerifBadges();
+  // Badge ringkas di sidebar (trending)
+  refreshSeoBadges();
 }
 
 // 2. Fetch Overview Stats
@@ -1322,6 +1303,8 @@ async function loadTopics() {
       q: document.getElementById('topic-search')?.value?.trim() || '',
     });
     if (currentTopicStatus) params.set('status', currentTopicStatus);
+    const desk = document.getElementById('topic-desk')?.value;
+    if (desk) params.set('desk', desk);
     const url = `/api/topics?${params.toString()}`;
     const res = await fetch(url);
     if (!res.ok) return;
@@ -1350,7 +1333,7 @@ async function loadTopics() {
       const card = document.createElement('div');
       card.className = 'radar-item-card';
       card.dataset.topicId = t.id;
-      card.title = 'Pilih topik untuk melihat sumber dan verifikasi, lalu produksi jika lolos.';
+      card.title = 'Pilih topik untuk melihat sumber dan skor, lalu produksi jika lolos.';
 
       card.innerHTML = `
         <div class="radar-score-col">
@@ -1362,8 +1345,8 @@ async function loadTopics() {
           <div class="radar-badges-row">
             <span class="radar-badge ${isLolos ? 'radar-badge-lolos' : 'radar-badge-gugur'}">${isLolos ? 'Skor analis lolos' : escapeHtml(t.status || 'Belum dinilai')}</span>
             <span class="radar-badge radar-badge-category">${escapeHtml(t.source_kind || 'feed')} · ${escapeHtml(t.primary_source || 'Sumber tidak diketahui')}</span>
+            <span class="radar-badge">${escapeHtml(({ politik: 'Politik', sosial: 'Sosial', hukum: 'Hukum', lingkungan: 'Lingkungan', ekonomi: 'Ekonomi Nasional', bursa: 'Bursa Saham' })[t.desk] || 'Desk belum ditetapkan')}</span>
             <span class="radar-source-meta">· ${formatTimeAgo(t.created_at)}</span>
-            <span class="radar-source-meta">${escapeHtml(t.verification_status || 'Belum diverifikasi')}</span>
             <span class="radar-source-meta">${t.score_total == null ? 'Skor belum tersedia' : `Skor ${Number(t.score_total)}/100`}</span>
             <span class="radar-action-hint" style="color: var(--lime); font-size: 11px; font-weight: 700; margin-left: auto; display: flex; align-items: center; gap: 4px;">
               <span>🔗</span> <span>Buka detail</span>
@@ -1371,17 +1354,12 @@ async function loadTopics() {
           </div>
           <div class="radar-card-actions">
             ${t.url ? `<a class="btn btn-outline" href="${escapeHtml(t.url)}" target="_blank" rel="noopener noreferrer">Buka sumber primer</a>` : ''}
-            ${t.status === 'scored' || t.status === 'produced' ? `<button class="btn btn-outline" data-verify-topic="${t.id}">Verifikasi</button>` : ''}
             ${isLolos ? `<button class="btn btn-lime" data-produce-topic="${t.id}">Buat draf review</button>` : ''}
           </div>
           <div data-topic-illustration="${escapeHtml(t.id)}" style="margin-top: 12px;"></div>
         </div>
       `;
 
-      card.querySelector('[data-verify-topic]')?.addEventListener('click', (event) => {
-        event.stopPropagation();
-        verifyTopicNow(t.id, event.currentTarget);
-      });
       card.querySelector('[data-produce-topic]')?.addEventListener('click', (event) => {
         event.stopPropagation();
         autoProduceAndReviewTopic(t.id, t.title);
@@ -1581,75 +1559,21 @@ function copyWorkflowJson() {
 // 9. Design Studio, AI Carousel Generator & Realtime Canvas Preview (User Request)
 // ==============================================================================
 function getDefaultStudioSlides() {
+  // A preview of the six desks, not a report about a current event.
   return [
-    {
-      no: 1,
-      layout: 'cover-editorial',
-      teks: 'Contoh halaman pembuka: jelaskan isu yang benar-benar diketahui dari topik discovery dan batas klaimnya.',
-      data: {
-        title: 'Judul Utama',
-        subtitle: 'Subjudul konteks',
-        category: 'ENAM DESK EDITORIAL',
-        value: 'Konteks',
-      },
-      source: 'Gapura Media',
-    },
-    {
-      no: 2,
-      layout: 'stat-grid',
-      teks: 'Ringkasan indikator hanya jika angka benar-benar tersedia dan dapat diatribusikan.',
-      data: {
-        title: 'Ringkasan Data',
-        category: 'DATA & KONTEKS',
-        items: [
-          { label: 'Indikator 1', value: '—' },
-          { label: 'Indikator 2', value: '—' },
-          { label: 'Indikator 3', value: '—' },
-          { label: 'Indikator 4', value: '—' },
-        ],
-      },
-      source: 'Sumber primer',
-    },
-    {
-      no: 3,
-      layout: 'comparison',
-      teks: 'Perbandingan hanya untuk konteks yang didukung bahan yang tersedia.',
-      data: {
-        category: 'KONTEKS KEBIJAKAN',
-        left: {
-          title: 'KONTEKS A',
-          text: 'Isi dengan perbandingan yang didukung bahan, bukan dugaan.',
-        },
-        right: {
-          title: 'KONTEKS B',
-          text: 'Sebutkan sumber dan batas klaim bila data belum lengkap.',
-        },
-      },
-      source: 'Gapura Media',
-    },
-    {
-      no: 4,
-      layout: 'regulatory-focus',
-      teks: 'Dokumen dan aturan hanya disebut jika benar-benar diperiksa.',
-      data: {
-        title: 'Dokumen & Aturan',
-        subtitle: 'Sebutkan dasar hukum yang tersedia',
-        callout: 'Jangan mengarang nomor, pasal, atau kutipan. Cantumkan hanya dokumen yang telah diperiksa.',
-        category: 'HUKUM & KEBIJAKAN',
-      },
-      source: 'Sumber primer',
-    },
-    {
-      no: 5,
-      layout: 'cta-close',
-      teks: 'Apa konteks yang perlu diketahui publik?',
-      data: {
-        cta: 'Simpan & ikuti @gapuramedia untuk konteks isu publik.',
-        disclaimer: 'Informasi disajikan untuk kepentingan publik; bukan rekomendasi investasi atau nasihat hukum.',
-      },
-      source: '@gapuramedia',
-    },
-  ];
+    ['POLITIK', 'Siapa mengawasi kebijakan publik?', 'Kebijakan publik dapat ditelaah melalui kewenangan pembuat keputusan, proses pembahasan, dan ruang pengawasan warga.'],
+    ['SOSIAL', 'Layanan publik menjangkau siapa?', 'Akses pendidikan, kesehatan, dan perlindungan sosial berkaitan dengan kebutuhan warga serta hambatan yang mereka hadapi.'],
+    ['HUKUM', 'Apa arti tahapan perkara?', 'Dugaan, dakwaan, dan putusan memiliki kedudukan berbeda. Tahap proses dan posisi para pihak perlu dijelaskan dengan cermat.'],
+    ['LINGKUNGAN', 'Membaca risiko di sekitar kita', 'Risiko lingkungan dapat dipahami melalui paparan, kerentanan masyarakat, dan kebijakan pencegahan yang relevan.'],
+    ['EKONOMI NASIONAL', 'Dari kebijakan ke kebutuhan sehari-hari', 'Harga pangan, pekerjaan, dan layanan negara menghubungkan kebijakan ekonomi dengan kehidupan masyarakat.'],
+    ['BURSA SAHAM', 'Membaca keterbukaan informasi emiten', 'Laporan perusahaan dan pengumuman bursa memberi konteks untuk memahami peristiwa korporasi, periode data, dan risikonya.'],
+  ].map(([category, title, teks], index) => ({
+    no: index + 1,
+    layout: index === 0 ? 'cover-editorial' : 'big-statement',
+    teks,
+    data: { category, title },
+    source: 'Contoh redaksi · Gapura Media',
+  }));
 }
 
 function populateStudioTopics() {
@@ -1851,7 +1775,7 @@ async function loadDesignStudio() {
       document.getElementById('studio-brand-name').value = brand.name || 'Gapura Media';
     }
     if (document.getElementById('studio-brand-tagline')) {
-      document.getElementById('studio-brand-tagline').value = brand.tagline || 'Data, Hukum & Ekonomi Bursa';
+      document.getElementById('studio-brand-tagline').value = brand.tagline || 'Politik, Sosial, Hukum, Lingkungan & Ekonomi Nasional termasuk Bursa Saham';
     }
 
     // Palette inputs
@@ -2008,7 +1932,7 @@ async function renderStudioPreview() {
   const currentSlide = studioSlides[activeStudioSlideIndex] || studioSlides[0] || {};
   const brandName = document.getElementById('studio-brand-name')?.value || 'Gapura Media';
   const brandHandle = document.getElementById('studio-brand-handle')?.value || '@gapuramedia';
-  const brandTagline = document.getElementById('studio-brand-tagline')?.value || 'Data, Hukum & Ekonomi Bursa';
+  const brandTagline = document.getElementById('studio-brand-tagline')?.value || 'Politik, Sosial, Hukum, Lingkungan & Ekonomi Nasional termasuk Bursa Saham';
 
   const tokensOverride = {
     brand: {
@@ -2078,7 +2002,7 @@ async function saveDesignStudio() {
 
   const brandName = document.getElementById('studio-brand-name')?.value || 'Gapura Media';
   const brandHandle = document.getElementById('studio-brand-handle')?.value || '@gapuramedia';
-  const brandTagline = document.getElementById('studio-brand-tagline')?.value || 'Data, Hukum & Ekonomi Bursa';
+  const brandTagline = document.getElementById('studio-brand-tagline')?.value || 'Politik, Sosial, Hukum, Lingkungan & Ekonomi Nasional termasuk Bursa Saham';
 
   const payload = {
     brand: {
@@ -2199,7 +2123,7 @@ async function loadSources() {
       jdih_hukum: { label: 'Hukum & MK', color: 'var(--accent)' },
       bi_moneter: { label: 'BI Moneter', color: '#38bdf8' },
       data_bps: { label: 'Data BPS', color: '#a855f7' },
-      umum: { label: 'Ekonomi Umum', color: 'var(--muted)' },
+      umum: { label: 'Umum / Lintas Isu', color: 'var(--muted)' },
     };
     const deskLabels = {
       politik: 'Politik', sosial: 'Sosial', hukum: 'Hukum',
@@ -2219,9 +2143,9 @@ async function loadSources() {
           </td>
           <td style="padding: 14px 16px;">
             <span style="display: inline-block; padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 700; background: rgba(255,255,255,0.06); color: ${catInfo.color}; border: 1px solid ${catInfo.color}33;">
-              ${catInfo.label}
+              ${escapeHtml(deskLabels[src.desk] || catInfo.label)}
             </span>
-            ${src.desk ? `<div style="font-size: 11px; color: var(--muted); margin-top: 4px;">Desk: ${escapeHtml(deskLabels[src.desk] || src.desk)}</div>` : ''}
+            <div style="font-size: 11px; color: var(--muted); margin-top: 4px;">${src.desk ? `Registry: ${escapeHtml(catInfo.label)}` : 'Desk otomatis dari judul'}</div>
           </td>
           <td style="padding: 14px 16px; max-width: 300px;">
             <a href="${escapeHtml(src.url_or_query)}" target="_blank" rel="noopener" style="color: var(--accent); text-decoration: none; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(src.url_or_query)}">
@@ -2288,7 +2212,7 @@ window.openAddSourceModal = function () {
   document.getElementById('source-input-id').value = '';
   document.getElementById('source-input-name').value = '';
   document.getElementById('source-input-type').value = 'rss';
-  document.getElementById('source-input-category').value = 'news_pasar';
+  document.getElementById('source-input-category').value = 'umum';
   document.getElementById('source-input-desk').value = '';
   document.getElementById('source-input-url').value = '';
   document.getElementById('source-input-interval').value = '30';
@@ -2321,7 +2245,7 @@ window.openEditSourceModal = function (id) {
   document.getElementById('source-input-id').value = src.id;
   document.getElementById('source-input-name').value = src.name || '';
   document.getElementById('source-input-type').value = src.type || 'rss';
-  document.getElementById('source-input-category').value = src.category || 'news_pasar';
+  document.getElementById('source-input-category').value = src.category || 'umum';
   document.getElementById('source-input-desk').value = src.desk || '';
   document.getElementById('source-input-url').value = src.url_or_query || '';
   document.getElementById('source-input-interval').value = src.poll_interval_mins || 30;
@@ -2542,8 +2466,6 @@ function renderRoute(route) {
   } else if (viewId === 'view-trends') {
     loadTrends();
     loadTrendSources();
-  } else if (viewId === 'view-verifications') {
-    loadVerifications();
   } else if (viewId === 'view-studio-prompt') {
     loadStudioSourceTopics();
     loadStudioJobs();
@@ -2699,17 +2621,6 @@ async function loadAgentsConfigUI() {
     if (document.getElementById('seo-prompt')) document.getElementById('seo-prompt').value = seo.system_prompt ?? '';
     if (document.getElementById('seo-skills-md')) document.getElementById('seo-skills-md').value = (config.skills && config.skills.seo) || '';
 
-    // Verifikator (Fact-Check)
-    const verif = config.verifikator || {};
-    if (document.getElementById('verifikator-provider')) document.getElementById('verifikator-provider').value = verif.provider || 'gemini';
-    if (document.getElementById('verifikator-model')) document.getElementById('verifikator-model').value = verif.model || 'gemini-3.5-flash-lite';
-    if (document.getElementById('verifikator-endpoint')) document.getElementById('verifikator-endpoint').value = verif.endpoint || 'https://generativelanguage.googleapis.com';
-    if (document.getElementById('verifikator-api-key')) document.getElementById('verifikator-api-key').placeholder = verif.api_key_configured ? 'Key tersimpan; kosongkan untuk mempertahankan atau isi untuk mengganti' : 'Belum ada key tersimpan; dapat memakai environment';
-    if (document.getElementById('verifikator-min-confidence')) document.getElementById('verifikator-min-confidence').value = verif.min_confidence_publish ?? 60;
-    if (document.getElementById('verifikator-block-hoax')) document.getElementById('verifikator-block-hoax').checked = verif.block_hoax !== false;
-    if (document.getElementById('verifikator-prompt')) document.getElementById('verifikator-prompt').value = verif.system_prompt ?? '';
-    if (document.getElementById('verifikator-skills-md')) document.getElementById('verifikator-skills-md').value = (config.skills && config.skills.verifikator) || '';
-
     await loadProviderCatalogUI();
   } catch (err) {
     console.error('Error loadAgentsConfigUI:', err);
@@ -2723,8 +2634,8 @@ let providerCatalogCache = null;
 let providerCatalogBound = false;
 let editingProviderId = '';
 
-const AGENT_PROVIDER_SELECTS = ['analis-provider', 'copywriter-provider', 'designer-provider', 'seo-provider', 'verifikator-provider', 'studio-agent-provider'];
-const AGENT_MODEL_INPUTS = ['analis-model', 'copywriter-model', 'designer-model', 'seo-model', 'verifikator-model', 'studio-agent-model'];
+const AGENT_PROVIDER_SELECTS = ['analis-provider', 'copywriter-provider', 'designer-provider', 'seo-provider', 'studio-agent-provider'];
+const AGENT_MODEL_INPUTS = ['analis-model', 'copywriter-model', 'designer-model', 'seo-model', 'studio-agent-model'];
 
 function providerById(id) {
   return providerCatalogCache?.providers?.find((provider) => provider.id === id);
@@ -3083,12 +2994,9 @@ const TREND_SOURCE_KIND_META = {
   news_query: { label: 'Query Berita', cls: 'news' },
 };
 
-async function refreshSeoVerifBadges() {
+async function refreshSeoBadges() {
   try {
-    const [tRes, vRes] = await Promise.all([
-      fetch('/api/seo/trends?limit=100').catch(() => null),
-      fetch('/api/verifications?limit=100').catch(() => null),
-    ]);
+    const tRes = await fetch('/api/seo/trends?limit=100').catch(() => null);
     if (tRes && tRes.ok) {
       const trends = await tRes.json();
       const badge = document.getElementById('sidebar-trends-badge');
@@ -3098,17 +3006,8 @@ async function refreshSeoVerifBadges() {
         badge.style.display = count > 0 ? 'inline-block' : 'none';
       }
     }
-    if (vRes && vRes.ok) {
-      const reports = await vRes.json();
-      const badge = document.getElementById('sidebar-verif-badge');
-      if (badge) {
-        const count = Array.isArray(reports) ? reports.length : 0;
-        badge.textContent = count;
-        badge.style.display = count > 0 ? 'inline-block' : 'none';
-      }
-    }
   } catch (err) {
-    console.warn('Gagal memperbarui badge SEO/Verifikator:', err);
+    console.warn('Gagal memperbarui badge SEO:', err);
   }
 }
 
@@ -3236,7 +3135,7 @@ async function promoteTrend(trendId, btn) {
     showToast(data.is_existing ? `Trend ini sudah menjadi topik #${data.topic_id}.` : `✅ Trend dipromosikan menjadi topik #${data.topic_id}.`);
     btn.innerHTML = '✓ Sudah Dipromosikan';
     await loadTrends();
-    refreshSeoVerifBadges();
+    refreshSeoBadges();
   } catch (err) {
     console.error('Error promoteTrend:', err);
     reportClientLog('error', 'promoteTrend', err, { trendId });
@@ -3259,7 +3158,7 @@ async function runSeoScanNow() {
     const errCount = data.summary?.errors?.length || 0;
     showToast(data.message + (errCount ? ` (${errCount} sumber gagal, lihat tabel sumber)` : ''));
     await Promise.all([loadTrends(), loadTrendSources()]);
-    refreshSeoVerifBadges();
+    refreshSeoBadges();
   } catch (err) {
     console.error('Error runSeoScanNow:', err);
     reportClientLog('error', 'runSeoScanNow', err);
@@ -3457,156 +3356,6 @@ async function deleteTrendSource(sourceId) {
   }
 }
 
-// ==============================================================================
-// 14. Agen Verifikator — Laporan Verifikasi
-// ==============================================================================
-let activeVerifStatus = '';
-
-const VERIF_STATUS_META = {
-  verified: { label: 'TERVERIFIKASI', cls: 'verified' },
-  mostly_verified: { label: 'SEBAGIAN BESAR TERVERIFIKASI', cls: 'mostly' },
-  needs_context: { label: 'PERLU KONTEKS', cls: 'context' },
-  unverified: { label: 'BELUM TERVERIFIKASI', cls: 'unverified' },
-  opinion: { label: 'OPINI', cls: 'opinion' },
-  speculation: { label: 'SPEKULASI', cls: 'speculation' },
-  misleading: { label: 'MENYESATKAN', cls: 'misleading' },
-  hoax_detected: { label: 'HOAKS TERDETEKSI', cls: 'hoax' },
-};
-
-async function loadVerifications() {
-  const container = document.getElementById('verification-list-container');
-  if (!container) return;
-  container.innerHTML = '<div class="empty-state-mini">Memuat laporan verifikasi…</div>';
-
-  try {
-    const params = new URLSearchParams({ limit: '60' });
-    if (activeVerifStatus) params.set('status', activeVerifStatus);
-    const res = await fetch(`/api/verifications?${params.toString()}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const rows = await res.json();
-    renderVerificationList(Array.isArray(rows) ? rows : []);
-  } catch (err) {
-    console.error('Error loadVerifications:', err);
-    reportClientLog('error', 'loadVerifications', err);
-    container.innerHTML = `<div class="empty-state-mini" style="color: var(--down);">Gagal memuat laporan: ${escapeHtml(err.message)}</div>`;
-  }
-}
-
-function renderVerificationList(rows) {
-  const container = document.getElementById('verification-list-container');
-  const meta = document.getElementById('verif-list-meta');
-  if (!container) return;
-
-  if (meta) meta.textContent = `${rows.length} laporan`;
-
-  const totalEl = document.getElementById('verif-stat-total');
-  const verifiedEl = document.getElementById('verif-stat-verified');
-  const contextEl = document.getElementById('verif-stat-context');
-  const hoaxEl = document.getElementById('verif-stat-hoax');
-  if (totalEl) totalEl.textContent = rows.length;
-  if (verifiedEl) verifiedEl.textContent = rows.filter((r) => ['verified', 'mostly_verified'].includes(r.status)).length;
-  if (contextEl) contextEl.textContent = rows.filter((r) => ['needs_context', 'opinion', 'speculation', 'unverified'].includes(r.status)).length;
-  if (hoaxEl) hoaxEl.textContent = rows.filter((r) => ['misleading', 'hoax_detected'].includes(r.status)).length;
-
-  if (rows.length === 0) {
-    container.innerHTML = '<div class="empty-state-mini">Belum ada laporan verifikasi. Buka topik di <strong>Radar Topik</strong> lalu jalankan verifikasi.</div>';
-    return;
-  }
-
-  container.innerHTML = rows.map((row) => {
-    const metaStatus = VERIF_STATUS_META[row.status] || { label: String(row.status || '').toUpperCase(), cls: 'unverified' };
-    const confidence = Number(row.confidence) || 0;
-    const claims = Array.isArray(row.claims) ? row.claims : [];
-    const misconceptions = Array.isArray(row.misconceptions) ? row.misconceptions : [];
-    const redFlags = Array.isArray(row.red_flags) ? row.red_flags : [];
-    const sources = row.corroboration && Array.isArray(row.corroboration.sources)
-      ? row.corroboration.sources
-      : (row.corroboration && Array.isArray(row.corroboration.items) ? row.corroboration.items : []);
-    const tie = row.corroboration && row.corroboration.tier_label ? row.corroboration.tier_label : null;
-
-    const claimsHtml = claims.length
-      ? `<div class="verif-subblock"><span class="verif-subblock-title">Klaim yang diuji</span><ul class="verif-list">${claims.map((c) => {
-          const assess = c.assessment || c.status || 'unclear';
-          const icon = assess === 'supported' ? '✅' : assess === 'unsupported' ? '❌' : '❔';
-          return `<li>${icon} <strong>${escapeHtml(c.claim || '')}</strong>${c.note ? ` — ${escapeHtml(c.note)}` : ''}</li>`;
-        }).join('')}</ul></div>`
-      : '';
-
-    const misconceptionsHtml = misconceptions.length
-      ? `<div class="verif-subblock"><span class="verif-subblock-title">Miskonsepsi yang perlu diluruskan</span><ul class="verif-list">${misconceptions.map((m) => `<li>${escapeHtml(typeof m === 'string' ? m : JSON.stringify(m))}</li>`).join('')}</ul></div>`
-      : '';
-
-    const redFlagsHtml = redFlags.length
-      ? `<div class="verif-subblock"><span class="verif-subblock-title">Sinyal risiko</span><div class="verif-flag-row">${redFlags.map((f) => `<span class="verif-flag">${escapeHtml(typeof f === 'string' ? f : JSON.stringify(f))}</span>`).join('')}</div></div>`
-      : '';
-
-    const sourcesHtml = sources.length
-      ? `<div class="verif-subblock"><span class="verif-subblock-title">Rujukan korroborasi (${sources.length})</span><ul class="verif-list">${sources.slice(0, 6).map((s) => {
-          const name = s.domain || s.title || s.source || 'rujukan';
-          return s.url
-            ? `<li><a href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(name)}</a></li>`
-            : `<li>${escapeHtml(name)}</li>`;
-        }).join('')}</ul></div>`
-      : '';
-
-    return `
-      <div class="verif-card">
-        <div class="verif-head">
-          <span class="verif-badge ${metaStatus.cls}">${escapeHtml(metaStatus.label)}</span>
-          <span class="verif-confidence">Keyakinan ${confidence}%</span>
-          ${tie ? `<span class="verif-tier">${escapeHtml(tie)}</span>` : ''}
-          <span class="verif-time">${formatTimeAgo(row.created_at)}</span>
-        </div>
-        <div class="verif-title">${escapeHtml(row.title || `Topik #${row.topic_id}`)}</div>
-        ${row.summary ? `<p class="verif-summary">${escapeHtml(row.summary)}</p>` : ''}
-        <details class="verif-details">
-          <summary>Lihat penjelasan mendalam & bukti</summary>
-          ${row.deep_explanation ? `<p class="verif-deep">${escapeHtml(row.deep_explanation)}</p>` : ''}
-          ${claimsHtml}
-          ${misconceptionsHtml}
-          ${redFlagsHtml}
-          ${sourcesHtml}
-          ${row.reader_takeaway ? `<div class="verif-subblock"><span class="verif-subblock-title">Yang perlu diingat pembaca</span><p class="verif-takeaway">${escapeHtml(row.reader_takeaway)}</p></div>` : ''}
-          ${row.disclaimer ? `<p class="verif-disclaimer">${escapeHtml(row.disclaimer)}</p>` : ''}
-        </details>
-        <div class="verif-footer">
-          <span class="verif-meta-line">
-            ${row.primary_source ? `Sumber awal: ${escapeHtml(row.primary_source)}` : 'Sumber awal tidak tercatat'}
-            ${row.model ? ` · model: ${escapeHtml(row.model)}` : ''}
-          </span>
-          <button type="button" class="btn-mini-ghost btn-verify-topic" data-topic-id="${row.topic_id}">🔄 Verifikasi Ulang</button>
-        </div>
-      </div>`;
-  }).join('');
-
-  container.querySelectorAll('.btn-verify-topic').forEach((btn) => {
-    btn.onclick = () => verifyTopicNow(parseInt(btn.dataset.topicId, 10), btn);
-  });
-}
-
-async function verifyTopicNow(topicId, btn) {
-  if (!topicId) return;
-  const original = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = '⏳ Memverifikasi…';
-  try {
-    const res = await fetch(`/api/topics/${topicId}/verify`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    const status = data.report?.status || 'selesai';
-    showToast(`✅ Verifikasi topik #${topicId} selesai: ${status}.`);
-    await loadVerifications();
-    refreshSeoVerifBadges();
-  } catch (err) {
-    console.error('Error verifyTopicNow:', err);
-    reportClientLog('error', 'verifyTopicNow', err, { topicId });
-    showToast(`Gagal memverifikasi topik: ${err.message}`);
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = original;
-  }
-}
-
 async function loadStudioSourceTopics() {
   try {
     const response = await fetch('/api/topics?status=scored&limit=100&sort=score');
@@ -3699,17 +3448,16 @@ async function submitStudioPrompt() {
 }
 
 const STUDIO_STATUS_META = {
-  queued: { label: 'MENUNGGU', cls: 'unverified' },
+  queued: { label: 'MENUNGGU', cls: 'waiting' },
   planning: { label: 'MENYUSUN RENCANA', cls: 'context' },
   plan_review: { label: 'RENCANA MENUNGGU ACC', cls: 'context' },
-  verifying: { label: 'MEMVERIFIKASI', cls: 'context' },
   drafting: { label: 'MEMPRODUKSI DRAFT', cls: 'context' },
   dispatching: { label: 'MENGIRIM KE REVIEW', cls: 'context' },
-  review: { label: 'MENUNGGU REVIEW', cls: 'mostly' },
-  scheduled: { label: 'TERJADWAL', cls: 'verified' },
-  published: { label: 'TAYANG', cls: 'verified' },
-  failed: { label: 'GAGAL', cls: 'hoax' },
-  cancelled: { label: 'DIBATALKAN', cls: 'unverified' },
+  review: { label: 'MENUNGGU REVIEW', cls: 'context' },
+  scheduled: { label: 'TERJADWAL', cls: 'success' },
+  published: { label: 'TAYANG', cls: 'success' },
+  failed: { label: 'GAGAL', cls: 'danger' },
+  cancelled: { label: 'DIBATALKAN', cls: 'waiting' },
 };
 
 async function loadStudioJobs(focusJobId = null) {
@@ -3736,35 +3484,35 @@ function renderStudioJobs(jobs, focusJobId) {
     return;
   }
   container.innerHTML = jobs.map((job) => {
-    const meta = STUDIO_STATUS_META[job.status] || { label: String(job.status).toUpperCase(), cls: 'unverified' };
+    const meta = STUDIO_STATUS_META[job.status] || { label: String(job.status).toUpperCase(), cls: 'waiting' };
     const plan = job.plan || null;
     const planHtml = plan
-      ? `<details class="verif-details" ${String(job.id) === String(focusJobId) ? 'open' : ''}>
+      ? `<details class="studio-job-details" ${String(job.id) === String(focusJobId) ? 'open' : ''}>
            <summary>Lihat rencana konten</summary>
-           <div class="verif-subblock"><span class="verif-subblock-title">Judul</span><p class="verif-takeaway">${escapeHtml(plan.title || '')}</p></div>
-           ${plan.angle ? `<div class="verif-subblock"><span class="verif-subblock-title">Sudut pandang</span><p class="verif-takeaway">${escapeHtml(plan.angle)}</p></div>` : ''}
-           ${plan.goal ? `<div class="verif-subblock"><span class="verif-subblock-title">Tujuan</span><p class="verif-takeaway">${escapeHtml(plan.goal)}</p></div>` : ''}
-           <div class="verif-subblock"><span class="verif-subblock-title">Poin isi</span><ul class="verif-list">${(plan.sections || []).map((p) => `<li>${escapeHtml(p)}</li>`).join('')}</ul></div>
+           <div class="studio-job-subblock"><span class="studio-job-subblock-title">Judul</span><p class="studio-job-takeaway">${escapeHtml(plan.title || '')}</p></div>
+           ${plan.angle ? `<div class="studio-job-subblock"><span class="studio-job-subblock-title">Sudut pandang</span><p class="studio-job-takeaway">${escapeHtml(plan.angle)}</p></div>` : ''}
+           ${plan.goal ? `<div class="studio-job-subblock"><span class="studio-job-subblock-title">Tujuan</span><p class="studio-job-takeaway">${escapeHtml(plan.goal)}</p></div>` : ''}
+           <div class="studio-job-subblock"><span class="studio-job-subblock-title">Poin isi</span><ul class="studio-job-list">${(plan.sections || []).map((p) => `<li>${escapeHtml(p)}</li>`).join('')}</ul></div>
            <textarea id="plan-edit-${job.id}" class="form-input-dark" rows="6" style="width: 100%; margin-top: 10px; font-family: monospace; font-size: 12px;">${escapeHtml(JSON.stringify(plan, null, 2))}</textarea>
          </details>`
       : '';
     return `
-      <div class="verif-card" id="studio-job-${job.id}">
-        <div class="verif-head">
-          <span class="verif-badge ${meta.cls}">${escapeHtml(meta.label)}</span>
-          <span class="verif-time">Review wajib</span>
-          <span class="verif-time">${formatTimeAgo(job.created_at)}</span>
+      <div class="studio-job-card" id="studio-job-${job.id}">
+        <div class="studio-job-head">
+          <span class="studio-job-badge ${meta.cls}">${escapeHtml(meta.label)}</span>
+          <span class="studio-job-time">Review wajib</span>
+          <span class="studio-job-time">${formatTimeAgo(job.created_at)}</span>
         </div>
-        <div class="verif-title">${escapeHtml((job.prompt || '').slice(0, 140))}${(job.prompt || '').length > 140 ? '…' : ''}</div>
-        ${job.error ? `<p class="verif-summary" style="color: var(--down);">${escapeHtml(job.error)}</p>` : ''}
+        <div class="studio-job-title">${escapeHtml((job.prompt || '').slice(0, 140))}${(job.prompt || '').length > 140 ? '…' : ''}</div>
+        ${job.error ? `<p class="studio-job-summary" style="color: var(--down);">${escapeHtml(job.error)}</p>` : ''}
         ${planHtml}
-        <div class="verif-footer" style="gap: 8px; flex-wrap: wrap;">
+        <div class="studio-job-footer" style="gap: 8px; flex-wrap: wrap;">
           ${plan && ['plan_review', 'failed'].includes(job.status) ? `<button type="button" class="btn-mini-ghost btn-studio-run" data-job-id="${job.id}">▶️ Produksi Sesuai Rencana</button>` : ''}
           ${plan && job.status === 'plan_review' ? `<button type="button" class="btn-mini-ghost btn-studio-save-plan" data-job-id="${job.id}">Simpan Edit Rencana</button>` : ''}
           ${plan && job.status === 'plan_review' ? `<button type="button" class="btn-mini-ghost btn-studio-regen" data-job-id="${job.id}">Generate Ulang Rencana</button>` : ''}
           ${['queued', 'plan_review'].includes(job.status) ? `<button type="button" class="btn-mini-ghost btn-studio-cancel" data-job-id="${job.id}" style="color: var(--down);">✕ Batalkan</button>` : ''}
           ${job.draft_id ? `<button type="button" class="btn-mini-ghost btn-studio-open-draft" data-draft-id="${job.draft_id}">📂 Buka Draft #${job.draft_id}</button>` : ''}
-          ${job.topic_id ? `<span class="verif-meta-line">Topik #${job.topic_id}</span>` : ''}
+          ${job.topic_id ? `<span class="studio-job-meta-line">Topik #${job.topic_id}</span>` : ''}
         </div>
       </div>`;
   }).join('');
@@ -3804,7 +3552,7 @@ function streamStudioJob(jobId) {
           showToast(`✅ Job #${jobId} selesai (${data.status}).`);
         }
         loadStudioJobs();
-        refreshSeoVerifBadges();
+        refreshSeoBadges();
         return;
       }
       updateStudioJobLive(jobId, data);
@@ -3830,11 +3578,11 @@ function streamStudioJob(jobId) {
 function updateStudioJobLive(jobId, data) {
   const card = document.getElementById(`studio-job-${jobId}`);
   if (!card) return;
-  const badge = card.querySelector('.verif-badge');
-  const meta = STUDIO_STATUS_META[data.status] || { label: data.status, cls: 'unverified' };
+  const badge = card.querySelector('.studio-job-badge');
+  const meta = STUDIO_STATUS_META[data.status] || { label: data.status, cls: 'waiting' };
   if (badge) {
     badge.textContent = `${meta.label} · ${data.progress ?? 0}%`;
-    badge.className = `verif-badge ${meta.cls}`;
+    badge.className = `studio-job-badge ${meta.cls}`;
   }
   // Baris log terakhir: pengguna selalu tahu AI sedang apa.
   if (data.message) {
@@ -3843,7 +3591,7 @@ function updateStudioJobLive(jobId, data) {
       live = document.createElement('p');
       live.className = 'studio-live-log';
       live.style.cssText = 'font-size: 12px; color: var(--lime); margin-top: 8px;';
-      card.insertBefore(live, card.querySelector('.verif-footer'));
+      card.insertBefore(live, card.querySelector('.studio-job-footer'));
     }
     live.textContent = `⚡ ${data.message}`;
   }

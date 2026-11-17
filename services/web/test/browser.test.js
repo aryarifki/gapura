@@ -30,9 +30,10 @@ test('Chromium: newsroom opens without login, navigation, fresh draft review, Ra
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   const config = JSON.parse(await fs.readFile(path.join(ROOT, 'config/agents.json'), 'utf8'));
-  config.skills = Object.fromEntries(await Promise.all(['scout', 'analis', 'copywriter', 'designer', 'seo', 'verifikator', 'studio'].map(async (key) => [key, await fs.readFile(path.join(ROOT, 'config/skills', `${key}.skills.md`), 'utf8')])));
+  config.skills = Object.fromEntries(await Promise.all(['scout', 'analis', 'copywriter', 'designer', 'seo', 'studio'].map(async (key) => [key, await fs.readFile(path.join(ROOT, 'config/skills', `${key}.skills.md`), 'utf8')])));
   const stamp = '2026-11-16T02:00:00Z';
-  const topic = { id: '42', title: 'Inflasi Oktober 2,1% menurut BPS', summary: 'Data BPS menunjukkan inflasi tahunan 2,1%.', status: 'scored', score_total: 88, primary_source: 'BPS', url: 'https://www.bps.go.id/rilis/1', created_at: stamp, verification_status: 'verified' };
+  const topic = { id: '42', title: 'Inflasi Oktober 2,1% menurut BPS', summary: 'Data BPS menunjukkan inflasi tahunan 2,1%.', status: 'scored', desk: 'ekonomi', score_total: 88, primary_source: 'BPS', url: 'https://www.bps.go.id/rilis/1', created_at: stamp, verification_status: 'verified' };
+  const tagline = 'Politik, Sosial, Hukum, Lingkungan & Ekonomi Nasional termasuk Bursa Saham';
   const draft = { id: '21', topic_id: '42', topic_title: topic.title, caption: topic.summary, hashtags: ['#GapuraMedia'], primary_source: 'BPS', source_url: topic.url, status: 'draft', score_total: 88, created_at: stamp, rendered_slides: [{ slide_no: 1, layout: 'cover-focus', text: topic.title, data: { title: topic.title }, image_url: '/assets/logo.png' }] };
   const assetId = '2d30e364-b95d-4d49-82ed-43c548270944';
   let illustration = null;
@@ -59,7 +60,6 @@ test('Chromium: newsroom opens without login, navigation, fresh draft review, Ra
         data = status === 200 ? { status: 'success' } : { error: 'Draf telah berubah. Muat ulang dan tinjau konten terbaru sebelum menyetujui.' };
         break;
       case '/api/topics': data = url.searchParams.get('q')?.includes('nothing') ? [] : [topic]; headers['X-Has-More'] = 'false'; headers['X-Next-Offset'] = '1'; break;
-      case '/api/topics/42/verify': data = { report: { status: 'verified', confidence: 90 } }; break;
       case '/api/topics/42/illustration': data = { assets: illustration ? [illustration] : [], selected: illustration, configured: true }; break;
       case '/api/topics/42/illustration/generate': illustration = { id: assetId, status: 'ready', kind: 'ai_generated', disclosure: 'Ilustrasi AI · Gapura Media' }; data = { asset: illustration, is_existing: false }; break;
       case `/api/media/assets/${assetId}`:
@@ -81,8 +81,11 @@ test('Chromium: newsroom opens without login, navigation, fresh draft review, Ra
         routing: { fallback_chain: ['gemini/gemini-2.5-flash'] },
       }; break;
       case '/api/seo/health': data = { stale: true, x_api_configured: false, rsshub_configured: false, active_sources: 2, successful_sources: 1, latest_success_at: stamp }; break;
+      case '/api/sources': data = [{ id: 1, name: 'ANTARA Politik', category: 'umum', desk: 'politik', type: 'rss', url_or_query: 'https://example.org/politik.xml', is_active: true, poll_interval_mins: 30 }, { id: 2, name: 'Lintas isu', category: 'umum', desk: null, type: 'rss', url_or_query: 'https://example.org/general.xml', is_active: true, poll_interval_mins: 30 }]; break;
       case '/api/workflow': data = { active: false, json: {} }; break;
-      case '/api/tokens': data = { parsed: {}, raw: '' }; break;
+      case '/api/tokens': data = { parsed: { brand: { tagline } }, raw: `brand:\n  tagline: ${tagline}\n` }; break;
+      case '/api/render/preview':
+        await route.fulfill({ status: 200, headers: { 'Content-Type': 'image/png' }, body: await fs.readFile(path.join(PUBLIC, 'assets/logo.png')) }); return;
       case '/api/client-log': status = 204; break;
       default: data = [];
     }
@@ -94,7 +97,16 @@ test('Chromium: newsroom opens without login, navigation, fresh draft review, Ra
   await page.waitForFunction(() => document.querySelector('#ov-raw-val').textContent === '2');
   assert.deepEqual(requests.filter((entry) => entry.path.startsWith('/api/access/')), [], 'Startup must not request admin access endpoints');
   await page.locator('[data-view="view-topics"]').click();
-  await page.locator('[data-verify-topic="42"]').waitFor();
+  await page.locator('[data-produce-topic="42"]').waitFor();
+  assert.equal(await page.locator('[data-verify-topic], [data-view="view-verifications"], [data-agent="verifikator"]').count(), 0);
+  assert.doesNotMatch(await page.locator('.radar-item-card').innerText(), /Belum diverifikasi|verified|Verifikasi/);
+  assert.match(await page.locator('.radar-item-card').innerText(), /Ekonomi Nasional/i);
+  await Promise.all([
+    page.waitForResponse((response) => new URL(response.url()).pathname === '/api/topics' && new URL(response.url()).searchParams.get('desk') === 'politik'),
+    page.locator('#topic-desk').selectOption('politik'),
+  ]);
+  assert.ok(requests.some((entry) => entry.path === '/api/topics' && new URLSearchParams(entry.query).get('desk') === 'politik'));
+  await page.locator('#topic-desk').selectOption('');
   assert.equal(requests.filter((r) => r.path.includes('/illustration')).length, 0, 'loading Radar must not generate or fetch images');
   await page.locator('[data-illustration-action="open"]').click();
   await page.getByText('Belum ada ilustrasi AI.', { exact: true }).waitFor();
@@ -106,8 +118,6 @@ test('Chromium: newsroom opens without login, navigation, fresh draft review, Ra
   assert.deepEqual(Object.keys(generationRequests[0].body), ['request_id']);
   await page.locator(`[data-topic-illustration="42"] img`).waitFor();
   assert.equal(await page.locator(`[data-topic-illustration="42"] img`).evaluate((image) => image.complete && image.naturalWidth > 0), true);
-  await page.locator('[data-verify-topic="42"]').click();
-  await page.waitForFunction(() => document.querySelector('#toast').textContent.includes('selesai'));
   await page.locator('[data-view="view-review"]').click();
   await page.locator('.gallery-card').click();
   await page.waitForURL('**/#view-review/draft/21');
@@ -178,7 +188,22 @@ test('Chromium: newsroom opens without login, navigation, fresh draft review, Ra
   assert.equal(config.designer.image_generation.model, 'gemini-3.1-flash-lite-image');
   await page.locator('[data-view="view-trends"]').click();
   await page.waitForFunction(() => document.querySelector('#trend-health-message').textContent.includes('fallback'));
-  await page.locator('[data-view="view-verifications"]').click();
+  for (const desk of ['politik', 'sosial', 'hukum', 'lingkungan', 'ekonomi', 'bursa']) {
+    assert.equal(await page.locator(`#trend-source-category option[value="${desk}"]`).count(), 1);
+  }
+  await page.locator('[data-view="view-sources"]').click();
+  await page.getByText('ANTARA Politik', { exact: true }).waitFor();
+  assert.doesNotMatch(await page.locator('#sources-table-body').innerText(), /Ekonomi Umum/);
+  assert.match(await page.locator('#sources-table-body').innerText(), /Umum \/ Lintas Isu|Desk otomatis/);
+  await page.locator('#btn-open-add-source-modal').click();
+  assert.equal(await page.locator('#source-input-category').inputValue(), 'umum');
+  await page.locator('#btn-close-source-modal').click();
+  await Promise.all([
+    page.waitForResponse((response) => new URL(response.url()).pathname === '/api/render/preview'),
+    page.locator('[data-view="view-tokens"]').click(),
+  ]);
+  await page.waitForFunction((expected) => document.querySelector('#studio-brand-tagline').value === expected, tagline);
+  assert.ok(requests.some((entry) => entry.path === '/api/render/preview' && entry.body.tokens.brand.tagline === tagline));
   await page.locator('[data-view="view-studio-prompt"]').click();
   await page.waitForFunction(() => document.querySelector('#studio-source-topic').options.length > 1);
   await fs.mkdir('/tmp/opencode/gapura-evidence', { recursive: true });
@@ -193,6 +218,8 @@ test('Chromium: newsroom opens without login, navigation, fresh draft review, Ra
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'mobile page must not overflow horizontally');
   assert.equal(await page.locator('.app-container').evaluate((app) => app.inert), false);
   assert.deepEqual(requests.filter((entry) => entry.path.startsWith('/api/access/')), [], 'Navigation and reload must not request admin access endpoints');
+  assert.deepEqual(requests.filter((entry) => /\/verifications?(?:\/|$)|\/verify$/u.test(entry.path)), [], 'The dashboard must not request retired verification endpoints');
+  assert.ok(requests.filter((entry) => entry.path === '/api/agents/config' && entry.method === 'POST').every((entry) => !Object.hasOwn(entry.body, 'verifikator') && !Object.hasOwn(entry.body.skills, 'verifikator')));
   assert.deepEqual(credentialedRequests, [], 'API requests must work without tokens or cookies');
   assert.deepEqual(await page.context().cookies(), [], 'The newsroom must not bootstrap an admin cookie');
   assert.ok(requests.some((entry) => entry.path === '/api/client-log' && entry.body.action === 'ui.click'), 'Best-effort click logging must remain active');

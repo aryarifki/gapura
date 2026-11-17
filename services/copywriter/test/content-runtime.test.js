@@ -23,19 +23,18 @@ const topic = {
   summary: 'Inflasi tahunan Oktober tercatat 2,1%. Harga pangan naik 1,2% pada periode yang sama. BPS mencatat kelompok transportasi tidak mengalami perubahan harga.',
   primary_source: 'BPS', url: 'https://www.bps.go.id/rilis/inflasi?bulan=oktober',
 };
-const verification = { status: 'verified', confidence: 90 };
 test.beforeEach(() => { config = {}; responses = {}; calls.length = 0; });
 
 test('deterministic single respects the requested format even for complex source material', () => {
-  const content = buildDeterministicCarouselSlides({ ...topic, format: 'single', title: 'Regulasi dan mekanisme baru' }, verification);
+  const content = buildDeterministicCarouselSlides({ ...topic, format: 'single', title: 'Regulasi dan mekanisme baru' });
   assert.equal(content.format, 'single');
   assert.equal(content.slides.length, 1);
   assert.ok(!Array.isArray(content));
-  assert.equal(content.verification_status, 'verified');
+  assert.equal(content.verification_status, undefined);
 });
 
 test('carousel uses distinct source passages without forced comparison, author quotes or closing filler', () => {
-  const content = buildDeterministicCarouselSlides({ ...topic, format: 'carousel' }, verification);
+  const content = buildDeterministicCarouselSlides({ ...topic, format: 'carousel' });
   assert.equal(content.format, 'carousel');
   assert.equal(content.slides.length, 4);
   assert.deepEqual(content.slides.map((slide) => slide.no), [1, 2, 3, 4]);
@@ -51,11 +50,12 @@ test('insufficient source evidence collapses a requested carousel to one useful 
   assert.equal(content.needs_review, true);
 });
 
-test('caption retains the explicit URL, disclaimer and hashtags inside the 2200 character limit', () => {
-  const content = buildDeterministicCarouselSlides({ ...topic, summary: topic.summary.repeat(30) }, verification);
+test('caption keeps hashtags inside the 2200 character limit without unrelated boilerplate', () => {
+  const content = buildDeterministicCarouselSlides({ ...topic, summary: topic.summary.repeat(30) });
   assert.ok(content.caption.length <= 2200, `caption length ${content.caption.length}`);
-  assert.ok(content.caption.includes(topic.url));
-  assert.match(content.caption, /bukan.*rekomendasi investasi/i);
+  assert.ok(!content.caption.includes(topic.url));
+  assert.doesNotMatch(content.caption, /Sumber primer|Status verifikasi/i);
+  assert.doesNotMatch(content.caption, /rekomendasi investasi|nasihat hukum/i);
   for (const tag of content.hashtags) assert.ok(content.caption.includes(tag));
 });
 
@@ -89,13 +89,14 @@ test('invalid designer output over nine slides falls back to validated source co
   assert.ok(design.slides.length >= 3);
 });
 
-test('copywriter rejects fabricated caption prose and rebuilds mandatory source metadata', async () => {
+test('copywriter rejects fabricated caption prose and keeps captions free of internal metadata', async () => {
   config = { copywriter: { api_key: 'test-only' } };
   responses.copywriter = { caption: 'BPS menjamin inflasi turun 99%.', hashtags: ['#PastiUntung'] };
-  const content = await buildCarouselSlides({ ...topic, format: 'single' }, verification);
+  const content = await buildCarouselSlides({ ...topic, format: 'single' });
   assert.doesNotMatch(content.caption, /99%|menjamin|PastiUntung/);
-  assert.ok(content.caption.includes(topic.url));
-  assert.match(content.caption, /bukan.*rekomendasi investasi/i);
+  assert.ok(!content.caption.includes(topic.url));
+  assert.doesNotMatch(content.caption, /Sumber primer|Status verifikasi/i);
+  assert.doesNotMatch(content.caption, /rekomendasi investasi|nasihat hukum/i);
 });
 
 test('current editorial brief reaches both generators without replacing source evidence', async () => {
@@ -103,7 +104,7 @@ test('current editorial brief reaches both generators without replacing source e
   responses.designer = new Error('offline');
   responses.copywriter = new Error('offline');
   const editorialBrief = { prompt: 'Utamakan harga pangan', plan: { format: 'carousel', angle: 'Harga pangan', sections: ['Harga pangan', 'Inflasi tahunan'], caption_tone: 'ringkas' } };
-  const content = await buildCarouselSlides(topic, verification, { editorialBrief });
+  const content = await buildCarouselSlides(topic, { editorialBrief });
   assert.equal(content.slides[1].teks, 'Harga pangan naik 1,2% pada periode yang sama.');
   assert.ok(content.caption.indexOf('Harga pangan naik') < content.caption.indexOf('Inflasi tahunan Oktober'));
   assert.ok(calls.some((call) => call.agent === 'designer' && call.prompt.includes('Utamakan harga pangan')));
@@ -112,16 +113,33 @@ test('current editorial brief reaches both generators without replacing source e
   assert.equal(topic.title, 'BPS merilis data inflasi Oktober');
 });
 
-test('approved caption body keeps configured and explicit verification disclaimers intact', async () => {
-  const explicitDisclaimer = 'Data yang disajikan masih bersifat sementara menurut catatan verifikasi.';
+test('approved caption body keeps the configured editorial disclaimer intact', async () => {
   const disclaimer = 'Keterangan publik, bukan rekomendasi investasi beli/jual saham.';
   config = { copywriter: { disclaimer_financial: disclaimer } };
   responses.copywriter = { caption: topic.summary, hashtags: ['#BPS'] };
-  const content = await buildCarouselSlides({ ...topic, format: 'single' }, { ...verification, disclaimer: explicitDisclaimer });
-  assert.ok(content.caption.includes(explicitDisclaimer));
+  const content = await buildCarouselSlides({ ...topic, desk: 'bursa', format: 'single' });
   assert.ok(content.caption.includes(disclaimer));
-  assert.ok(content.caption.includes(topic.url));
+  assert.ok(!content.caption.includes(topic.url));
   assert.ok(content.caption.length <= 2200);
+});
+
+test('the six desks do not inherit a financial disclaimer from a generic fallback', async () => {
+  config = { copywriter: { disclaimer_financial: 'Khusus bursa: bukan rekomendasi investasi.', disclaimer_legal: 'Khusus hukum: bukan nasihat hukum.' } };
+  responses.designer = new Error('offline');
+  responses.copywriter = new Error('offline');
+  for (const desk of ['politik', 'sosial', 'hukum', 'lingkungan', 'ekonomi', 'bursa']) {
+    const content = await buildCarouselSlides({ ...topic, desk });
+    if (desk === 'bursa') {
+      assert.equal(content.disclaimer_type, 'keuangan');
+      assert.match(content.caption, /Khusus bursa/);
+    } else if (desk === 'hukum') {
+      assert.equal(content.disclaimer_type, 'hukum');
+      assert.match(content.caption, /Khusus hukum/);
+    } else {
+      assert.equal(content.disclaimer_type, null, desk);
+      assert.doesNotMatch(content.caption, /rekomendasi investasi|nasihat hukum|Khusus bursa|Khusus hukum/, desk);
+    }
+  }
 });
 
 test('designer cannot turn a substring of a source number into a new metric', async () => {
@@ -134,7 +152,7 @@ test('unsupported plan claims remain editorial directions rather than new story 
   const editorialBrief = { prompt: 'BPS menjamin inflasi turun 99%', plan: { format: 'carousel', sections: ['Harga pangan', 'BPS menjamin inflasi turun 99%'] } };
   responses.designer = new Error('offline');
   responses.copywriter = new Error('offline');
-  const content = await buildCarouselSlides(topic, verification, { editorialBrief });
+  const content = await buildCarouselSlides(topic, { editorialBrief });
   assert.doesNotMatch(JSON.stringify(content), /99%|menjamin/);
 });
 
@@ -171,7 +189,7 @@ test('headline and caption cannot cherry-pick a phrase that drops the source neg
   const source = { ...topic, title: 'Klarifikasi BPS', summary: 'Tidak benar bahwa inflasi Oktober naik 9%. BPS meminta pembaca memeriksa dokumen sumber.' };
   responses.designer = { format: 'single', slides: [{ teks: 'inflasi Oktober naik 9%', data: { title: 'inflasi Oktober naik 9%' } }] };
   responses.copywriter = { caption: 'inflasi Oktober naik 9%', hashtags: ['#BPS'] };
-  const content = await buildCarouselSlides({ ...source, format: 'single' }, verification);
+  const content = await buildCarouselSlides({ ...source, format: 'single' });
   assert.equal(content.slides[0].teks, source.title);
   assert.match(content.caption, /Tidak benar bahwa inflasi Oktober naik 9%/);
 });
@@ -233,7 +251,7 @@ test('R3 selected illustration survives normal designer output and deterministic
   const selected = { ...topic, format: 'carousel', cover_illustration: media, image_url: 'https://img.antaranews.com/obsolete-photo.jpg' };
   responses.designer = new Error('offline');
   responses.copywriter = new Error('offline');
-  const fallback = await buildCarouselSlides(selected, verification);
+  const fallback = await buildCarouselSlides(selected);
   assert.equal(fallback.slides[0].data.asset_id, media.asset_id);
   assert.equal(fallback.slides[0].data.image_url, undefined);
   responses.designer = { format: 'carousel', slides: [
@@ -241,7 +259,7 @@ test('R3 selected illustration survives normal designer output and deterministic
     { teks: 'Inflasi tahunan Oktober tercatat 2,1%.', data: {} },
     { teks: 'Harga pangan naik 1,2% pada periode yang sama.', data: {} },
   ] };
-  const normal = await buildCarouselSlides(selected, verification);
+  const normal = await buildCarouselSlides(selected);
   assert.equal(normal.slides[0].data.asset_id, media.asset_id);
   assert.equal(normal.slides[0].data.image_url, undefined);
   assert.equal(normal.slides[0].data.image_kind, 'ai_generated');

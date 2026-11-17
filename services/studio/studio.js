@@ -1,10 +1,9 @@
-// Studio: chosen source -> reviewed editorial plan -> verification -> rendered review draft.
+// Studio: chosen source -> reviewed editorial plan -> rendered review draft.
 import pkg from 'pg';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { callAgentLLM, loadAgentsConfig } from '../common/llm.js';
-import { verifyTopic } from '../verificator/verificator.js';
 import { produceSingleTopicDraft } from '../copywriter/copywriter.js';
 import { validateStudioTopic, normalizeStudioPlan } from './validation.js';
 import { isDraftComplete } from '../copywriter/editorial.js';
@@ -47,7 +46,7 @@ async function withJobLock(jobId, callback, { duplicateResult = false } = {}) {
   }
 }
 
-async function getTopicSource(client, topicId, { allowProduced = false, requireVerification = false } = {}) {
+async function getTopicSource(client, topicId, { allowProduced = false } = {}) {
   if (!topicId) throw new Error('topic_not_found: Pilih topik Radar yang sudah lolos Analis.');
   const { rows: topics } = await client.query('SELECT * FROM topics WHERE id = $1', [topicId]);
   if (!topics.length) throw new Error('topic_not_found: Topik sumber tidak ditemukan.');
@@ -57,9 +56,6 @@ async function getTopicSource(client, topicId, { allowProduced = false, requireV
   if (!eligibility.valid) throw new Error(eligibility.reason);
   if (!scores[0] || scores[0].verdict !== 'passed') throw new Error('score_not_passed');
   if (!topic.title?.trim() || !topic.summary?.trim() || !topic.primary_source?.trim()) throw new Error('source_evidence_required');
-  const { rows: verification } = await client.query('SELECT * FROM verification_reports WHERE topic_id = $1 ORDER BY created_at DESC, id DESC LIMIT 1', [topicId]);
-  if (verification[0]?.status === 'hoax_detected') throw new Error('hoax_detected');
-  if (requireVerification && !validReport(verification[0], topicId)) throw new Error('verification_required');
   return topic;
 }
 
@@ -75,8 +71,8 @@ PERMINTAAN_ADMIN_JSON: ${JSON.stringify(job.prompt)}
 RENCANA_SAAT_INI_JSON: ${JSON.stringify(job.plan || null)}
 INSTRUKSI_REVISI_JSON: ${JSON.stringify(revision)}
 BUKTI_SUMBER_JSON: ${JSON.stringify({ id: topic.id, title: topic.title, summary: topic.summary, primary_source: topic.primary_source, url: topic.url })}
-HANYA JSON {"title":"maksimal 120 karakter","angle":"fokus editorial","goal":"info","sections":["fokus pertama","fokus kedua"],"format":"single|carousel","verification_requested":true,"slide_count_hint":1,"caption_tone":"ringkas","hashtags":["#GapuraMedia"]}.
-Sections 2-6 fokus, single tepat 1 slide atau carousel 3-9 slide bermakna. slide_count_hint hanya preferensi; jangan memaksakan filler. Selalu butuh verifikasi sebelum draf. Tidak ada publikasi otomatis.`;
+HANYA JSON {"title":"maksimal 120 karakter","angle":"fokus editorial","goal":"info","sections":["fokus pertama","fokus kedua"],"format":"single|carousel","slide_count_hint":1,"caption_tone":"ringkas","hashtags":["#GapuraMedia"]}.
+Sections 2-6 fokus, single tepat 1 slide atau carousel 3-9 slide bermakna. slide_count_hint hanya preferensi; jangan memaksakan filler. Draf selalu menunggu review manusia. Tidak ada publikasi otomatis.`;
   const raw = await callAgentLLM('studio', prompt, loadAgentsConfig().studio?.system_prompt || '', true);
   let parsed;
   try { parsed = JSON.parse(raw.replace(/^```(?:json)?\s*|\s*```$/g, '').trim()); }
@@ -115,18 +111,12 @@ export async function updatePlan(jobId, newPlan) {
   });
 }
 
-const VERIFIED_STATUSES = new Set(['verified', 'mostly_verified', 'needs_context', 'unverified', 'opinion', 'speculation', 'misleading']);
-function validReport(report, topicId) {
-  return Boolean(report && VERIFIED_STATUSES.has(report.status) && report.confidence !== null && report.confidence !== ''
-    && Number.isInteger(Number(report.confidence)) && Number(report.confidence) >= 0 && Number(report.confidence) <= 100
-    && (report.topic_id === undefined || String(report.topic_id) === String(topicId)));
-}
 export async function executeJob(jobId) {
   return withJobLock(jobId, async (client, job) => {
-    if (!['queued', 'planning', 'plan_review', 'failed', 'verifying', 'drafting', 'dispatching', 'review', 'scheduled', 'published'].includes(job.status)) throw new Error('Status job tidak dapat dijalankan.');
+    if (!['queued', 'planning', 'plan_review', 'failed', 'drafting', 'dispatching', 'review', 'scheduled', 'published'].includes(job.status)) throw new Error('Status job tidak dapat dijalankan.');
     try {
       if (job.draft_id && ['review', 'scheduled', 'published'].includes(job.status)) {
-        await getTopicSource(client, job.topic_id, { allowProduced: true, requireVerification: true });
+        await getTopicSource(client, job.topic_id, { allowProduced: true });
         const { rows: drafts } = await client.query(
           `SELECT d.*, (SELECT COUNT(DISTINCT ds.slide_no) FROM draft_slides ds WHERE ds.draft_id = d.id
            AND ds.slide_no BETWEEN 1 AND jsonb_array_length(d.slides) AND ds.render_path <> '') AS rendered_count
@@ -134,7 +124,7 @@ export async function executeJob(jobId) {
         if (!isDraftComplete(drafts[0])) throw new Error('draft_incomplete');
         return { draftId: job.draft_id, is_existing: true, scheduled: false };
       }
-      if (!['queued', 'planning', 'plan_review', 'failed', 'verifying', 'drafting', 'dispatching'].includes(job.status)) throw new Error('Status job tidak dapat dijalankan.');
+      if (!['queued', 'planning', 'plan_review', 'failed', 'drafting', 'dispatching'].includes(job.status)) throw new Error('Status job tidak dapat dijalankan.');
       const topic = await getTopicSource(client, job.topic_id, { allowProduced: Boolean(job.plan) });
       if (!job.plan) {
         const plan = await makePlan(client, job, topic);
@@ -145,18 +135,8 @@ export async function executeJob(jobId) {
         await client.query("UPDATE prompt_jobs SET status = 'plan_review', progress = 25, updated_at = NOW() WHERE id = $1", [jobId]);
         return { awaiting_plan_review: true, plan };
       }
-      await client.query("UPDATE prompt_jobs SET status = 'verifying', progress = 40, error = NULL, updated_at = NOW() WHERE id = $1", [jobId]);
-      await logStep(jobId, 'verifying', 'Memverifikasi sumber terpilih sebelum produksi.', 'info', client);
-      const result = await verifyTopic(topic.id);
-      const { rows: reports } = await client.query('SELECT * FROM verification_reports WHERE topic_id = $1 ORDER BY created_at DESC, id DESC LIMIT 1', [topic.id]);
-      const verification = reports[0];
-      if (!result || result.status === 'hoax_detected' || !validReport(verification, topic.id)) {
-        const reason = result?.status === 'hoax_detected' || verification?.status === 'hoax_detected' ? 'hoax_detected' : 'verification_required';
-        await failJob(client, jobId, new Error(reason));
-        return { blocked: true, reason, verification };
-      }
-      await client.query('UPDATE prompt_jobs SET verification_id = $2, updated_at = NOW() WHERE id = $1', [jobId, verification.id]);
-      await client.query("UPDATE prompt_jobs SET status = 'drafting', progress = 60, updated_at = NOW() WHERE id = $1", [jobId]);
+      await client.query("UPDATE prompt_jobs SET status = 'drafting', progress = 60, error = NULL, updated_at = NOW() WHERE id = $1", [jobId]);
+      await logStep(jobId, 'drafting', 'Menyusun draf orisinal dari rencana yang disetujui.', 'info', client);
       const { draft_id: draftId } = await produceSingleTopicDraft(topic, null, { forceReview: true, editorialBrief: { job_id: jobId, prompt: job.prompt, plan } });
       await client.query('UPDATE prompt_jobs SET draft_id = $2, progress = 85, updated_at = NOW() WHERE id = $1', [jobId, draftId]);
       try {
@@ -168,7 +148,6 @@ export async function executeJob(jobId) {
       return { draftId, scheduled: false };
     } catch (error) {
       await failJob(client, jobId, error);
-      if (error.message === 'hoax_detected') return { blocked: true, reason: 'hoax_detected' };
       throw error;
     }
   }, { duplicateResult: true });
