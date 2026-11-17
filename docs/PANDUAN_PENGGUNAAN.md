@@ -1,6 +1,6 @@
 # 📖 Panduan Penggunaan Gapura Media Engine (GME v2.0)
 > **Akun Resmi:** `@gapuramedia` · **Portal Dashboard:** [https://gapura.avenia.my.id](https://gapura.avenia.my.id)  
-> **Niche:** Data Pasar Modal & Bursa Saham, Hukum Regulasi Keuangan, dan Kebijakan Makro Ekonomi Indonesia.
+> **Fokus editorial:** Politik, sosial, hukum, lingkungan, ekonomi nasional, dan bursa saham Indonesia.
 
 ---
 
@@ -12,7 +12,7 @@
 5. [AI Designer: Regenerate AI & Kustomisasi Kreatif](#5-ai-designer-regenerate-ai--kustomisasi-kreatif)
 6. [Studio Desain & Postingan Kustom](#6-studio-desain--postingan-kustom)
 7. [Kustomisasi AI Agents & Skills.md](#7-kustomisasi-ai-agents--skillsmd)
-8. [Manajemen Sumber Berita Niche](#8-manajemen-sumber-berita-niche)
+8. [Manajemen Sumber Discovery Enam Desk](#8-manajemen-sumber-discovery-enam-desk)
 9. [Operasional Server & Systemd Service](#9-operasional-server--systemd-service)
 
 ---
@@ -22,7 +22,7 @@
 Aplikasi ini mengotomatiskan alur kerja redaksi Instagram dari hulu ke hilir dengan prinsip **Human-in-the-Loop**:
 
 ```
-[Sumber Terverifikasi] (BPS, BI, OJK, MK, IDX)
+[Sumber Resmi & Feed Discovery] (BPS, BI, OJK, MK, IDX, media nasional)
        │
        ▼ (Polling berkala / Trigger manual)
 [Agen 1: SCOUT] ──► Deduplikasi SHA256 & Pencarian Keyword
@@ -145,19 +145,19 @@ Setiap agen AI memiliki kepribadian, instruksi, dan keterampilan yang dapat diub
    - Model bawaan adalah `gemini-3.5-flash-lite` (sangat cepat, hemat kuota, dan cerdas). Anda juga bisa mengganti ke `gemini-2.5-flash` atau provider OpenAI compatible lainnya.
 4. **Editor `skills.md` Kustom:**
    - Di bagian bawah form agen, terdapat textarea **"Kustomisasi Skills.md"**.
-   - Masukkan panduan khusus (misal: "Selalu sertakan data persentase pada slide 2", "Gunakan istilah POJK resmi").
+   - Masukkan panduan khusus (misal: "Selalu sertakan konteks kebijakan pada slide 2", "Sebutkan dasar hukum hanya jika tersedia").
    - Klik **`💾 Simpan Konfigurasi & Skills`**. Perubahan akan seketika berlaku untuk pemanggilan AI berikutnya.
 
 ---
 
-## 8. Manajemen Sumber Berita Niche
+## 8. Manajemen Sumber Discovery Enam Desk
 
-Mengelola feed RSS dan portal sumber berita resmi:
+Mengelola feed RSS dan sumber resmi lintas enam desk. Feed hanya memasok topik/judul dan metadata; naskah serta ilustrasi tidak disalin dari penerbit:
 1. Masuk ke menu **Sumber Topik**.
 2. **Melihat Sumber Aktif:**
-   - Terdapat daftar sumber seperti BPS (Badan Pusat Statistik), Bank Indonesia (Departemen Komunikasi), OJK (Siaran Pers), Mahkamah Konstitusi, JDIH Kemenkeu, dan Google News RSS.
+   - Terdapat sumber resmi (BPS, Bank Indonesia, OJK, Mahkamah Konstitusi, JDIH Kemenkeu) dan feed discovery untuk politik, sosial, hukum, lingkungan, ekonomi, serta bursa. Setiap sumber dapat memiliki **Desk Editorial** eksplisit atau dibiarkan kosong agar desk disimpulkan dari kategori/judul.
 3. **Menambah Sumber Baru:**
-   - Isi form: Nama Sumber, Kategori, URL Feed / Scraping Target, Tipe Sumber (RSS / API / HTML), dan Frekuensi Polling.
+   - Isi form: Nama Sumber, Kategori registry, Desk Editorial, URL Feed, Tipe Sumber (RSS / API / HTML), dan Frekuensi Polling.
    - Klik **Tambah Sumber**.
 4. **Mengedit & Menonaktifkan:**
    - Klik tombol **Edit** untuk mengubah link atau bobot kredibilitas sumber.

@@ -76,7 +76,7 @@ export function verificationCaptionBlock(verification) {
 export function composeCaption(topic, { body, hashtags, verification = null, editorialBrief = null, disclaimer = '' } = {}) {
   const source = clean(topic?.primary_source) || 'Media asal';
   const url = sourceUrl(topic?.url);
-  const tags = [...new Set((hashtags || ['#GapuraMedia', '#DataEkonomi', '#EkonomiIndonesia'])
+  const tags = [...new Set((hashtags || ['#GapuraMedia', '#BeritaNasional', '#Indonesia'])
     .filter((tag) => typeof tag === 'string' && /^#[\p{L}\p{N}_]{1,40}$/u.test(tag)))].slice(0, 12);
   const sourceLine = url ? `Sumber primer: ${source} · ${url}` : 'Sumber primer belum tersedia; verifikasi manual wajib sebelum publikasi.';
   const disclaimers = [...new Set([disclaimer || DISCLAIMER, topic?.disclaimer, verification?.disclaimer].filter((text) => typeof text === 'string' && text.trim()).map((text) => text.trim()))];

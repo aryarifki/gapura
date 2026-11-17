@@ -40,12 +40,22 @@ const X_BEARER_TOKEN = process.env.X_BEARER_TOKEN || '';
 const RSSHUB_BASE_URL = (process.env.RSSHUB_BASE_URL || '').replace(/\/+$/, '');
 
 const DEFAULT_KEYWORDS = [
-  'ihsg', 'bursa', 'saham', 'ojk', 'pojk', 'bank indonesia', 'bi-rate', 'rupiah',
-  'inflasi', 'bps', 'apbn', 'pajak', 'suku bunga', 'pasar modal', 'bei', 'idx',
-  'regulasi', 'dividen', 'emiten', 'obligasi', 'investasi',
+  // Enam desk: politik, sosial, hukum, lingkungan, ekonomi nasional, bursa.
+  'politik', 'dpr', 'pemilu', 'pilkada', 'presiden', 'menteri', 'pemerintah', 'kebijakan', 'ruu', 'partai',
+  'sosial', 'pendidikan', 'sekolah', 'kesehatan', 'rumah sakit', 'bpjs', 'upah', 'buruh', 'kemiskinan', 'bansos',
+  'hukum', 'putusan', 'mahkamah', 'kpk', 'korupsi', 'kejaksaan', 'polisi', 'peradilan', 'sidang',
+  'lingkungan', 'banjir', 'gempa', 'kebakaran', 'iklim', 'polusi', 'bmkg', 'bnpb', 'tambang',
+  'ekonomi', 'inflasi', 'apbn', 'pajak', 'subsidi', 'rupiah', 'bank indonesia', 'suku bunga', 'pdb', 'ekspor', 'impor', 'kemenkeu', 'bps',
+  'bursa', 'saham', 'ihsg', 'ojk', 'pojk', 'bi-rate', 'pasar modal', 'bei', 'idx', 'regulasi', 'emiten', 'obligasi', 'investasi',
 ];
 
 const CATEGORY_KEYWORDS = {
+  politik: ['dpr', 'pemilu', 'pilkada', 'presiden', 'menteri', 'partai', 'kebijakan', 'ruu'],
+  sosial: ['pendidikan', 'kesehatan', 'sekolah', 'bpjs', 'upah', 'buruh', 'kemiskinan', 'bansos', 'layanan publik'],
+  hukum: ['putusan', 'mahkamah', 'kpk', 'korupsi', 'kejaksaan', 'peradilan', 'sidang', 'sanksi'],
+  lingkungan: ['lingkungan', 'banjir', 'gempa', 'kebakaran', 'iklim', 'polusi', 'bmkg', 'bnpb', 'tambang', 'energi'],
+  ekonomi: ['inflasi', 'apbn', 'pajak', 'subsidi', 'pdb', 'ekspor', 'impor', 'kemenkeu', 'bps'],
+  bursa: ['ihsg', 'saham', 'emiten', 'bei', 'idx', 'dividen', 'pasar modal'],
   pasar_modal: ['ihsg', 'saham', 'bursa', 'emiten', 'bei', 'idx', 'dividen', 'pasar modal'],
   regulasi: ['ojk', 'pojk', 'regulasi', 'sanksi', 'uu', 'putusan', 'kepatuhan'],
   moneter: ['bank indonesia', 'bi-rate', 'suku bunga', 'rupiah', 'kurs', 'inflasi', 'devisa'],
@@ -130,7 +140,7 @@ function computeVirality({ platform, engagement = {}, publishedAt, firstSeenAt, 
   const keywordScore = matched.length ? Math.min(10, matched.length * 3) : 0;
 
   let total = Math.max(0, Math.min(100, platformScore + weightScore + recencyScore + keywordScore));
-  // Google Trends sering berisi topik hiburan/olahraga di luar niche. Tanpa
+  // Google Trends sering berisi topik hiburan/olahraga di luar fokus editorial. Tanpa
   // kecocokan kata kunci, turunkan drastis agar tidak menenggelamkan berita relevan.
   if (platform === 'google_trends' && matched.length === 0) {
     total = Math.round(total * 0.3);

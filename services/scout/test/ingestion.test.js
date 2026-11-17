@@ -294,3 +294,37 @@ test('malformed XML and nested feed roots fail the whole source while later feed
     assert.equal(result.sourceResults[1].status, 'success');
   }
 });
+
+test('six desk fixture feeds keep their curated desk and a failed endpoint does not block other desks', async () => {
+  const desks = {
+    politik: 'DPR dan pemerintah membahas anggaran layanan publik',
+    sosial: 'Program pendidikan dan kesehatan diperluas untuk warga',
+    hukum: 'Mahkamah Agung membacakan putusan perkara korupsi',
+    lingkungan: 'BMKG memperingatkan banjir dan cuaca ekstrem',
+    ekonomi: 'BPS melaporkan inflasi dan pertumbuhan ekonomi',
+    bursa: 'IHSG ditutup menguat, saham bank memimpin',
+  };
+  const deskSources = Object.keys(desks).map((desk, index) => ({
+    id: index + 1, name: `Media ${desk}`, type: 'rss', category: 'umum', desk,
+    url_or_query: `https://feeds.example.org/${desk}.xml`,
+  }));
+  const db = scoutDb([...deskSources, { id: 99, name: 'Endpoint mati', type: 'rss', category: 'umum', desk: 'politik', url_or_query: 'https://feeds.example.org/broken.xml' }]);
+  const feedFor = (title, desk) => `<rss><channel><item><title>${title}</title><link>https://publisher.example.org/${desk}/article</link><source>Media ${desk}</source><pubDate>2026-11-16T08:00:00Z</pubDate></item></channel></rss>`;
+  const { runScout } = await loadService('scout/scout.js', {
+    client: db, config: { scout: { max_items_per_source: 1, dedup_similarity_threshold: 0.95 } },
+    fetchImpl: async (url) => {
+      const match = url.match(/feeds\.example\.org\/([a-z]+)\.xml/);
+      if (url.includes('broken')) return new Response('maintenance', { status: 503 });
+      return new Response(feedFor(desks[match[1]], match[1]));
+    },
+  });
+  const result = await runScout({ force: true });
+  assert.equal(result.totalNew, 6);
+  const topics = db.calls.filter((call) => call.sql.includes('INSERT INTO topics'));
+  assert.equal(topics.length, 6);
+  assert.deepEqual(topics.map((call) => call.params[14]).sort(), Object.keys(desks).sort());
+  assert.ok(topics.every((call) => Array.isArray(call.params[15]) && call.params[15].length > 0));
+  assert.ok(topics.every((call) => call.params[13] >= 1 && call.params[13] <= 6));
+  assert.equal(result.sourceResults[6].status, 'error');
+  assert.match(result.sourceResults[6].error, /503/);
+});

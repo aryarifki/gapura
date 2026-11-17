@@ -119,3 +119,51 @@ test('rejects invalid batch limits before querying or changing topics', async ()
   }
   assert.equal(db.calls.length, 0);
 });
+
+test('analyst LLM prompt carries only discovery metadata and never source body, summary, HTML or images', async () => {
+  const weights = { relevance: 30, credibility: 25, momentum: 20, engagement: 15, compliance: 10 };
+  const topic = {
+    id: 1, title: 'IHSG ditutup melemah, saham bank memimpin', summary: 'SECRET SUMMARY BODY',
+    url: 'https://www.kontan.co.id/news/ihsg-ditutup-melemah', primary_source: 'Kontan',
+    raw_title: '[X] IHSG ditutup melemah - Kontan', normalized_title: 'IHSG ditutup melemah',
+    image_url: 'https://foto.kontan.co.id/secret.jpg', content_raw: '<p>SECRET ARTICLE HTML</p>',
+    source_material: { body: 'SECRET MATERIAL BODY' },
+    created_at: '2026-11-17T02:00:00Z', source_published_at: '2026-11-17T01:00:00Z', desk: 'bursa', topic_keywords: ['ihsg', 'ditutup', 'melemah'],
+  };
+  let prompt;
+  const db = transactionDb([topic]);
+  const { runAnalis } = await loadService('analis/analis.js', {
+    client: db, config: { analis: { api_key: 'fixture-key', weights, min_score_threshold: 70 } },
+    llm: async (_, value) => { prompt = value; return JSON.stringify({ scores: weights, score_total: 100, verdict: 'passed', reasoning: 'fixture' }); },
+  });
+  await runAnalis();
+  const line = prompt.split('\n').find((entry) => entry.startsWith('DATA_DISCOVERY_JSON: '));
+  assert.ok(line, 'prompt exposes an allowlisted discovery payload');
+  const payload = JSON.parse(line.slice('DATA_DISCOVERY_JSON: '.length));
+  assert.deepEqual(Object.keys(payload).sort(), ['desk', 'discovered_at', 'normalized_title', 'published_at', 'raw_title', 'source_id', 'source_name', 'source_url', 'topic_keywords'].sort());
+  for (const secret of ['SECRET SUMMARY BODY', 'SECRET ARTICLE HTML', 'SECRET MATERIAL BODY', 'secret.jpg']) assert.ok(!prompt.includes(secret), `prompt leaked ${secret}`);
+  assert.doesNotMatch(prompt, /"summary"|"content"|"image_url"|"source_material"/u);
+});
+
+test('heuristic fallback and fast-fail never read the publisher summary', async () => {
+  const db = transactionDb([{
+    id: 1, title: 'Rapat anggaran daerah membahas layanan publik',
+    summary: 'Serok saham pilihan ini, potensial cuan! Beli sekarang juga.',
+    created_at: '2026-11-17T02:00:00Z',
+  }]);
+  const { runAnalis } = await loadService('analis/analis.js', {
+    client: db, config: { analis: { min_score_threshold: 70, fast_fail_rules: 'serok\npotensial cuan' } },
+  });
+  const result = await runAnalis();
+  assert.equal(result.fastFailed, 0);
+  assert.equal(result.evaluated, 1);
+  assert.equal(db.scores().length, 1);
+});
+
+test('analyst persists an inferred desk when the topic has none', async () => {
+  const db = transactionDb([{ id: 1, title: 'DPR dan pemerintah membahas anggaran layanan publik', created_at: '2026-11-17T02:00:00Z' }]);
+  const { runAnalis } = await loadService('analis/analis.js', { client: db, config: { analis: { min_score_threshold: 70 } } });
+  await runAnalis();
+  const update = db.calls.find((call) => call.sql.includes('UPDATE topics'));
+  assert.equal(update.params[2], 'politik');
+});

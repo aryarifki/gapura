@@ -955,7 +955,7 @@ export class RenderEngine {
                               },
                               children:
                                 subtext ||
-                                'Laporan editorial mendalam berdasarkan analisis data bursa, regulasi hukum, dan pergerakan makro ekonomi terverifikasi.',
+                                'Laporan editorial mendalam tentang isu publik: politik, sosial, hukum, lingkungan, ekonomi nasional, dan bursa.',
                             },
                           },
                         ],
@@ -1552,8 +1552,8 @@ export class RenderEngine {
       case 'cta-close': {
         const headline = slide.teks || 'SIMPAN DATA INI UNTUK REFERENSI';
         const ctaHeadlineSize = fitFontSize(headline, { max: 56, min: 24, maxLines: 4 });
-        const ctaText = slide.data?.cta || `Ikuti ${this.tokens.brand?.handle || '@gapuramedia'} untuk data bursa & regulasi harian.`;
-        const disclaimer = slide.data?.disclaimer || 'Informasi disajikan untuk tujuan edukasi data publik dan bukan merupakan rekomendasi transaksi saham maupun nasihat hukum resmi.';
+        const ctaText = slide.data?.cta || `Ikuti ${this.tokens.brand?.handle || '@gapuramedia'} untuk konteks isu publik harian.`;
+        const disclaimer = slide.data?.disclaimer || 'Informasi disajikan untuk kepentingan publik; bukan rekomendasi investasi atau nasihat hukum.';
 
         return this.wrapSlide(
           {
@@ -1661,7 +1661,7 @@ export class RenderEngine {
                                 children: 'BAGIKAN',
                               },
                             },
-                            { type: 'span', props: { style: { fontSize: '19px', fontWeight: 600, color: palette.ink || '#102B45' }, children: 'Bagikan ke rekan atau tim investor Anda untuk diskusi.' } },
+                            { type: 'span', props: { style: { fontSize: '19px', fontWeight: 600, color: palette.ink || '#102B45' }, children: 'Bagikan kepada publik yang membutuhkan konteks.' } },
                           ],
                         },
                       },
@@ -2215,7 +2215,7 @@ export class RenderEngine {
                 },
                 children: [
                   { type: 'span', props: { style: { fontSize: '20px' }, children: '💾' } },
-                  { type: 'span', props: { style: { fontSize: '16px', fontWeight: 700, color: palette.ink || '#102B45' }, children: 'Simpan postingan ini untuk referensi bursa & regulasi.' } },
+                  { type: 'span', props: { style: { fontSize: '16px', fontWeight: 700, color: palette.ink || '#102B45' }, children: 'Simpan postingan ini untuk referensi dan bacaan lanjutan.' } },
                 ],
               },
             },
@@ -2233,7 +2233,7 @@ export class RenderEngine {
                 },
                 children: [
                   { type: 'span', props: { style: { fontSize: '20px' }, children: '✈️' } },
-                  { type: 'span', props: { style: { fontSize: '16px', fontWeight: 700, color: palette.ink || '#102B45' }, children: 'Bagikan ke rekan atau tim investor Anda.' } },
+                  { type: 'span', props: { style: { fontSize: '16px', fontWeight: 700, color: palette.ink || '#102B45' }, children: 'Bagikan kepada publik yang membutuhkan konteks.' } },
                 ],
               },
             },
@@ -2249,7 +2249,7 @@ export class RenderEngine {
                   lineHeight: '1.45',
                   color: palette.muted || '#5A6B7C',
                 },
-                children: `DISCLAIMER RESMI: Seluruh data bersumber dari publikasi resmi otoritas (BPS, BI, OJK, BEI). Bukan rekomendasi investasi atau nasihat hukum individual.`,
+                children: `Catatan editorial: disusun ulang oleh Gapura Media dari topik publik. Bukan rekomendasi investasi atau nasihat hukum individual.`,
               },
             },
           ],

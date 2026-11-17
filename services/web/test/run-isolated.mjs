@@ -92,7 +92,9 @@ try {
   env.GAPURA_TEST_BASE = base;
   env.GAPURA_TEST_STORAGE = env.STORAGE_PATH;
   const files = process.argv.slice(2);
-  const tests = spawn(process.execPath, ['--test', ...(files.length ? files : ['services/web/test/server-db.test.js'])], { cwd: root, env, stdio: 'inherit' });
+  // Aplikasi migrasi mengunci DDL pada tabel yang juga dibaca server tes;
+  // file tes harus berjalan berurutan agar tidak saling deadlock.
+  const tests = spawn(process.execPath, ['--test', '--test-concurrency=1', ...(files.length ? files : ['services/web/test/server-db.test.js'])], { cwd: root, env, stdio: 'inherit' });
   exitCode = await new Promise((resolve) => tests.once('exit', (code) => resolve(code || 0)));
 } finally {
   if (child && child.exitCode === null) { child.kill('SIGTERM'); await new Promise((resolve) => child.once('exit', resolve)); }

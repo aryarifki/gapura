@@ -10,6 +10,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { loadAgentsConfig, callAgentLLM } from '../common/llm.js';
+import { projectDiscoveryTopic } from '../common/discovery.js';
 import { normalizeScoreResult, normalizeWeights, parseFastFailRules } from './scoring.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -28,7 +29,7 @@ const pool = new Pool({
 // 1. FAST-FAIL PATTERNS (0 Biaya Token - Deterministic Default)
 const DEFAULT_FAST_FAIL_PATTERNS = [
   { regex: /\b(rekomendasi saham|target harga|koleksi saham|potensial cuan|saham pilihan|serok|to the moon)\b/i, reason: 'Kepatuhan: Terdeteksi rekomendasi/ajakan beli-jual saham spesifik' },
-  { regex: /\b(prilly latuconsina|gosip|artis|selebriti|viral tiktok)\b/i, reason: 'Relevansi: Berita hiburan/gaya hidup tanpa substansi data ekonomi' },
+  { regex: /\b(prilly latuconsina|gosip|artis|selebriti|viral tiktok)\b/i, reason: 'Relevansi: Berita hiburan/gaya hidup tanpa substansi isu publik' },
   { regex: /selamat ulang tahun|ucapan selamat|dirgahayu|peresmian gedung/i, reason: 'Relevansi: Acara seremonial administratif tanpa data atau regulasi' },
   { regex: /\b(sara|ujaran kebencian|fitnah|politik identitas)\b/i, reason: 'Keamanan: Pelanggaran etika editorial dan kebijakan Meta' },
 ];
@@ -41,40 +42,46 @@ function getFastFailRules(analisCfg) {
   return DEFAULT_FAST_FAIL_PATTERNS;
 }
 
-// Heuristic Scoring jika API Key belum dipasang
-function calculateHeuristicScore(title, summary, primarySource, weights = {}) {
-  const text = `${title} ${summary || ''}`.toLowerCase();
+// Heuristic Scoring jika API Key belum dipasang. Input dibatasi pada metadata
+// discovery (judul + nama sumber): ringkasan/body penerbit tidak pernah dibaca.
+// Relevansi mengikuti enam desk editorial, bukan niche finansial tunggal.
+const DESK_LABELS = Object.freeze({
+  politik: 'politik', sosial: 'sosial', hukum: 'hukum',
+  lingkungan: 'lingkungan', ekonomi: 'ekonomi nasional', bursa: 'bursa',
+});
+
+function calculateHeuristicScore(title, primarySource, weights = {}, desk = null) {
+  const text = String(title || '').toLowerCase();
   const maxRel = weights.relevance ?? 30;
   const maxCred = weights.credibility ?? 25;
   const maxMom = weights.momentum ?? 20;
   const maxEng = weights.engagement ?? 15;
   const maxComp = weights.compliance ?? 10;
 
-  let rel = Math.round(maxRel * 0.33);
+  let rel = Math.round(maxRel * 0.3);
   let cred = Math.round(maxCred * 0.4);
-  let mom = Math.round(maxMom * 0.5);
-  let eng = Math.round(maxEng * 0.5);
+  let mom = Math.round(maxMom * 0.4);
+  let eng = Math.round(maxEng * 0.4);
   let comp = maxComp;
 
-  // Relevansi Niche
-  if (/inflasi|pdb|cadangan devisa|bi-rate|suku bunga|neraca perdagangan|apbn/i.test(text)) rel += Math.round(maxRel * 0.6);
-  else if (/ihsg|bursa efek|pasar modal|transaksi nego|ipo|msci|kapitalisasi/i.test(text)) rel += Math.round(maxRel * 0.55);
-  else if (/\b(ojk|pojk|peraturan|uu|hukum|regulasi|putusan mk|sanksi)\b/i.test(text)) rel += Math.round(maxRel * 0.55);
-  else if (/kredit|perbankan|dhe|asuransi|multifinance/i.test(text)) rel += Math.round(maxRel * 0.4);
+  // Relevansi: salah satu dari enam desk mendapat porsi utama; isu publik,
+  // kebijakan dan dampak menambah sedikit bobot.
+  if (desk && DESK_LABELS[desk]) rel += Math.round(maxRel * 0.45);
+  if (/kebijakan|regulasi|undang-undang|ruu|perppu|putusan|anggaran|layanan publik|warga|masyarakat|dampak|krisis|bencana/i.test(text)) rel += Math.round(maxRel * 0.15);
   rel = Math.min(maxRel, rel);
 
   // Kualitas Data & Kredibilitas
-  if (/\b(bps|bank indonesia|bi|ojk|bei|idx|kemenkeu)\b/i.test(primarySource || '') || /\b(resmi|siaran pers)\b/i.test(text)) cred += Math.round(maxCred * 0.4);
+  if (/\b(bps|bank indonesia|bi|ojk|bei|idx|kemenkeu|kemenkes|kemendikbud|kementerian|pemerintah|dpr|mahkamah|kpk|bmkg|bnpb)\b/i.test(primarySource || '') || /\b(resmi|siaran pers|putusan|pengumuman)\b/i.test(text)) cred += Math.round(maxCred * 0.4);
   if (/\d+([.,]\d+)?%/.test(text)) cred += Math.round(maxCred * 0.16); // Ada persentase
-  if (/rp\s*\d+|usd\s*\d+|triliun|miliar/i.test(text)) cred += Math.round(maxCred * 0.16); // Ada nilai konkret
+  if (/rp\s*\d+|usd\s*\d+|triliun|miliar|juta|ribu/i.test(text)) cred += Math.round(maxCred * 0.16); // Ada nilai konkret
   cred = Math.min(maxCred, cred);
 
   // Momentum
-  if (/terbaru|rilis|resmi|breaking|hari ini|q3|kuartal/i.test(text)) mom += Math.round(maxMom * 0.4);
+  if (/terbaru|rilis|resmi|breaking|hari ini|kemarin|mulai berlaku|ditetapkan|putusan|pengumuman|darurat/i.test(text)) mom += Math.round(maxMom * 0.4);
   mom = Math.min(maxMom, mom);
 
-  // Potensi Interaksi
-  if (/dompet|investor|masyarakat|bunga|pinjol|utang|rupiah|daya beli/i.test(text)) eng += Math.round(maxEng * 0.35);
+  // Potensi Interaksi: dampak ke publik, bukan istilah pasar semata.
+  if (/masyarakat|warga|publik|layanan|harga|pendidikan|kesehatan|lingkungan|banjir|korban|pekerja|upah|subsidi|pajak|hukum|putusan/i.test(text)) eng += Math.round(maxEng * 0.35);
   eng = Math.min(maxEng, eng);
 
   const total = rel + cred + mom + eng + comp;
@@ -85,7 +92,7 @@ function calculateHeuristicScore(title, summary, primarySource, weights = {}) {
   };
 }
 
-async function saveScore(client, topicId, result, model) {
+async function saveScore(client, topicId, result, model, desk = null) {
   await client.query('BEGIN');
   try {
     await client.query(
@@ -94,7 +101,10 @@ async function saveScore(client, topicId, result, model) {
       [topicId, result.scores.relevance, result.scores.credibility, result.scores.momentum,
         result.scores.engagement, result.scores.compliance, result.score_total, result.verdict, result.reasoning, model.slice(0, 50)]
     );
-    await client.query('UPDATE topics SET status = $2, updated_at = NOW() WHERE id = $1', [topicId, result.verdict === 'passed' ? 'scored' : 'rejected']);
+    await client.query(
+      'UPDATE topics SET status = $2, desk = COALESCE(desk, $3), updated_at = NOW() WHERE id = $1',
+      [topicId, result.verdict === 'passed' ? 'scored' : 'rejected', desk]
+    );
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK');
@@ -138,7 +148,9 @@ export async function runAnalis({ client: suppliedClient, config = loadAgentsCon
 
     for (const topic of newTopics) {
       evaluated++;
-      const fullText = `${topic.title} ${topic.summary || ''}`;
+      const discovery = projectDiscoveryTopic(topic);
+      const title = discovery?.normalized_title || discovery?.raw_title || String(topic.title || '').trim();
+      const fullText = title;
 
       // --- GATE 1: FAST-FAIL CHECK (Dynamic from agent config) ---
       let fastFailMatch = null;
@@ -155,9 +167,9 @@ export async function runAnalis({ client: suppliedClient, config = loadAgentsCon
 
       if (fastFailMatch) {
         fastFailed++;
-        console.log(`[Analis] [FAST-FAIL] #${topic.id}: "${topic.title}" -> ${fastFailMatch}`);
+        console.log(`[Analis] [FAST-FAIL] #${topic.id}: "${title}" -> ${fastFailMatch}`);
 
-        await saveScore(client, topic.id, { scores: { relevance: 0, credibility: 0, momentum: 0, engagement: 0, compliance: 0 }, score_total: 0, verdict: 'fast_failed', reasoning: fastFailMatch }, 'fast-fail-gate');
+        await saveScore(client, topic.id, { scores: { relevance: 0, credibility: 0, momentum: 0, engagement: 0, compliance: 0 }, score_total: 0, verdict: 'fast_failed', reasoning: fastFailMatch }, 'fast-fail-gate', discovery?.desk ?? null);
         continue;
       }
 
@@ -169,10 +181,8 @@ export async function runAnalis({ client: suppliedClient, config = loadAgentsCon
       const apiKey = analisCfg.api_key || process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY;
       if (apiKey && apiKey.length > 5) {
         try {
-          const promptText = `Evaluasi berita ini untuk akun Instagram @gapuramedia (niche data ekonomi, hukum, bursa saham):
-Judul: ${topic.title}
-Ringkasan: ${topic.summary || ''}
-Sumber: ${topic.primary_source || ''}
+          const promptText = `Evaluasi berita ini untuk akun Instagram @gapuramedia. Fokus editorial adalah isu nasional Indonesia pada enam desk: politik, sosial, hukum, lingkungan, ekonomi nasional, dan bursa. Nilai kepentingan publik, relevansi desk, kredibilitas atribusi, momentum, potensi interaksi dan kepatuhan hanya dari metadata discovery berikut. Jangan mengarang fakta, angka, kutipan, ringkasan, atau isi artikel yang tidak ada pada payload.
+DATA_DISCOVERY_JSON: ${JSON.stringify(discovery)}
 
 Bobot penilaian:
 - Relevansi: 0-${weights.relevance}
@@ -205,7 +215,7 @@ Kembalikan HANYA JSON:
 
       // Fallback ke Heuristik jika LLM tidak tersedia
       if (!scoreResult || typeof scoreResult.score_total !== 'number') {
-        const h = calculateHeuristicScore(topic.title, topic.summary, topic.primary_source, weights);
+        const h = calculateHeuristicScore(title, discovery?.source_name || topic.primary_source, weights, discovery?.desk ?? null);
         scoreResult = {
           scores: h.scores,
           score_total: h.total,
@@ -216,15 +226,15 @@ Kembalikan HANYA JSON:
       }
 
       scoreResult = normalizeScoreResult(scoreResult, minThreshold, weights);
-      await saveScore(client, topic.id, scoreResult, modelUsed);
+      await saveScore(client, topic.id, scoreResult, modelUsed, discovery?.desk ?? null);
 
       const isPassed = scoreResult.verdict === 'passed';
       if (isPassed) {
         passed++;
-        console.log(`[Analis] [LOLOS ${scoreResult.score_total}/100] #${topic.id}: "${topic.title}"`);
+        console.log(`[Analis] [LOLOS ${scoreResult.score_total}/100] #${topic.id}: "${title}"`);
       } else {
         scoreRejected++;
-        console.log(`[Analis] [GUGUR ${scoreResult.score_total}/100] #${topic.id}: "${topic.title}"`);
+        console.log(`[Analis] [GUGUR ${scoreResult.score_total}/100] #${topic.id}: "${title}"`);
       }
     }
 

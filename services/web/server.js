@@ -44,6 +44,8 @@ import { createArticleReader } from '../scout/article-reader.js';
 import { createTopicMaterialService } from '../scout/enrichment.js';
 import { createIllustrationService, pinIllustrationSlides, loadIllustration, selectedIllustration, illustrationDescriptor } from '../designer/illustration-store.js';
 import { illustrationConfiguration, ASSET_ID } from '../designer/illustrations.js';
+import { createTopicClusterHandler } from './clusters.js';
+import { normalizeDesk } from '../common/discovery.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -395,7 +397,7 @@ app.post('/api/drafts/create-from-custom', async (req, res) => {
     }
     // 2. Simpan draft as a review-only design preview; it is not marked as scored.
     const defaultCaption = caption || `${title}\n\n${summary || ''}\n\nSumber Data: ${primary_source || '@gapuramedia'}\n\n---\nDisclaimer: Informasi disajikan untuk tujuan edukasi publik dan bukan merupakan rekomendasi investasi beli/jual saham atau nasihat hukum resmi.`;
-    const defaultHashtags = Array.isArray(hashtags) && hashtags.length > 0 ? hashtags : ['#GapuraMedia', '#DataEkonomi', '#BursaSaham', '#IHSG'];
+    const defaultHashtags = Array.isArray(hashtags) && hashtags.length > 0 ? hashtags : ['#GapuraMedia', '#BeritaNasional', '#IsuPublik', '#Indonesia'];
 
     const { rows: draftRows } = await client.query(
       `INSERT INTO drafts (topic_id, slides, content_format, caption, hashtags, disclaimer_type, status, needs_review, tokens_version, copy_model)
@@ -642,12 +644,13 @@ app.post('/api/drafts/:id/update-full', async (req, res) => {
 
 // 6. Topics List with Scores
 app.get('/api/topics', async (req, res) => {
-  const { status, limit = 50, offset = 0, q = '', sort = 'newest' } = req.query;
+  const { status, limit = 50, offset = 0, q = '', sort = 'newest', desk = '' } = req.query;
   const pageSize = Math.max(1, Math.min(100, Number.parseInt(limit, 10) || 40));
   const pageOffset = Math.max(0, Math.min(1000000, Number.parseInt(offset, 10) || 0));
   if (status && !['new', 'scored', 'rejected', 'produced', 'archived'].includes(status)) {
     return res.status(400).json({ error: 'Status topik tidak valid.' });
   }
+  if (String(desk) && !normalizeDesk(String(desk))) return res.status(400).json({ error: 'Desk topik tidak valid.' });
   if (String(q).length > 200) return res.status(400).json({ error: 'Kueri pencarian maksimal 200 karakter.' });
   try {
     let query = `
@@ -660,6 +663,10 @@ app.get('/api/topics', async (req, res) => {
     if (status) {
       params.push(status);
       filters.push(`t.status = $${params.length}`);
+    }
+    if (desk) {
+      params.push(String(desk).trim().toLocaleLowerCase('id'));
+      filters.push(`t.desk = $${params.length}`);
     }
     if (q.trim()) {
       params.push(`%${q.trim()}%`);
@@ -681,6 +688,9 @@ app.get('/api/topics', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// 6b. Topic event cluster (discovery metadata only)
+app.get('/api/topics/:id/cluster', createTopicClusterHandler({ pool }));
 
 // 7. Promote Topic to Copywriter Pipeline
 app.get('/api/topics/:id/material', async (req, res) => {
@@ -1191,17 +1201,21 @@ app.get('/api/sources', async (req, res) => {
 
 // Add new news source
 app.post('/api/sources', async (req, res) => {
-  const { name, type = 'rss', url_or_query, category = 'news_pasar', poll_interval_mins = 30, is_active = true } = req.body;
+  const { name, type = 'rss', url_or_query, category = 'news_pasar', desk = null, poll_interval_mins = 30, is_active = true } = req.body;
   if (!name || !url_or_query) {
     return res.status(400).json({ error: 'Nama sumber dan URL/Query wajib diisi.' });
   }
   const sourceError = validateSourceType(type, url_or_query);
   if (sourceError) return res.status(400).json({ error: sourceError });
+  if (desk !== null && desk !== '' && (typeof desk !== 'string' || !normalizeDesk(desk))) {
+    return res.status(400).json({ error: 'Desk sumber tidak valid.' });
+  }
+  const normalizedDesk = desk ? normalizeDesk(desk) : null;
 
   try {
     const query = `
-      INSERT INTO sources (name, type, url_or_query, category, poll_interval_mins, is_active, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+      INSERT INTO sources (name, type, url_or_query, category, desk, poll_interval_mins, is_active, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
       RETURNING *;
     `;
     const { rows } = await pool.query(query, [
@@ -1209,13 +1223,14 @@ app.post('/api/sources', async (req, res) => {
       type.trim(),
       url_or_query.trim(),
       category.trim(),
+      normalizedDesk,
       parseInt(poll_interval_mins) || 30,
       Boolean(is_active),
     ]);
 
     await pool.query(
       "INSERT INTO audit_log (entity, entity_id, action, actor, payload) VALUES ('sources', $1, 'create_source', 'web_admin', $2)",
-      [rows[0].id, JSON.stringify({ name, url_or_query, category })]
+      [rows[0].id, JSON.stringify({ name, url_or_query, category, desk: normalizedDesk })]
     );
 
     res.json({ status: 'success', source: rows[0], message: `Sumber "${name}" berhasil ditambahkan.` });
@@ -1233,12 +1248,19 @@ app.put('/api/sources/:id', async (req, res) => {
   }
   const sourceError = validateSourceType(type, url_or_query);
   if (sourceError) return res.status(400).json({ error: sourceError });
+  const hasDesk = Object.hasOwn(req.body, 'desk');
+  if (hasDesk && req.body.desk !== null && req.body.desk !== ''
+    && (typeof req.body.desk !== 'string' || !normalizeDesk(req.body.desk))) {
+    return res.status(400).json({ error: 'Desk sumber tidak valid.' });
+  }
+  const normalizedDesk = hasDesk && req.body.desk ? normalizeDesk(req.body.desk) : null;
 
   try {
     const query = `
       UPDATE sources
-      SET name = $1, type = $2, url_or_query = $3, category = $4, poll_interval_mins = $5, is_active = $6, updated_at = NOW()
-      WHERE id = $7
+      SET name = $1, type = $2, url_or_query = $3, category = $4, poll_interval_mins = $5, is_active = $6,
+          desk = CASE WHEN $7::boolean THEN $8::varchar ELSE desk END, updated_at = NOW()
+      WHERE id = $9
       RETURNING *;
     `;
     const { rows } = await pool.query(query, [
@@ -1248,6 +1270,8 @@ app.put('/api/sources/:id', async (req, res) => {
       category.trim(),
       parseInt(poll_interval_mins) || 30,
       Boolean(is_active),
+      hasDesk,
+      normalizedDesk,
       id,
     ]);
 
@@ -1257,7 +1281,7 @@ app.put('/api/sources/:id', async (req, res) => {
 
     await pool.query(
       "INSERT INTO audit_log (entity, entity_id, action, actor, payload) VALUES ('sources', $1, 'update_source', 'web_admin', $2)",
-      [id, JSON.stringify({ name, url_or_query, category, is_active })]
+      [id, JSON.stringify({ name, url_or_query, category, desk: rows[0].desk, is_active })]
     );
 
     res.json({ status: 'success', source: rows[0], message: `Sumber "${name}" berhasil diperbarui.` });

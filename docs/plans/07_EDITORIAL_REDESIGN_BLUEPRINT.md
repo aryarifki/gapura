@@ -1,7 +1,7 @@
 # Blueprint pembaruan editorial dan desain Gapura Media
 
-Versi 2.1 · 17 November 2026 · Status: R0–R2 selesai; R3 kode/aset lokal tersedia,
-generasi nyata tertahan kuota; R4–R8 mengikuti arah orisinal owner.
+Versi 2.2 · 17 November 2026 · Status: R0–R4 selesai; R3 kode/aset lokal tersedia,
+generasi nyata tertahan kuota; R5–R8 mengikuti arah orisinal owner.
 
 Dokumen ini menjadi acuan perubahan konten berikutnya. [Keputusan konten orisinal
 dan ilustrasi AI](10_ORIGINAL_AI_EDITORIAL.md) menggantikan kewajiban memakai
@@ -15,6 +15,10 @@ buktinya tercantum di
 [laporan reset](../EDITORIAL_WORKSPACE_RESET_20261116.md).
 [R3](11_R3_AI_ILLUSTRATIONS.md) menambahkan adapter ilustrasi/provenance lokal
 dan disclosure, tanpa menyatakan naskah orisinal R4–R6 sudah terpasang.
+[R4](12_R4_SOURCES_DESKS.md) membatasi input Analis pada metadata discovery,
+menetapkan enam desk pada sumber/topik, menambahkan cluster judul lintas URL dan
+membersihkan sisa identitas niche finansial di konfigurasi/UI; R4 tidak
+menghapus Verifikator atau menulis ulang naskah.
 
 ## 1. Keputusan produk dan tujuan
 
@@ -416,7 +420,7 @@ Semua perubahan kode dimulai dari tes merah yang mereproduksi masalah.
 | R1 — Kontrak editorial | Taxonomy enam desk, material/media contract, kebijakan hak/credit minimum, aturan headline/caption/carousel, corpus fixture | **Tersedia offline**, lihat [kontrak R1](08_R1_EDITORIAL_CONTRACT.md); bukan acceptance foto berita live/visual owner |
 | R2 — Pengambilan materi | Feed body penuh yang tersedia, publisher article resolver, metadata, akses status, snapshot hash idempotent | **Tersedia**, lihat [hasil R2](09_R2_ARTICLE_MATERIALS.md); validasi fixture dan migrasi tanpa rewrite. Clustering peristiwa lintas URL menyusul bersama kurasi sumber R4 |
 | R3 — Ilustrasi AI end-to-end | Revisi kontrak visual R1, adapter gambar, asset ID lokal, provenance/disclosure, hydration | **Kode/API/render teruji**, lihat [R3](11_R3_AI_ILLUSTRATIONS.md); fixture raster/label bertahan pada normal/fallback/regenerasi. Generasi provider nyata **tertahan kuota 0**, belum acceptance visual live |
-| R4 — Sources dan Analis | Topik/judul dan metadata saja, cluster enam desk, angle/kepentingan publik | Body/ringkasan/foto tidak masuk payload agen; fixture per desk dan endpoint gagal teruji |
+| R4 — Sources dan Analis | Topik/judul dan metadata saja, cluster enam desk, angle/kepentingan publik | **Selesai**, lihat [R4](12_R4_SOURCES_DESKS.md); proyeksi allowlist sembilan field, 12 feed baru, 34 sumber berdesk (29 eksplisit/5 auto), migrasi/backup terverifikasi. Filter desk arsip baru terisi setelah ingest; body masih dipakai jalur Copywriter lama sampai R6 |
 | R5 — Lepas Verifikator | Seluruh runtime/API/UI/config/SQL consumer report hilang | Produksi/review tanpa report berhasil; publish tanpa review tetap ditolak |
 | R6 — Penulisan dan desain | Hapus verbatim/fallback salin sumber; angle/naskah/caption orisinal; mode umum/aktual | Sampel enam desk tidak mengarang fakta, 3–9 slide bermakna dan render lulus |
 | R7 — Review visual owner | Satu carousel per desk dengan ilustrasi AI dan variasi cover/layout | Owner menyetujui orisinalitas/style/isi/disclosure; perbaiki sebelum batch |

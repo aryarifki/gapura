@@ -1,7 +1,7 @@
 // ==============================================================================
 // Homeless Media Engine (HME) v2.0 - Agen Scout
 // File: /root/gapura/services/scout/scout.js
-// Niche Sources Poller with Two-Layer Deduplication Engine
+// Discovery Sources Poller (six editorial desks) with Two-Layer Deduplication Engine
 // ==============================================================================
 
 import pkg from 'pg';
@@ -13,6 +13,8 @@ import { parseFeed } from '../common/rss.js';
 import { loadAgentsConfig } from '../common/llm.js';
 import { createMaterial } from './material.js';
 import { persistTopicMaterial } from './material-store.js';
+import { inferDesk, normalizeDesk, topicKeywords } from '../common/discovery.js';
+import { assignTopicCluster } from './clusters.js';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -45,7 +47,7 @@ function hashUrl(url) {
 export async function runScout({ force = false, client: suppliedClient, config = loadAgentsConfig() } = {}) {
   const client = suppliedClient || await pool.connect();
   const startTime = Date.now();
-  console.log('[Scout] Memulai siklus pemantauan sumber niche...');
+  console.log('[Scout] Memulai siklus pemantauan sumber discovery...');
   const cfg = config.scout || {};
   const configuredMax = Number(cfg.max_items_per_source ?? 15);
   const maxItems = Number.isInteger(configuredMax) && configuredMax >= 1 && configuredMax <= 1000 ? configuredMax : 15;
@@ -94,7 +96,7 @@ export async function runScout({ force = false, client: suppliedClient, config =
     for (const result of fetchedBySource) {
       const src = result.src;
       console.log(`[Scout] Polling: ${src.name} (${src.url_or_query})`);
-      const diagnostic = { source_id: src.id, status: 'success', seen: 0, inserted: 0, duplicates: 0, invalid: 0, errors: 0, providers: [], error: null };
+      const diagnostic = { source_id: src.id, status: 'success', seen: 0, inserted: 0, duplicates: 0, invalid: 0, errors: 0, providers: [], clusters: 0, cluster_errors: 0, error: null };
       const reportError = (error, invalid = false) => {
         diagnostic[invalid ? 'invalid' : 'errors']++;
         diagnostic.error = String(error?.message || error).slice(0, 500);
@@ -124,6 +126,8 @@ export async function runScout({ force = false, client: suppliedClient, config =
           }
           try {
             const title = material.headline;
+            const desk = normalizeDesk(src.desk) || inferDesk({ category: src.category, title });
+            const keywords = topicKeywords(title);
             const hash = hashUrl(url);
             const existing = await client.query('SELECT id FROM raw_items WHERE url_hash = $1', [hash]);
             const similar = existing.rows.length ? existing : await client.query(
@@ -144,12 +148,22 @@ export async function runScout({ force = false, client: suppliedClient, config =
               if (raw.rows.length) {
                 const { rows: topicRows } = await client.query(
                   `INSERT INTO topics (raw_item_id, title, summary, url, primary_source, status, source_kind, image_url, publisher_url,
-                     raw_title, normalized_title, source_published_at, source_updated_at, material_status)
-                   VALUES ($1,$2,$3,$4,$5,'new',$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
+                     raw_title, normalized_title, source_published_at, source_updated_at, material_status, source_id, desk, topic_keywords)
+                   VALUES ($1,$2,$3,$4,$5,'new',$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id`,
                   [raw.rows[0].id, title, summary, url, material.publisher.slice(0, 100), item.type === 'x_api' ? 'x' : item.type || 'rss', item.image_url || null, publisherUrl,
-                    material.raw_title, material.headline, material.published_at, material.updated_at, material.extraction.status]
+                    material.raw_title, material.headline, material.published_at, material.updated_at, material.extraction.status, src.id, desk, keywords]
                 );
                 await persistTopicMaterial(client, topicRows[0].id, material);
+                if (desk) {
+                  try {
+                    const clusterId = await assignTopicCluster(client, { id: topicRows[0].id, title, desk });
+                    if (clusterId) diagnostic.clusters++;
+                  } catch (error) {
+                    // Clustering is a curation aid; a failure must not drop an ingested topic.
+                    diagnostic.cluster_errors++;
+                    console.warn(`[Scout] Cluster ${src.name}: ${String(error?.message || error).slice(0, 200)}`);
+                  }
+                }
               }
               await client.query('COMMIT');
               if (raw.rows.length) { totalNew++; diagnostic.inserted++; }

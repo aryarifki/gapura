@@ -981,7 +981,7 @@ function renderLayoutFields(layout, data) {
         </div>
         <div class="form-group-editor" style="margin-bottom: 8px;">
           <label class="form-label-editor">Kategori / Keterangan Tag</label>
-          <input type="text" id="lf-generic-category" class="form-input-dark" value="${escapeHtml(data.category || data.subtitle || '')}" placeholder="Kategori niche...">
+          <input type="text" id="lf-generic-category" class="form-input-dark" value="${escapeHtml(data.category || data.subtitle || '')}" placeholder="Kategori...">
         </div>
       </div>
       <div class="form-grid-2col">
@@ -1585,67 +1585,67 @@ function getDefaultStudioSlides() {
     {
       no: 1,
       layout: 'cover-editorial',
-      teks: 'Cadangan devisa Indonesia melonjak ke level tertinggi 2026 didorong arus modal masuk dan penerbitan sukuk global.',
+      teks: 'Contoh halaman pembuka: jelaskan isu yang benar-benar diketahui dari topik discovery dan batas klaimnya.',
       data: {
-        title: 'Lonjakan Cadangan Devisa RI',
-        subtitle: 'Rekor Tertinggi Sepanjang Kuartal I 2026',
-        category: 'MAKRO & MONETER',
-        value: 'USD 151,2 M',
+        title: 'Judul Utama',
+        subtitle: 'Subjudul konteks',
+        category: 'ENAM DESK EDITORIAL',
+        value: 'Konteks',
       },
-      source: 'Bank Indonesia',
+      source: 'Gapura Media',
     },
     {
       no: 2,
       layout: 'stat-grid',
-      teks: 'Indikator Kunci Pasar Saham dan Stabilitas Likuiditas Domestik',
+      teks: 'Ringkasan indikator hanya jika angka benar-benar tersedia dan dapat diatribusikan.',
       data: {
-        title: 'Ringkasan Pasar',
-        category: 'PASAR SAHAM',
+        title: 'Ringkasan Data',
+        category: 'DATA & KONTEKS',
         items: [
-          { label: 'IHSG Penutupan', value: '7.850,2' },
-          { label: 'Net Foreign Buy', value: '+Rp 1,4 T' },
-          { label: 'Volume Transaksi', value: 'Rp 14,8 T' },
-          { label: 'Kurs IDR/USD', value: 'Rp 15.650' },
+          { label: 'Indikator 1', value: '—' },
+          { label: 'Indikator 2', value: '—' },
+          { label: 'Indikator 3', value: '—' },
+          { label: 'Indikator 4', value: '—' },
         ],
       },
-      source: 'Bursa Efek Indonesia',
+      source: 'Sumber primer',
     },
     {
       no: 3,
       layout: 'comparison',
-      teks: 'Perbandingan Dampak Kebijakan Likuiditas Sebelum dan Sesudah Penerbitan Insentif',
+      teks: 'Perbandingan hanya untuk konteks yang didukung bahan yang tersedia.',
       data: {
-        category: 'ANALISIS KEBIJAKAN',
+        category: 'KONTEKS KEBIJAKAN',
         left: {
-          title: 'SEBELUMNYA (Q3 2025)',
-          text: 'Pertumbuhan kredit melambat ke 8,2% yoy akibat tingginya suku bunga dana perbankan.',
+          title: 'KONTEKS A',
+          text: 'Isi dengan perbandingan yang didukung bahan, bukan dugaan.',
         },
         right: {
-          title: 'SAAT INI (Q1 2026)',
-          text: 'Insentif makroprudensial mendorong akselerasi penyaluran kredit produktif hingga 11,5% yoy.',
+          title: 'KONTEKS B',
+          text: 'Sebutkan sumber dan batas klaim bila data belum lengkap.',
         },
       },
-      source: 'Kementerian Keuangan RI',
+      source: 'Gapura Media',
     },
     {
       no: 4,
       layout: 'regulatory-focus',
-      teks: 'Kewajiban Pengungkapan Transaksi Afiliasi dan Benturan Kepentingan Emiten Terbuka',
+      teks: 'Dokumen dan aturan hanya disebut jika benar-benar diperiksa.',
       data: {
-        title: 'POJK NOMOR 12 TAHUN 2026',
-        subtitle: 'Penguatan Tata Kelola & Perlindungan Investor Ritel',
-        callout: 'Setiap emiten wajib mempublikasikan keterbukaan informasi transaksi material dalam jangka waktu paling lambat 2 hari kerja.',
-        category: 'HUKUM & REGULASI',
+        title: 'Dokumen & Aturan',
+        subtitle: 'Sebutkan dasar hukum yang tersedia',
+        callout: 'Jangan mengarang nomor, pasal, atau kutipan. Cantumkan hanya dokumen yang telah diperiksa.',
+        category: 'HUKUM & KEBIJAKAN',
       },
-      source: 'Otoritas Jasa Keuangan',
+      source: 'Sumber primer',
     },
     {
       no: 5,
       layout: 'cta-close',
-      teks: 'Bagaimana dampak regulasi likuiditas baru ini terhadap portofolio saham Anda?',
+      teks: 'Apa konteks yang perlu diketahui publik?',
       data: {
-        cta: 'Simpan postingan ini & ikuti @gapuramedia untuk analisis data bursa harian.',
-        disclaimer: 'Informasi disajikan untuk tujuan edukasi publik dan bukan merupakan rekomendasi investasi beli/jual saham atau nasihat hukum resmi.',
+        cta: 'Simpan & ikuti @gapuramedia untuk konteks isu publik.',
+        disclaimer: 'Informasi disajikan untuk kepentingan publik; bukan rekomendasi investasi atau nasihat hukum.',
       },
       source: '@gapuramedia',
     },
@@ -2176,9 +2176,11 @@ async function loadSources() {
 
     // Update Statistics
     const totalActive = sources.filter((s) => s.is_active).length;
-    const regulasiCount = sources.filter((s) => ['ojk_regulasi', 'jdih_hukum'].includes(s.category)).length;
-    const marketCount = sources.filter((s) => s.category === 'news_pasar').length;
-    const primerCount = sources.filter((s) => ['data_bps', 'bi_moneter'].includes(s.category)).length;
+    const nonFinancialDesks = new Set(['politik', 'sosial', 'hukum', 'lingkungan']);
+    const deskOf = (s) => s.desk || ({ news_pasar: 'bursa', ojk_regulasi: 'ekonomi', bi_moneter: 'ekonomi', data_bps: 'ekonomi', jdih_hukum: 'hukum' }[s.category] || null);
+    const regulasiCount = sources.filter((s) => nonFinancialDesks.has(deskOf(s))).length;
+    const marketCount = sources.filter((s) => deskOf(s) === 'bursa').length;
+    const primerCount = sources.filter((s) => deskOf(s) === 'ekonomi').length;
 
     if (document.getElementById('stat-sources-active')) document.getElementById('stat-sources-active').textContent = totalActive;
     if (document.getElementById('stat-sources-regulasi')) document.getElementById('stat-sources-regulasi').textContent = regulasiCount;
@@ -2199,6 +2201,10 @@ async function loadSources() {
       data_bps: { label: 'Data BPS', color: '#a855f7' },
       umum: { label: 'Ekonomi Umum', color: 'var(--muted)' },
     };
+    const deskLabels = {
+      politik: 'Politik', sosial: 'Sosial', hukum: 'Hukum',
+      lingkungan: 'Lingkungan', ekonomi: 'Ekonomi Nasional', bursa: 'Bursa Saham',
+    };
 
     let html = '';
     sources.forEach((src) => {
@@ -2215,6 +2221,7 @@ async function loadSources() {
             <span style="display: inline-block; padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 700; background: rgba(255,255,255,0.06); color: ${catInfo.color}; border: 1px solid ${catInfo.color}33;">
               ${catInfo.label}
             </span>
+            ${src.desk ? `<div style="font-size: 11px; color: var(--muted); margin-top: 4px;">Desk: ${escapeHtml(deskLabels[src.desk] || src.desk)}</div>` : ''}
           </td>
           <td style="padding: 14px 16px; max-width: 300px;">
             <a href="${escapeHtml(src.url_or_query)}" target="_blank" rel="noopener" style="color: var(--accent); text-decoration: none; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(src.url_or_query)}">
@@ -2282,6 +2289,7 @@ window.openAddSourceModal = function () {
   document.getElementById('source-input-name').value = '';
   document.getElementById('source-input-type').value = 'rss';
   document.getElementById('source-input-category').value = 'news_pasar';
+  document.getElementById('source-input-desk').value = '';
   document.getElementById('source-input-url').value = '';
   document.getElementById('source-input-interval').value = '30';
   document.getElementById('source-input-active').checked = true;
@@ -2296,13 +2304,13 @@ function updateSourceInputHelp() {
   const help = document.getElementById('source-input-help');
   if (input) {
     input.type = type === 'rss' ? 'url' : 'text';
-    input.placeholder = type === 'rss' ? 'https://example.com/rss.xml' : type === 'x_account' ? '@ojkindonesia' : 'IHSG OJK lang:id';
+    input.placeholder = type === 'rss' ? 'https://example.com/rss.xml' : type === 'x_account' ? '@kemenkeuRI' : 'APBN Indonesia lang:id';
   }
   if (help) help.textContent = type === 'rss'
     ? 'Feed RSS/Atom wajib HTTPS.'
     : type === 'x_account'
       ? 'Masukkan @handle. Membutuhkan X_BEARER_TOKEN.'
-      : 'Masukkan kata kunci pencarian X, misalnya IHSG lang:id. Membutuhkan X_BEARER_TOKEN.';
+      : 'Masukkan kata kunci pencarian X, misalnya APBN Indonesia lang:id. Membutuhkan X_BEARER_TOKEN.';
 }
 
 window.openEditSourceModal = function (id) {
@@ -2314,6 +2322,7 @@ window.openEditSourceModal = function (id) {
   document.getElementById('source-input-name').value = src.name || '';
   document.getElementById('source-input-type').value = src.type || 'rss';
   document.getElementById('source-input-category').value = src.category || 'news_pasar';
+  document.getElementById('source-input-desk').value = src.desk || '';
   document.getElementById('source-input-url').value = src.url_or_query || '';
   document.getElementById('source-input-interval').value = src.poll_interval_mins || 30;
   document.getElementById('source-input-active').checked = src.is_active !== false;
@@ -2333,6 +2342,7 @@ window.handleSaveSource = async function (e) {
   const name = document.getElementById('source-input-name')?.value;
   const type = document.getElementById('source-input-type')?.value;
   const category = document.getElementById('source-input-category')?.value;
+  const desk = document.getElementById('source-input-desk')?.value || null;
   const url_or_query = document.getElementById('source-input-url')?.value;
   const poll_interval_mins = parseInt(document.getElementById('source-input-interval')?.value || '30');
   const is_active = document.getElementById('source-input-active')?.checked;
@@ -2351,7 +2361,7 @@ window.handleSaveSource = async function (e) {
     const res = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, type, category, url_or_query, poll_interval_mins, is_active }),
+      body: JSON.stringify({ name, type, category, desk, url_or_query, poll_interval_mins, is_active }),
     });
 
     if (!res.ok) {

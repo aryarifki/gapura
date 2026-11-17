@@ -23,7 +23,7 @@ agen dan penghapusan Verifikator tetap pekerjaan R4–R6.
 
 ## 📌 Ringkasan Proyek
 
-**Gapura Media Engine (GME v2.1)** adalah platform otomasi ruang redaksi modern (*newsroom automation*) yang dirancang khusus untuk akun Instagram niche: **data pasar modal & bursa saham, regulasi hukum keuangan (OJK/BI/MK), dan indikator makro ekonomi Indonesia**.
+**Gapura Media Engine (GME v2.1)** adalah platform otomasi ruang redaksi modern (*newsroom automation*) untuk isu nasional Indonesia pada enam desk: **politik, sosial, hukum, lingkungan, ekonomi nasional, dan bursa saham**. Sumber discovery hanya memasok topik dan metadata; naskah serta ilustrasi editorial disusun ulang secara orisinal oleh agen Gapura Media.
 
 Platform ini menggabungkan **7 agen** dengan pengawasan manusia (*Human-in-the-Loop*), mesin render deterministik berbasis SVG-to-PNG (*Satori + Sharp*), serta dashboard editorial berbasis web yang responsif. Scout dan SEO mengumpulkan serta menilai momentum secara deterministik; agen produksi memakai model sesuai konfigurasi provider.
 
@@ -64,8 +64,8 @@ Platform ini menggabungkan **7 agen** dengan pengawasan manusia (*Human-in-the-L
 1. **Dashboard Review Editorial Realtime**
    - Panel pemantauan metrik kurasi: jumlah item mentah, topik lolos analisis, draf siap review, dan postingan terbit.
    - Status kesehatan layanan real-time (Web Dashboard, Render Engine, Database PostgreSQL, dan n8n). Kesehatan n8n menunjukkan ketersediaan canvas manual; status scheduler diperiksa dari timer systemd.
-2. **Radar Topik Niche & 1-Click Auto-Produce**
-   - Agregasi berita otoritas resmi (BPS, Bank Indonesia, OJK, Mahkamah Konstitusi, JDIH, Bursa Efek Indonesia).
+2. **Radar Topik Enam Desk & 1-Click Auto-Produce**
+   - Agregasi topik lintas politik, sosial, hukum, lingkungan, ekonomi nasional, dan bursa, dengan sumber resmi sebagai atribusi primer saat tersedia.
    - Filter topik: *Semua Topik*, *Lolos (≥76)*, *Gugur / Fast-Fail*, dan *Diproduksi*.
     - **1-Click Auto-Produce:** Produksi topik yang lolos Analis dan memiliki laporan verifikasi menjadi draf, lalu buka editor untuk review. Durasi bergantung pada model, jaringan, dan jumlah slide.
 3. **Editor Draf & Pratinjau Carousel Live**
@@ -83,8 +83,8 @@ Platform ini menggabungkan **7 agen** dengan pengawasan manusia (*Human-in-the-L
 6. **Kustomisasi Penuh 7 Agen AI & Skills.md**
    - Konfigurasi independen untuk setiap agen: Provider (Gemini / OpenAI Compatible), Endpoint, API Key, Model, dan System Prompt.
    - **Editor `skills.md` Kustom:** Setiap agen dapat disematkan berkas panduan eksekusi mandiri di `/root/gapura/config/skills/`.
-7. **Manajemen Sumber Berita Niche**
-   - Tambah, edit, aktifkan/nonaktifkan feed RSS dan portal sumber berita resmi secara dinamis dari dashboard.
+7. **Manajemen Sumber Discovery Enam Desk**
+   - Tambah, edit, aktifkan/nonaktifkan feed RSS dan sumber resmi secara dinamis dari dashboard, termasuk penetapan desk eksplisit atau inferensi dari judul.
 8. **Render Microservice Deterministik (Satori + Sharp)**
    - Footprint memori sangat ringan (~65 MB RAM, tanpa Chromium headless).
    - Menghasilkan gambar PNG jernih 1080×1350 px 96 DPI dengan font resmi: `Archivo Black` dan `Inter`.
@@ -94,7 +94,7 @@ Platform ini menggabungkan **7 agen** dengan pengawasan manusia (*Human-in-the-L
 
 10. **Agen SEO — Radar Trending (Sumber X Dapat Dikustomisasi)**
     - Memindai akun X (`@handle`), query X, Google Trends geo, dan momentum Google News; daftar sumber dapat ditambah/diubah langsung dari dashboard (**Radar Trending**).
-    - Skor virality menimbang bobot sumber, kesegaran, angka, dan relevansi niche; item teratas dapat dipromosikan menjadi topik editorial dengan satu klik.
+    - Skor virality menimbang bobot sumber, kesegaran, angka, dan relevansi enam desk; item teratas dapat dipromosikan menjadi topik editorial dengan satu klik.
     - Tanpa `X_BEARER_TOKEN`, jalur X otomatis dialihkan ke Google News dan provider yang benar-benar dipakai dicatat pada setiap item (tidak menyamar sebagai data X).
 
 11. **Agen Verifikator — Fact-Check & Anti-Miskonsepsi**
@@ -174,7 +174,7 @@ Dokumen evaluasi teknis, daftar permasalahan yang telah diselesaikan, dan fitur 
 - [x] 1-Click Auto-Produce dari Radar Topik
 - [x] Eliminasi Masalah Cloudflare Cache Staling & Dialog `confirm()`
 - [x] Kustomisasi Penuh 7 Agen AI & berkas `skills.md` per agen
-- [x] Manajemen Sumber Berita Niche Dinamis
+- [x] Manajemen Sumber Discovery Enam Desk (desk eksplisit + inferensi judul)
 - [x] Agen SEO (Radar Trending) dengan sumber X/Google Trends yang dapat dikustomisasi
 - [ ] Penghapusan Agen Verifikator seluruh fungsi/dependensi sesuai blueprint (kode lama masih ada selama fase perencanaan)
 - [x] Katalog Provider & Model multi-provider (registry + fallback lintas provider + uji dari dashboard)
