@@ -40,13 +40,26 @@ test('rejects invalid thresholds, unbalanced weights, malformed fast-fail regex,
   config.analis.min_score_threshold = 101;
   config.analis.weights.relevance = 20;
   config.analis.fast_fail_rules = '[';
-  config.copywriter.slide_count = 9;
+  config.copywriter.slide_count = 2;
   assert.deepEqual(validateAgentConfig(config), [
     'analis: ambang skor harus bilangan bulat 0-100.',
     'analis: bobot harus bilangan bulat non-negatif dan totalnya 100.',
     'analis: pola fast-fail tidak valid ([).',
-    'copywriter: jumlah slide default harus 1-8.',
+    'copywriter: jumlah slide default harus 3-9.',
   ]);
+});
+
+test('news carousel preferences accept three through nine slides and default to six', () => {
+  for (const slide_count of [3, 6, 9]) {
+    const config = valid(); config.copywriter.slide_count = slide_count;
+    assert.deepEqual(validateAgentConfig(config), []);
+  }
+  for (const slide_count of [0, 1, 2, 10, 5.5]) {
+    const config = valid(); config.copywriter.slide_count = slide_count;
+    assert.match(validateAgentConfig(config).join(' '), /3-9/);
+  }
+  const config = JSON.parse(readFileSync(new URL('../../../config/agents.json', import.meta.url), 'utf8'));
+  assert.equal(config.copywriter.slide_count, 6);
 });
 
 test('executes an agent-settings test against temporary config and an injected provider client', async () => {

@@ -2,11 +2,13 @@
 > **Akun Resmi:** `@gapuramedia` · **Portal Dashboard:** [https://gapura.avenia.my.id](https://gapura.avenia.my.id)  
 > **Fokus editorial:** Politik, sosial, hukum, lingkungan, ekonomi nasional, dan bursa saham Indonesia.
 
-**Status 17 November 2026:** R4 discovery enam desk dan R5 penghapusan
-Verifikator selesai; unit/DB/API/browser/render serta DOM layanan aktif lulus.
-R6 (naskah orisinal dua mode, tanpa body/summary penerbit,
-carousel-first enam slide dan caption isi 1.200–1.900 karakter) belum diterapkan.
-Timer intake/publisher tetap `disabled/inactive`, worker background
+**Status 18 November 2026:** R4 discovery enam desk, R5 penghapusan Verifikator,
+dan R6 naskah orisinal dua mode selesai; unit/DB/API/browser/render serta DOM
+layanan aktif lulus. R6 memasang input eksplisit tanpa body/summary/foto
+penerbit, carousel 3–9 slide default enam, caption isi 1.200–1.900 karakter,
+Threads ≤500, dan tujuh kolom persistensi yang sudah dimigrasikan ke produksi.
+R7 (sampel visual dengan raster AI nyata) dan R8 (aktivasi publish) belum
+dijalankan. Timer intake/publisher tetap `disabled/inactive`, worker background
 `GAPURA_DISABLE_WORKERS=true`, dan tidak ada publikasi nyata. Raster AI nyata
 masih tertahan quota 0; tidak ada permintaan ulang atau perpindahan provider gambar.
 
@@ -55,9 +57,10 @@ Designer, SEO, dan Studio**:
 ```
 
 Produksi/review tidak meminta laporan mesin. API/UI/config/skill Verifikator
-telah dilepas pada R5; tabel dan kolom historis tetap diarsipkan. Jalur naskah
-legacy masih digunakan sampai R6, sehingga proyeksi discovery R4 tidak berarti
-seluruh input penulisan sudah bebas body/summary penerbit.
+telah dilepas pada R5; tabel dan kolom historis tetap diarsipkan. Sejak R6,
+payload penulisan/desain hanya memuat judul dan metadata discovery ditambah
+input editorial eksplisit; body/summary/foto penerbit tidak lagi masuk jalur
+generasi, fallback atau regenerasi.
 
 ---
 
@@ -114,9 +117,16 @@ Menu **Antrian Review** adalah meja kerja utama redaktur:
    - **Isi Teks / Narasi:** Edit teks slide secara langsung.
    - **Pemilihan Layout Slide:** Pilih layout baku atau pilih `custom` untuk tata letak bebas.
    - **Parameter Layout:** Mengatur nilai angka besar, unit metrik, author kutipan, atau perbandingan kolom.
+   - **Mode editorial & catatan fakta:** Pilih `explainer` untuk penjelasan umum
+     dari judul tanpa klaim aktual, atau `current` dengan catatan fakta
+     teratribusi (JSON) yang disediakan redaksi. Input ini disimpan dan ikut
+     hash revisi; field mode/angle/batas klaim/referensi bersifat read-only
+     setelah digenerate.
    - **Caption & Hashtags:** Sesuaikan caption editorial Instagram sebelum
-     disetujui. Disclaimer hukum atau investasi hanya dipakai bila relevan dengan
-     konteks hukum/bursa; tidak wajib untuk setiap desk.
+     disetujui. Naskah R6 membawa `caption_body` 1.200–1.900 karakter dan teks
+     Threads ≤500 karakter; final Instagram maksimal 2.200 termasuk tagar.
+     Disclaimer hukum atau investasi hanya dipakai bila relevan dengan konteks
+     hukum/bursa; tidak wajib untuk setiap desk.
 4. **Tombol Tindakan Utama:**
    - **🔄 Simpan & Render Ulang Slide:** Merender ulang slide aktif secara seketika dan memperbarui pratinjau.
    - **✨ Regenerate AI (Desain Ulang):** Meminta AI Designer merancang ulang seluruh carousel secara adaptif.
@@ -145,8 +155,8 @@ Jika draf bawaan terasa kurang variatif atau Anda ingin sudut pandang visual bar
 2. Klik tombol **`✨ Regenerate AI (Desain Ulang)`** di bagian atas kanan editor.
 3. Tombol akan berubah status menjadi `⚡ Merancang Ulang via AI...`.
 4. Jika model/provider tersedia, Agen Designer akan:
-   - Menentukan format dan jumlah slide menurut konfigurasi legacy: single 1
-     slide atau carousel 3–9 slide.
+   - Memilih layout untuk setiap slide dari naskah Copywriter yang sudah valid;
+     Designer tidak menulis atau mengubah teks, urutan, jumlah slide maupun data.
    - Menentukan arsitektur visual terbaik (Cover Editorial, Stat Spotlight, Dual Perspective, Takeaway Points, Regulasi, dll).
    - Meminta Render Service merender seluruh gambar PNG baru ke disk.
    - Memperbarui layar browser Anda secara otomatis tanpa perlu me-refresh halaman.
@@ -154,8 +164,9 @@ Jika draf bawaan terasa kurang variatif atau Anda ingin sudut pandang visual bar
 Regenerasi layout/naskah berbeda dari permintaan raster ilustrasi AI. Quota
 gambar nyata masih **0**, sehingga keberhasilan fixture/render lokal tidak
 membuktikan generasi gambar provider atau penerimaan visual owner. Permintaan
-gambar tidak diulang dan provider tidak diganti. Default enam slide
-carousel-first dan caption isi 1.200–1.900 karakter menunggu implementasi R6.
+gambar tidak diulang dan provider tidak diganti. Naskah R6 selalu carousel,
+3–9 slide dengan default enam; draf yang disusutkan menjadi 1–2 slide ditolak
+sebelum pin/render/penulisan.
 
 ---
 
@@ -167,8 +178,10 @@ Menu **Studio Desain** diperuntukkan jika redaksi ingin membuat postingan khusus
    - Masukkan judul berita / tema postingan.
    - Masukkan ringkasan konteks data.
    - Masukkan sumber data resmi (misal: `Bank Indonesia / BPS`).
-   - Tentukan preferensi jumlah slide; jalur legacy masih mendukung single atau
-     carousel sesuai konfigurasi.
+   - Tentukan preferensi jumlah slide 3–9 (default 6); naskah R6 selalu
+     carousel dan tidak menyusut ke single.
+   - Pilih mode `explainer` atau `current`; mode `current` memerlukan catatan
+     fakta teratribusi.
 3. Klik **`⚡ Generate Carousel Baru (AI Creative Director)`**.
 4. Bila input dan aset siap, draf dan render PNG dibuat untuk **Antrian Review**.
    Missing media atau kegagalan generator tetap ditampilkan; tidak ada tahap
@@ -212,7 +225,7 @@ Studio**; tidak ada tab/config/skill Verifikator:
 
 Mengelola feed RSS dan sumber resmi lintas enam desk. Proyeksi discovery hanya
 meneruskan topik/judul dan metadata ke Analis/cluster; pemisahan seluruh input
-penulisan/desain dari body/summary penerbit menunggu R6:
+penulisan/desain dari body/summary penerbit sudah dipisahkan sejak R6:
 1. Masuk ke menu **Sumber Topik**.
 2. **Melihat Sumber Aktif:**
    - Terdapat sumber resmi (BPS, Bank Indonesia, OJK, Mahkamah Konstitusi, JDIH Kemenkeu) dan feed discovery untuk politik, sosial, hukum, lingkungan, ekonomi, serta bursa. Setiap sumber dapat memiliki **Desk Editorial** eksplisit atau dibiarkan kosong agar desk disimpulkan dari kategori/judul.

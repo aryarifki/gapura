@@ -191,3 +191,15 @@ sampel nyata enam desk pada R7 → batch/shadow R8 → satu uji publish dengan
 persetujuan terpisah. Aktivasi otomatisasi tetap memerlukan mandat eksplisit
 owner; unit test hijau tidak mengaktifkan timer. Quota gambar 0 tetap penghalang
 sampel generatif nyata dan penerimaan visual owner.
+
+---
+
+## 7. Pembaruan setelah R5 (18 November 2026)
+
+Bagian 6 di atas adalah keadaan saat R5 ditutup. R6 kemudian selesai dan
+dimigrasikan ke produksi; lihat
+[laporan R6](14_R6_ORIGINAL_EDITORIAL.md). Dua mode naskah orisinal
+(`explainer`/`current`), input tanpa body/summary/foto penerbit, carousel 3–9
+default enam, caption isi 1.200–1.900 karakter dan Threads ≤500 sudah
+terpasang. R5 tetap tidak mengklaim raster AI nyata, sampel visual R7 atau
+publish R8; timer dan worker masih dijeda.

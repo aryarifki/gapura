@@ -127,6 +127,7 @@ const CLAIM_NEXT = `
   FROM candidate c, drafts d
   WHERE t.id = c.id AND d.id = t.draft_id AND t.status = 'pending'
   RETURNING t.*, d.caption, d.hashtags, d.slides, d.content_format, d.needs_review,
+    d.editorial_input, d.editorial_mode, d.caption_body, d.threads_caption, d.angle, d.scope_note, d.editorial_references,
     d.status AS draft_status, ${DRAFT_EVIDENCE}`;
 
 export function createMetaPublisherWorker({ pool, config, fetchImpl = globalThis.fetch, logger = console }) {
@@ -229,6 +230,11 @@ export function createMetaPublisherWorker({ pool, config, fetchImpl = globalThis
             result.blocked++;
             continue;
           }
+          const original = row.editorial_input != null || row.editorial_mode != null;
+          const reviewedThreads = original && row.platform === 'threads';
+          if (reviewedThreads && (typeof row.threads_caption !== 'string' || !row.threads_caption.trim() || row.threads_caption.length > 500)) {
+            throw Object.assign(new Error('Caption Threads R6 wajib berupa teks yang sudah direview, tidak kosong, dan maksimal 500 karakter.'), { blocked: true });
+          }
           if (config.mode !== 'live') {
             await finalize(client, row, { status: 'shadow', error: 'Shadow mode: tidak ada panggilan Meta.' });
             result.shadow++;
@@ -241,7 +247,10 @@ export function createMetaPublisherWorker({ pool, config, fetchImpl = globalThis
             baseUrl: config.baseUrl, draftId: row.draft_id, slideCount: slides.length,
             signingSecret: config.signingSecret,
           });
-          const caption = [String(row.caption || ''), (row.hashtags || []).join(' ')].filter(Boolean).join('\n\n');
+          const caption = reviewedThreads
+            ? row.threads_caption
+            : original ? String(row.caption || '')
+              : [String(row.caption || ''), (row.hashtags || []).join(' ')].filter(Boolean).join('\n\n');
           if (row.platform === 'threads' && caption.length > 500) throw new Error('Caption Threads melebihi 500 karakter; minta review versi khusus Threads.');
           published = await adapter.publish({ imageUrls, caption, beforePublish: async (creationId) => {
             containerId = creationId;
@@ -254,7 +263,8 @@ export function createMetaPublisherWorker({ pool, config, fetchImpl = globalThis
             transactionOpen = true;
             const { rows: [current] } = await client.query(
               `SELECT t.*, d.caption, d.hashtags, d.slides, d.content_format, d.needs_review,
-                 d.status AS draft_status, ${DRAFT_EVIDENCE}
+                  d.editorial_input, d.editorial_mode, d.caption_body, d.threads_caption, d.angle, d.scope_note, d.editorial_references,
+                  d.status AS draft_status, ${DRAFT_EVIDENCE}
                FROM publication_targets t JOIN drafts d ON d.id = t.draft_id
                WHERE t.id = $1 AND t.status = 'publishing' AND ${DUE_SCHEDULE}
                  AND EXISTS (SELECT 1 FROM scheduled_posts due WHERE due.id = t.schedule_id
@@ -278,7 +288,7 @@ export function createMetaPublisherWorker({ pool, config, fetchImpl = globalThis
             remoteId: published.remoteId,
             containerId: published.containerId || null,
             permalink,
-            captionHash: captionHash(row.caption),
+            captionHash: captionHash(reviewedThreads ? row.threads_caption : row.caption),
             publishedAt: new Date(),
           });
           await client.query(

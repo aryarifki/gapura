@@ -13,6 +13,8 @@ let activeSlideIndex = 0;
 let currentWorkflowActive = false;
 let cachedTopics = [];
 let studioSlides = [];
+let studioGeneratedContent = null;
+let studioGeneratedInput = '';
 let activeStudioSlideIndex = 0;
 let editorLivePreviewDebounceTimer = null;
 let designStudioDebounceTimer = null;
@@ -76,6 +78,51 @@ function bindClick(id, handler) {
   };
 }
 
+function readEditorialInput(modeId, factsId) {
+  const mode = document.getElementById(modeId)?.value || 'explainer';
+  let facts;
+  try { facts = JSON.parse(document.getElementById(factsId)?.value || '[]'); }
+  catch { throw new Error('Catatan fakta harus JSON array yang valid.'); }
+  if (!Array.isArray(facts)) throw new Error('Catatan fakta harus berupa JSON array.');
+  if (mode === 'explainer' && facts.length) throw new Error('Mode explainer memakai []. Pilih current untuk memakai catatan fakta.');
+  if (mode === 'current' && !facts.length) throw new Error('Mode current memerlukan minimal satu catatan fakta dengan nama sumber dan URL HTTPS publik.');
+  return { version: 1, mode, facts };
+}
+
+function renderOriginalReview() {
+  if (!activeDraft) return;
+  const mode = activeDraft.editorial_mode;
+  document.getElementById('editor-editorial-mode').textContent = `Mode naskah: ${mode === 'current' ? 'Current — fakta beratribusi' : mode === 'explainer' ? 'Explainer — konteks dan analisis umum' : 'Draf lama — buat ulang untuk metadata editorial'}`;
+  document.getElementById('editor-editorial-angle').textContent = `Sudut pandang: ${activeDraft.angle || 'Belum tersedia'}`;
+  document.getElementById('editor-editorial-scope').textContent = `Batas cakupan: ${activeDraft.scope_note || 'Belum tersedia; periksa seluruh naskah dan sumber.'}`;
+  const facts = activeDraft.editorial_input?.facts || [];
+  const container = document.getElementById('editor-editorial-references');
+  container.replaceChildren();
+  if (!facts.length) container.textContent = 'Referensi fakta: tidak ada. Explainer membahas mekanisme umum; periksa agar naskah tidak menyatakan kejadian terbaru.';
+  for (const fact of facts) {
+    const item = document.createElement('p');
+    item.textContent = `${fact.id}: ${fact.text} — ${fact.source_name}. `;
+    try {
+      const url = new URL(fact.source_url);
+      if (url.protocol === 'https:' && !url.username && !url.password) {
+        const link = document.createElement('a');
+        link.href = url.href; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = url.href;
+        item.append(link);
+      }
+    } catch { /* Invalid historical references remain plain text. */ }
+    if (fact.quote) item.append(` Kutipan: ${fact.quote.text} — ${fact.quote.speaker}`);
+    container.append(item);
+  }
+  const references = activeDraft.editorial_references;
+  if (references) {
+    const map = document.createElement('p');
+    map.textContent = `Rujukan caption: ${(references.caption || []).map((block, index) => `paragraf ${index + 1} (${block.kind}): ${block.fact_ids?.join(', ') || 'konteks umum'}`).join('; ')}. Threads: ${references.threads?.join(', ') || 'konteks umum'}.`;
+    container.append(map);
+  }
+  document.getElementById('editor-regenerate-mode').value = mode || 'explainer';
+  document.getElementById('editor-regenerate-facts').value = JSON.stringify(facts, null, 2);
+}
+
 function collectAgentConfigPayload() {
   return {
       scout: {
@@ -106,7 +153,7 @@ function collectAgentConfigPayload() {
         endpoint: document.getElementById('copywriter-endpoint')?.value || 'https://generativelanguage.googleapis.com',
         api_key: document.getElementById('copywriter-api-key')?.value || '',
         model: document.getElementById('copywriter-model')?.value || 'gemini-3.8-flash',
-        slide_count: parseInt(document.getElementById('copywriter-slides-count')?.value || '5'),
+        slide_count: parseInt(document.getElementById('copywriter-slides-count')?.value || '6'),
         tone_of_voice: document.getElementById('copywriter-tone')?.value || '',
         banned_words: document.getElementById('copywriter-banned-words')?.value || '',
         system_prompt: document.getElementById('copywriter-prompt')?.value || '',
@@ -583,6 +630,7 @@ function renderDraftEditor(draft) {
   // Populate caption & hashtags
   document.getElementById('editor-input-caption').value = activeDraft.caption || '';
   document.getElementById('editor-input-hashtags').value = (activeDraft.hashtags || []).join(' ');
+  renderOriginalReview();
 }
 
 function invalidateDraftReview() {
@@ -671,9 +719,11 @@ async function regenerateActiveDraftAI() {
   showToast(`⚡ AI Designer sedang merancang ulang draf #${activeDraft.id}...`);
 
   try {
+    const editorial_input = readEditorialInput('editor-regenerate-mode', 'editor-regenerate-facts');
     const res = await fetch(`/api/drafts/${activeDraft.id}/regenerate-ai`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ editorial_input }),
     });
 
     if (!res.ok) {
@@ -683,8 +733,8 @@ async function regenerateActiveDraftAI() {
 
     const data = await res.json();
 
-    activeDraft.caption = data.caption;
-    activeDraft.hashtags = data.hashtags;
+    const { status, ...content } = data;
+    Object.assign(activeDraft, content, { status: 'draft' });
     // Map with fresh cache bust
     activeDraft.rendered_slides = (data.rendered_slides || []).map((s) => ({
       ...s,
@@ -698,6 +748,7 @@ async function regenerateActiveDraftAI() {
     document.getElementById('editor-input-hashtags').value = (activeDraft.hashtags || []).join(' ');
     renderActiveSlide();
     renderThumbnailsStrip();
+    renderOriginalReview();
 
     showToast(`✨ Sukses merancang ulang draf #${activeDraft.id}! Seluruh slide diperbarui (${activeDraft.rendered_slides.length} slide).`);
   } catch (err) {
@@ -822,10 +873,7 @@ function renderLayoutFields(layout, data) {
       </div>
     `;
   } else if (layout === 'stat-grid') {
-    const items = data.items || [
-      { label: 'Data 1', value: '10%' },
-      { label: 'Data 2', value: '25%' },
-    ];
+    const items = data.items || [];
     html = `
       <div style="font-size: 11px; font-weight: 700; color: var(--lime); margin-bottom: 10px; text-transform: uppercase;">
         ⚙️ Parameter Layout: Stat Grid (Kotak Metrik)
@@ -874,8 +922,8 @@ function renderLayoutFields(layout, data) {
       </div>
     `;
   } else if (layout === 'comparison') {
-    const left = data.left || { title: 'Sebelum / Katalis', text: '' };
-    const right = data.right || { title: 'Sesudah / Implikasi', text: '' };
+    const left = data.left || { title: '', text: '' };
+    const right = data.right || { title: '', text: '' };
     html = `
       <div style="font-size: 11px; font-weight: 700; color: var(--lime); margin-bottom: 10px; text-transform: uppercase;">
         ⚙️ Parameter Layout: Comparison (Perbandingan)
@@ -896,10 +944,7 @@ function renderLayoutFields(layout, data) {
       </div>
     `;
   } else if (layout === 'timeline') {
-    const events = data.events || [
-      { date: 'Tahap 1', text: '' },
-      { date: 'Tahap 2', text: '' },
-    ];
+    const events = data.events || [];
     html = `
       <div style="font-size: 11px; font-weight: 700; color: var(--lime); margin-bottom: 10px; text-transform: uppercase;">
         ⚙️ Parameter Layout: Timeline (Tahapan Kronologis)
@@ -907,14 +952,14 @@ function renderLayoutFields(layout, data) {
       <div class="form-group-editor" style="margin-bottom: 8px;">
         <label class="form-label-editor">Tahap 1 (Waktu & Keterangan)</label>
         <div style="display: flex; gap: 6px;">
-          <input type="text" id="lf-time-d0" class="form-input-dark" style="width: 30%;" value="${escapeHtml(events[0]?.date || 'Tahap 1')}">
+          <input type="text" id="lf-time-d0" class="form-input-dark" style="width: 30%;" value="${escapeHtml(events[0]?.date || '')}" placeholder="Tanggal sumber">
           <input type="text" id="lf-time-t0" class="form-input-dark" style="width: 70%;" value="${escapeHtml(events[0]?.text || '')}">
         </div>
       </div>
       <div class="form-group-editor" style="margin-bottom: 8px;">
         <label class="form-label-editor">Tahap 2 (Waktu & Keterangan)</label>
         <div style="display: flex; gap: 6px;">
-          <input type="text" id="lf-time-d1" class="form-input-dark" style="width: 30%;" value="${escapeHtml(events[1]?.date || 'Tahap 2')}">
+          <input type="text" id="lf-time-d1" class="form-input-dark" style="width: 30%;" value="${escapeHtml(events[1]?.date || '')}" placeholder="Tanggal sumber">
           <input type="text" id="lf-time-t1" class="form-input-dark" style="width: 70%;" value="${escapeHtml(events[1]?.text || '')}">
         </div>
       </div>
@@ -926,7 +971,7 @@ function renderLayoutFields(layout, data) {
       </div>
       <div class="form-group-editor" style="margin-bottom: 8px;">
         <label class="form-label-editor">Teks Call to Action (CTA)</label>
-        <input type="text" id="lf-cta-text" class="form-input-dark" value="${escapeHtml(data.cta || 'Simpan postingan ini & ikuti @gapuramedia untuk data harian.')}">
+        <input type="text" id="lf-cta-text" class="form-input-dark" value="${escapeHtml(data.cta || '')}" placeholder="Opsional sesuai naskah">
       </div>
       <div class="form-group-editor" style="margin-bottom: 0;">
         <label class="form-label-editor">Teks Disclaimer Edukasi</label>
@@ -1017,17 +1062,17 @@ function getCompiledLayoutData(layout, existingData = {}) {
       const l = document.getElementById(`lf-grid-l${i}`)?.value;
       if (v && l) items.push({ value: v.trim(), label: l.trim() });
     }
-    if (items.length > 0) data.items = items;
+    data.items = items;
   } else if (layout === 'regulasi') {
     data.title = document.getElementById('lf-regulasi-title')?.value || data.title || 'REGULASI RESMI';
     data.category = 'HUKUM & REGULASI';
   } else if (layout === 'comparison') {
     data.left = {
-      title: document.getElementById('lf-comp-lt')?.value || 'Sebelum',
+      title: document.getElementById('lf-comp-lt')?.value || '',
       text: document.getElementById('lf-comp-lx')?.value || '',
     };
     data.right = {
-      title: document.getElementById('lf-comp-rt')?.value || 'Sesudah',
+      title: document.getElementById('lf-comp-rt')?.value || '',
       text: document.getElementById('lf-comp-rx')?.value || '',
     };
     data.category = 'ANALISIS DAMPAK';
@@ -1038,10 +1083,10 @@ function getCompiledLayoutData(layout, existingData = {}) {
       const t = document.getElementById(`lf-time-t${i}`)?.value;
       if (d && t) events.push({ date: d.trim(), text: t.trim() });
     }
-    if (events.length > 0) data.events = events;
+    data.events = events;
   } else if (layout === 'cta-close') {
-    data.cta = document.getElementById('lf-cta-text')?.value || data.cta || '';
-    data.disclaimer = document.getElementById('lf-cta-disclaimer')?.value || data.disclaimer || '';
+    data.cta = document.getElementById('lf-cta-text')?.value ?? data.cta ?? '';
+    data.disclaimer = document.getElementById('lf-cta-disclaimer')?.value ?? data.disclaimer ?? '';
   } else if (layout === 'chart-bar') {
     const lRaw = document.getElementById('lf-chart-labels')?.value || '';
     const vRaw = document.getElementById('lf-chart-values')?.value || '';
@@ -1143,6 +1188,7 @@ async function saveAndRerenderSlide() {
 
 async function addSlideToDraft() {
   if (!activeDraft) return;
+  if ((activeDraft.rendered_slides || []).length >= 9) { showToast('Carousel maksimal memiliki 9 slide.'); return; }
   const confirmAdd = confirm('Tambah slide baru di akhir carousel ini?');
   if (!confirmAdd) return;
   invalidateDraftReview();
@@ -1157,6 +1203,7 @@ async function addSlideToDraft() {
         data: { category: 'ANALISIS TAMBAHAN' },
       }),
     });
+    if (!res.ok) { const error = await res.json().catch(() => ({})); throw new Error(error.error || `HTTP ${res.status}`); }
     if (res.ok) {
       const result = await res.json();
       showToast(`Slide #${result.new_slide_no} berhasil ditambahkan!`);
@@ -1174,8 +1221,9 @@ async function addSlideToDraft() {
 async function deleteSlideFromDraft() {
   if (!activeDraft) return;
   const slides = activeDraft.rendered_slides || [];
-  if (slides.length <= 1) {
-    alert('Draf minimal harus memiliki 1 slide.');
+  const minimum = activeDraft.editorial_mode || activeDraft.editorial_input ? 3 : 1;
+  if (slides.length <= minimum) {
+    showToast(`Draf ${minimum === 3 ? 'editorial R6' : 'lama'} minimal harus memiliki ${minimum} slide.`);
     return;
   }
   const slideNo = activeSlideIndex + 1;
@@ -1189,6 +1237,7 @@ async function deleteSlideFromDraft() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ slide_no: slideNo }),
     });
+    if (!res.ok) { const error = await res.json().catch(() => ({})); throw new Error(error.error || `HTTP ${res.status}`); }
     if (res.ok) {
       showToast(`Slide #${slideNo} berhasil dihapus.`);
       await loadDrafts();
@@ -1212,7 +1261,14 @@ async function saveTextOnly() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ caption: newCaption }),
     });
+    if (!res.ok) { const error = await res.json().catch(() => ({})); throw new Error(error.error || `HTTP ${res.status}`); }
     if (res.ok) {
+      activeDraft.caption = newCaption;
+      if (activeDraft.editorial_mode) {
+        activeDraft.caption_body = newCaption;
+        activeDraft.editorial_references = { ...activeDraft.editorial_references, caption: [] };
+        renderOriginalReview();
+      }
       showToast('Teks caption berhasil disimpan!');
     }
   } catch (err) {
@@ -1657,10 +1713,11 @@ async function generateStudioCarouselAI() {
   }
 
   try {
+    const editorial_input = readEditorialInput('studio-custom-editorial-mode', 'studio-custom-editorial-facts');
     const res = await fetch('/api/designer/generate-slides', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, primary_source: source, url: sourceUrl }),
+      body: JSON.stringify({ title, primary_source: source, url: sourceUrl, editorial_input }),
     });
 
     if (!res.ok) {
@@ -1674,7 +1731,10 @@ async function generateStudioCarouselAI() {
     }
 
     studioSlides = data.slides;
-    window.studioDesignFormat = data.format || 'carousel';
+    studioGeneratedContent = data;
+    studioGeneratedInput = JSON.stringify({ title, source, sourceUrl, editorial_input, topicId: document.getElementById('studio-quick-topic-select')?.value || '' });
+    document.getElementById('btn-studio-save-to-drafts').disabled = false;
+    document.getElementById('studio-generated-scope').textContent = `${data.editorial_mode === 'current' ? 'Current' : 'Explainer'} · ${data.angle || ''} · ${data.scope_note || ''} · Periksa semua slide, caption dan rujukan sebelum menyetujui.`;
     activeStudioSlideIndex = 0;
     showToast(`✨ AI Designer sukses merancang ${studioSlides.length} slide carousel!`);
     updateStudioSlideUI();
@@ -1690,8 +1750,8 @@ async function generateStudioCarouselAI() {
 }
 
 async function saveStudioToDrafts() {
-  if (!studioSlides || studioSlides.length === 0) {
-    showToast('Belum ada carousel yang dirancang!');
+  if (!studioGeneratedContent || !studioSlides?.length) {
+    showToast('Buat naskah orisinal melalui Rancang & Render Carousel terlebih dahulu.');
     return;
   }
 
@@ -1705,16 +1765,19 @@ async function saveStudioToDrafts() {
   btn.innerHTML = '💾 Menyimpan Draf ke Database...';
 
   try {
+    const editorial_input = readEditorialInput('studio-custom-editorial-mode', 'studio-custom-editorial-facts');
+    const currentInput = JSON.stringify({ title, source, sourceUrl, editorial_input, topicId: document.getElementById('studio-quick-topic-select')?.value || '' });
+    if (currentInput !== studioGeneratedInput) throw new Error('Topik, mode, atau catatan berubah. Buat ulang naskah sebelum menyimpan.');
     const res = await fetch('/api/drafts/create-from-custom', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        ...studioGeneratedContent,
         ...(Number(document.getElementById('studio-quick-topic-select')?.value) > 0 ? { topic_id: Number(document.getElementById('studio-quick-topic-select').value) } : {}),
         title,
-        summary: studioSlides[0]?.teks || '',
         primary_source: source,
         source_url: sourceUrl,
-        format: window.studioDesignFormat || 'carousel',
+        format: 'carousel',
         slides: studioSlides,
       }),
     });
@@ -1845,6 +1908,15 @@ function setupDesignStudioEvents() {
         const sourceUrl = document.getElementById('studio-custom-source-url');
         if (sourceUrl) sourceUrl.value = chosen.url || '';
       }
+      studioGeneratedContent = null;
+      document.getElementById('btn-studio-save-to-drafts').disabled = true;
+    });
+  }
+  for (const id of ['studio-custom-topic-text', 'studio-custom-source-text', 'studio-custom-source-url', 'studio-custom-editorial-mode', 'studio-custom-editorial-facts']) {
+    document.getElementById(id)?.addEventListener('input', () => {
+      studioGeneratedContent = null;
+      document.getElementById('btn-studio-save-to-drafts').disabled = true;
+      document.getElementById('studio-generated-scope').textContent = 'Topik, mode atau catatan berubah. Buat ulang naskah sebelum menyimpan.';
     });
   }
 
@@ -2560,7 +2632,7 @@ async function loadAgentsConfigUI() {
     if (document.getElementById('copywriter-model')) document.getElementById('copywriter-model').value = copy.model || 'gemini-2.0-flash';
     if (document.getElementById('copywriter-endpoint')) document.getElementById('copywriter-endpoint').value = copy.endpoint || 'https://generativelanguage.googleapis.com';
     if (document.getElementById('copywriter-api-key')) document.getElementById('copywriter-api-key').placeholder = copy.api_key_configured ? 'Key tersimpan; kosongkan untuk mempertahankan atau isi untuk mengganti' : 'Belum ada key tersimpan; dapat memakai environment';
-    if (document.getElementById('copywriter-slides-count')) document.getElementById('copywriter-slides-count').value = copy.slide_count ?? 5;
+    if (document.getElementById('copywriter-slides-count')) document.getElementById('copywriter-slides-count').value = copy.slide_count ?? 6;
     if (document.getElementById('copywriter-tone')) document.getElementById('copywriter-tone').value = copy.tone_of_voice ?? '';
     if (document.getElementById('copywriter-banned-words')) document.getElementById('copywriter-banned-words').value = copy.banned_words ?? '';
     if (document.getElementById('copywriter-disclaimer-fin')) document.getElementById('copywriter-disclaimer-fin').value = copy.disclaimer_financial ?? '';
@@ -3427,10 +3499,11 @@ async function submitStudioPrompt() {
   btn.disabled = true;
   btn.innerHTML = '<span>⏳</span> <span>Mengirim prompt…</span>';
   try {
+    const editorial_input = readEditorialInput('studio-editorial-mode', 'studio-editorial-facts');
     const res = await fetch('/api/studio/jobs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, topic_id: topicId }),
+      body: JSON.stringify({ prompt, topic_id: topicId, editorial_input }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
@@ -3485,13 +3558,14 @@ function renderStudioJobs(jobs, focusJobId) {
   }
   container.innerHTML = jobs.map((job) => {
     const meta = STUDIO_STATUS_META[job.status] || { label: String(job.status).toUpperCase(), cls: 'waiting' };
-    const plan = job.plan || null;
+    const plan = job.plan?.title && Array.isArray(job.plan.sections) ? job.plan : null;
     const planHtml = plan
       ? `<details class="studio-job-details" ${String(job.id) === String(focusJobId) ? 'open' : ''}>
            <summary>Lihat rencana konten</summary>
            <div class="studio-job-subblock"><span class="studio-job-subblock-title">Judul</span><p class="studio-job-takeaway">${escapeHtml(plan.title || '')}</p></div>
            ${plan.angle ? `<div class="studio-job-subblock"><span class="studio-job-subblock-title">Sudut pandang</span><p class="studio-job-takeaway">${escapeHtml(plan.angle)}</p></div>` : ''}
            ${plan.goal ? `<div class="studio-job-subblock"><span class="studio-job-subblock-title">Tujuan</span><p class="studio-job-takeaway">${escapeHtml(plan.goal)}</p></div>` : ''}
+           <div class="studio-job-subblock"><span class="studio-job-subblock-title">Mode dan bahan review</span><p class="studio-job-takeaway">${escapeHtml(plan.editorial_input?.mode || 'explainer')} · ${(plan.editorial_input?.facts || []).length} catatan fakta · carousel ${plan.slide_count_hint || 6} slide</p><p class="form-help-text">Ubah mode dan catatan melalui editorial_input dalam rencana. Periksa setiap sumber; fokus sections bukan bukti kejadian.</p></div>
            <div class="studio-job-subblock"><span class="studio-job-subblock-title">Poin isi</span><ul class="studio-job-list">${(plan.sections || []).map((p) => `<li>${escapeHtml(p)}</li>`).join('')}</ul></div>
            <textarea id="plan-edit-${job.id}" class="form-input-dark" rows="6" style="width: 100%; margin-top: 10px; font-family: monospace; font-size: 12px;">${escapeHtml(JSON.stringify(plan, null, 2))}</textarea>
          </details>`

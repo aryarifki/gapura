@@ -6,6 +6,7 @@ import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { RenderEngine } from '../../render/engine.js';
 import sharp from '../../render/node_modules/sharp/lib/index.js';
+import { originalFixture } from '../../common/test/fixtures/original-editorial.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const name = `gapura_test_${process.pid}`;
@@ -61,9 +62,29 @@ try {
       else if (req.url === '/v1/models') res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ object: 'list', data: [{ id: 'fixture-model' }, { id: 'fixture-alt' }] }));
       else if (req.url === '/v1/chat/completions') {
         const prompt = body.messages?.at(-1)?.content || '';
+        if (/PUBLISHER_(?:SUMMARY|BODY|PHOTO)_SENTINEL/u.test(prompt)) return res.writeHead(422).end('publisher material reached the generation fixture');
         let result = { ok: true };
-        if (prompt.includes('Caption') || prompt.includes('caption')) result = { caption: 'Inflasi Oktober 2,1% menurut sumber uji.', hashtags: ['#GapuraMedia'] };
-        if (prompt.includes('VISUAL') || prompt.includes('format')) result = { format: 'single', slides: [{ no: 1, layout: 'cover-focus', teks: 'Inflasi Oktober 2,1%', data: { title: 'Inflasi Oktober 2,1%' } }] };
+        const jsonAfter = (marker) => {
+          const start = prompt.lastIndexOf(marker);
+          if (start < 0) return null;
+          const input = prompt.slice(start + marker.length).trim();
+          let depth = 0, quoted = false, escaped = false;
+          for (let index = 0; index < input.length; index++) {
+            const char = input[index];
+            if (quoted) { if (escaped) escaped = false; else if (char === '\\') escaped = true; else if (char === '"') quoted = false; }
+            else if (char === '"') quoted = true;
+            else if (char === '{' || char === '[') depth++;
+            else if ((char === '}' || char === ']') && --depth === 0) return JSON.parse(input.slice(0, index + 1));
+          }
+          throw new Error('fixture_prompt_json_invalid');
+        };
+        if (prompt.includes('BRIEF_EDITORIAL_JSON:')) result = { title: 'Memahami layanan publik', angle: 'Akses informasi dan kebutuhan warga', sections: ['Mekanisme kebijakan', 'Akses informasi', 'Pertanyaan warga'], format: 'carousel', slide_count_hint: 6, caption_tone: 'jelas' };
+        else if (prompt.includes('NASKAH_GAPURA_JSON:') || prompt.includes('NASKAH_ORISINAL_JSON:')) result = { slides: jsonAfter(prompt.includes('NASKAH_GAPURA_JSON:') ? 'NASKAH_GAPURA_JSON:' : 'NASKAH_ORISINAL_JSON:').slides.map(({ no, layout }) => ({ no, layout })) };
+        else if (prompt.includes('EDITORIAL_BRIEF_JSON:') || prompt.includes('ORIGINAL_EDITORIAL_JSON:')) {
+          const brief = jsonAfter(prompt.includes('ORIGINAL_EDITORIAL_JSON:') ? 'ORIGINAL_EDITORIAL_JSON:' : 'EDITORIAL_BRIEF_JSON:');
+          if (JSON.stringify(brief).includes('FIXTURE_GENERATION_ERROR')) result = { format: 'single', slides: [] };
+          else result = originalFixture(brief);
+        }
         res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(result) } }] }));
       } else res.writeHead(404).end();
     } catch (error) { res.writeHead(500).end(error.message); }
@@ -90,6 +111,7 @@ try {
     child.once('exit', (code) => reject(new Error(`test web server exited ${code}`)));
   });
   env.GAPURA_TEST_BASE = base;
+  env.PORT = new URL(base).port;
   env.GAPURA_TEST_STORAGE = env.STORAGE_PATH;
   const files = process.argv.slice(2);
   // Aplikasi migrasi mengunci DDL pada tabel yang juga dibaca server tes;

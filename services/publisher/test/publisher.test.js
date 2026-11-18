@@ -16,7 +16,8 @@ function database(overrides = {}) {
     post: { id: 1, draft_id: 7, mode: 'auto', status: 'pending', ig_creation_id: null, ig_media_id: null,
       published_at: null, manual_reminded_at: null, scheduled_at: '2000-01-01T00:00:00.000Z', ...overrides.post },
     draft: { id: 7, topic_id: 3, status: 'scheduled', needs_review: false, caption: '<b>Caption & data</b>',
-      slides: [{ no: 1 }], hashtags: ['#gapura'], content_format: 'carousel', updated_at: '2026-11-17T00:00:00Z', ...overrides.draft },
+      slides: [{ no: 1 }], hashtags: ['#gapura'], content_format: 'carousel', updated_at: '2026-11-17T00:00:00Z',
+      editorial_input: null, editorial_mode: null, caption_body: null, threads_caption: null, angle: null, scope_note: null, editorial_references: null, ...overrides.draft },
     audit: [], siblings: overrides.siblings ?? [],
     metaOwned: overrides.metaOwned ?? false,
   };
@@ -50,6 +51,9 @@ function database(overrides = {}) {
             content_format: state.draft.content_format, needs_review: state.draft.needs_review,
             draft_status: state.draft.status,
             ...(/d\.hashtags\b/.test(q) ? { hashtags: structuredClone(state.draft.hashtags) } : {}),
+            ...Object.fromEntries(['editorial_input', 'editorial_mode', 'caption_body', 'threads_caption', 'angle', 'scope_note', 'editorial_references']
+              .filter((field) => new RegExp(`d\\.${field}\\b`).test(q))
+              .map((field) => [field, structuredClone(state.draft[field])])),
             ...(/AS human_approved/i.test(q) ? { human_approved: approvals.length > 0 } : {}),
             ...(/AS approved_content_hash/i.test(q) ? { approved_content_hash: approvals.at(-1)?.payload?.content_hash ?? null } : {}),
           };
@@ -424,4 +428,55 @@ test('local finalization failure after Meta success does not authorize an automa
   assert.equal(calls.filter(c => c.url.includes('/media_publish')).length, 1);
   assert.equal(db.state.post.status, 'publishing');
   assert.equal(db.state.draft.status, 'scheduled');
+});
+
+const originalMetadata = {
+  editorial_input: { version: 1, mode: 'explainer', facts: [] }, editorial_mode: 'explainer',
+  caption_body: 'Penjelasan bagi warga', threads_caption: 'Ringkasan Threads #GapuraMedia',
+  angle: 'Akses bagi warga', scope_note: 'Penjelasan mekanisme umum',
+  editorial_references: { caption: [{ kind: 'context', fact_ids: [] }], threads: [] },
+};
+const originalChanges = [
+  { editorial_mode: 'current' }, { editorial_input: { version: 1, mode: 'current', facts: [{ id: 'f1', text: 'Fakta redaksi' }] } },
+  { caption_body: 'Isi diubah' }, { threads_caption: 'Threads diubah' }, { angle: 'Angle diubah' }, { scope_note: 'Cakupan diubah' },
+  { editorial_references: { caption: [{ kind: 'fact', fact_ids: ['f1'] }], threads: ['f1'] } },
+];
+
+test('legacy publisher loads all original metadata during claim and locked publish without changing its delivery behavior', async t => {
+  const db = database({ draft: originalMetadata }); const calls = [];
+  const result = await service(t, db, metaSuccess(calls)).runPublisher();
+  assert.equal(result.published, 1);
+  const reads = db.queries.filter((q) => /^WITH |^SELECT sp\.\*/.test(q));
+  assert.equal(reads.length, 3);
+  for (const q of reads) for (const field of Object.keys(originalMetadata)) assert.match(q, new RegExp(`d\\.${field}\\b`));
+});
+
+test('legacy publisher blocks each original metadata change after approval before calling Meta', async t => {
+  for (const change of originalChanges) {
+    const db = database({ draft: originalMetadata }); const calls = [];
+    Object.assign(db.state.draft, change);
+    const result = await service(t, db, metaSuccess(calls)).runPublisher();
+    assert.equal(result.blocked, 1, JSON.stringify(change));
+    assert.equal(result.published, 0);
+    assert.equal(calls.length, 0);
+    assert.equal(db.state.audit.length, 0);
+  }
+});
+
+test('legacy publisher cannot publish a prepared original revision after its metadata changes, even if reapproved', async t => {
+  for (const change of originalChanges) for (const reapproved of [false, true]) {
+    const db = database({ draft: originalMetadata }); const calls = [];
+    const success = metaSuccess(calls);
+    const result = await service(t, db, async (url, options) => {
+      if (options?.method === 'GET') {
+        Object.assign(db.state.draft, change);
+        if (reapproved) db.state.approvals[0].payload.content_hash = draftContentHash(db.state.draft);
+      }
+      return success(url, options);
+    }).runPublisher();
+    assert.equal(result.blocked, 1, JSON.stringify({ change, reapproved }));
+    assert.equal(result.published, 0);
+    assert.equal(calls.some(({ url }) => url.includes('/media_publish')), false);
+    assert.equal(db.state.audit.length, 0);
+  }
 });

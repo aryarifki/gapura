@@ -1,9 +1,12 @@
 import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
+import { originalFixture } from '../../common/test/fixtures/original-editorial.js';
+import { buildEditorialBrief, validateOriginalContent } from '../../common/original-editorial.js';
 
 let state;
 const topic = { id: 42, title: 'BPS merilis inflasi', summary: 'Inflasi Oktober 2,1%.', primary_source: 'BPS', url: 'https://www.bps.go.id/rilis/1', status: 'scored' };
-const plan = { title: 'Harga pangan', angle: 'Soroti pangan', sections: ['Harga pangan', 'Data inflasi'], format: 'single', caption_tone: 'ringkas' };
+const plan = { title: 'Harga pangan', angle: 'Soroti pangan', sections: ['Harga pangan', 'Data inflasi'], format: 'carousel', slide_count_hint: 6, caption_tone: 'ringkas', editorial_input: { version: 1, mode: 'explainer', facts: [] } };
+const completeDraft = () => ({ ...validateOriginalContent(originalFixture(), buildEditorialBrief(topic)), id: 81, status: 'draft', content_format: 'carousel', rendered_count: 6 });
 const queries = [];
 const llmPrompts = [];
 const productions = [];
@@ -77,7 +80,7 @@ test('plan creation, regeneration and manual updates all retain analyst, source 
     { score: null, reason: /score_below_threshold|score_not_passed/ },
     { score: { score_total: 75, verdict: 'passed' }, reason: /score_below_threshold/ },
     { score: { score_total: 88, verdict: 'rejected' }, reason: /score_not_passed/ },
-    ...['title', 'summary', 'primary_source'].map((field) => ({ topic: { [field]: ' ' }, reason: /source_evidence_required/ })),
+    ...['title', 'primary_source'].map((field) => ({ topic: { [field]: ' ' }, reason: /source_evidence_required/ })),
     ...['', 'http://www.bps.go.id/rilis/1', 'https://127.0.0.1/private', 'https://user:secret@www.bps.go.id/rilis/1'].map((url) => ({ topic: { url }, reason: /public_source_url_required/ })),
   ];
   for (const fixture of cases) {
@@ -100,18 +103,17 @@ test('only plan_review jobs permit manual edits or regeneration', async () => {
   assert.equal(llmPrompts.length, 0);
 });
 
-test('execution passes the current plan and prompt as an editorial brief while retaining source facts', async () => {
+test('execution passes the reviewed plan/input and source ID to original production without publisher material', async () => {
   const result = await executeJob(9, { autoPublish: true });
   assert.equal(result.scheduled, false);
   assert.equal(productions.length, 1);
-  assert.equal(productions[0][0].title, topic.title);
-  assert.equal(productions[0][0].summary, topic.summary);
-  assert.equal(productions[0][0].primary_source, topic.primary_source);
-  assert.equal(productions[0][0].url, topic.url);
+  assert.equal(productions[0][0], topic.id);
   assert.equal(productions[0][1], null, 'Copywriter owns its atomic production transaction');
   assert.deepEqual(productions[0][2].editorialBrief.plan, plan);
   assert.equal(productions[0][2].editorialBrief.prompt, state.job.prompt);
   assert.equal(productions[0][2].forceReview, true);
+  assert.deepEqual(productions[0][2].editorialInput, plan.editorial_input);
+  assert.equal(productions[0][2].slideCount, 6);
   assert.equal(state.job.status, 'review');
   assert.deepEqual(dispatches, [81]);
   assert.deepEqual(queries.flatMap(({ sql }) => {
@@ -172,7 +174,7 @@ test('simultaneous executions produce one draft and return an in_progress result
 
 test('a completed retry returns the existing draft without production or duplicate dispatch', async () => {
   state.job = { ...state.job, status: 'review', draft_id: 81 };
-  state.draft = { id: 81, status: 'draft', slides: [{ no: 1, teks: topic.title }], rendered_count: 1, content_format: 'single' };
+  state.draft = completeDraft();
   const result = await executeJob(9);
   assert.equal(result.draftId, 81);
   assert.equal(result.is_existing, true);
@@ -206,7 +208,7 @@ test('a legacy verified flag cannot bypass a newly rejected analyst score', asyn
 test('a completed Studio retry ignores archived verification flags while retaining human review', async () => {
   state.job = { ...state.job, status: 'review', draft_id: 81 };
   state.topic.verification_status = 'hoax_detected';
-  state.draft = { id: 81, status: 'draft', slides: [{ no: 1, teks: topic.title }], rendered_count: 1, content_format: 'single' };
+  state.draft = completeDraft();
   const result = await executeJob(9);
   assert.deepEqual(result, { draftId: 81, is_existing: true, scheduled: false });
   assert.equal(state.job.status, 'review');
@@ -243,9 +245,9 @@ test('a completed Studio single with two rendered slides fails completion valida
 
 test('a completed Studio retry still rejects a source whose evidence or public URL is no longer usable', async () => {
   state.job = { ...state.job, status: 'review', draft_id: 81 };
-  state.draft = { id: 81, status: 'draft', slides: [{ no: 1, teks: topic.title }], rendered_count: 1, content_format: 'single' };
+  state.draft = completeDraft();
   for (const [changes, reason] of [
-    [{ summary: ' ' }, /source_evidence_required/],
+    [{ title: ' ' }, /source_evidence_required/],
     [{ url: 'https://localhost/private' }, /public_source_url_required/],
   ]) {
     state.job.status = 'review';
@@ -280,4 +282,39 @@ test('an attempt to run a cancelled job preserves its cancelled status', async (
   state.job.status = 'cancelled';
   await assert.rejects(executeJob(9), /Status job/);
   assert.equal(state.job.status, 'cancelled');
+});
+
+test('planning accepts discovery without a summary and projects away publisher body, photos and arbitrary plan material', async () => {
+  state.topic = { ...topic, summary: '', body: 'PUBLISHER_BODY_SENTINEL', image_url: 'https://example.org/PUBLISHER_PHOTO_SENTINEL.jpg' };
+  state.job.plan = { ...plan, material: { content: 'PLAN_BODY_SENTINEL' } };
+  const result = await createPlan(state.job);
+  assert.equal(result.format, 'carousel');
+  assert.equal(result.slide_count_hint, 6);
+  assert.doesNotMatch(llmPrompts[0], /PUBLISHER_BODY_SENTINEL|PUBLISHER_PHOTO_SENTINEL|PLAN_BODY_SENTINEL|BUKTI_SUMBER_JSON|"summary"|"image_url"/);
+  assert.match(llmPrompts[0], /normalized_title|source_url/);
+  state.topic.summary = 'PUBLISHER_SUMMARY_SENTINEL';
+  await createPlan(state.job);
+  assert.doesNotMatch(llmPrompts[1], /PUBLISHER_SUMMARY_SENTINEL|PUBLISHER_BODY_SENTINEL|PUBLISHER_PHOTO_SENTINEL|"summary"|"body"|"image_url"/);
+});
+
+test('a queued editorial input seed must become a reviewed plan before original production', async () => {
+  const editorial_input = { version: 1, mode: 'current', facts: [{ id: 'service', text: 'Layanan dibuka kembali.', source_url: 'https://example.org/rilis', source_name: 'Dinas' }] };
+  state.job = { ...state.job, status: 'queued', plan: { editorial_input } };
+  const result = await executeJob(9);
+  assert.equal(result.awaiting_plan_review, true);
+  assert.equal(state.job.status, 'plan_review');
+  assert.equal(productions.length, 0);
+  assert.equal(llmPrompts.length, 1);
+  assert.deepEqual(result.plan.editorial_input, editorial_input);
+  await executeJob(9);
+  assert.deepEqual(productions[0][2].editorialInput, editorial_input);
+});
+
+test('manual plan updates and plan regeneration preserve input unless explicitly replaced', async () => {
+  const editorial_input = { version: 1, mode: 'current', facts: [{ id: 'service', text: 'Layanan dibuka kembali.', source_url: 'https://example.org/rilis', source_name: 'Dinas' }] };
+  state.job.plan.editorial_input = editorial_input;
+  const { editorial_input: ignored, ...edited } = plan;
+  assert.deepEqual((await updatePlan(9, edited)).editorial_input, editorial_input);
+  assert.deepEqual((await regeneratePlan(9)).editorial_input, editorial_input);
+  assert.deepEqual((await regeneratePlan(9, '', { editorialInput: { mode: 'explainer', facts: [] } })).editorial_input, plan.editorial_input);
 });

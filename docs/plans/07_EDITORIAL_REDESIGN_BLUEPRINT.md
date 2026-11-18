@@ -1,15 +1,15 @@
 # Blueprint pembaruan editorial dan desain Gapura Media
 
-Versi 2.4 · 17 November 2026 · Status: R0–R5 tersedia sesuai batas masing-masing;
-R3 generasi nyata tertahan quota 0; R5 gate teknis dan koreksi niche enam desk
-lulus; R6–R8 belum diterapkan/diterima.
+Versi 2.5 · 18 November 2026 · Status: R0–R6 tersedia sesuai batas masing-masing;
+R3 generasi nyata tertahan quota 0; R5 dan R6 gate teknis lulus; R7–R8 belum
+diterapkan/diterima.
 
 Dokumen ini menjadi acuan perubahan konten berikutnya. [Keputusan konten orisinal
 dan ilustrasi AI](10_ORIGINAL_AI_EDITORIAL.md) menggantikan kewajiban memakai
 body/foto penerbit dan petikan verbatim: RSS hanya memasok topik/judul serta
 metadata asal; agen menghasilkan naskah dan visual Gapura sendiri. Rincian
 keputusan dan acceptance pada dokumen tersebut menjadi acuan bila kontrak lama
-berbeda. Penulisan produksi belum diperbarui; kontrak/fixture [R1](08_R1_EDITORIAL_CONTRACT.md)
+berbeda. Jalur penulisan produksi sudah diganti pada R6; kontrak/fixture [R1](08_R1_EDITORIAL_CONTRACT.md)
 dan reader/snapshot [R2](09_R2_ARTICLE_MATERIALS.md) tetap hasil historis yang
 tersedia. Pembersihan workspace dan penjedaan otomatisasi sudah dilaksanakan;
 buktinya tercantum di
@@ -26,10 +26,13 @@ atau backfill. Unit penuh, DB/API, akses/browser, renderer dan DOM layanan aktif
 lulus. Enam agen aktif: **Scout, Analis, Copywriter, Designer,
 SEO, dan Studio**.
 
-**R6 belum diterapkan:** dua mode naskah orisinal, input generasi bebas
-body/summary penerbit, carousel-first default enam slide dan caption isi
-1.200–1.900 karakter. Target pada bagian 4–8 dan matriks penerimaan di bawah
-tidak berarti perilaku produksi tersebut sudah aktif. Kedua timer tetap
+**R6 selesai:** dua mode naskah orisinal (`explainer`/`current`) dengan fakta
+teratribusi eksplisit, input generasi bebas body/summary/foto penerbit, carousel
+3–9 slide default enam, caption isi 1.200–1.900 karakter dan Threads ≤500.
+Tujuh kolom additive sudah dimigrasikan ke produksi setelah backup/restore test;
+hash revisi mencakup field editorial dan publisher memeriksa ulang dalam row
+lock. Gate unit/DB/API/render/browser lulus. Rincian, bukti dan batas ada di
+[laporan R6](14_R6_ORIGINAL_EDITORIAL.md). Kedua timer tetap
 `disabled/inactive`, worker `GAPURA_DISABLE_WORKERS=true`, dan tidak ada publish
 nyata. Quota raster AI 0 tetap menghalangi sampel nyata; tidak ada permintaan
 tambahan atau perpindahan provider gambar.
@@ -209,9 +212,9 @@ peristiwa yang sama agar satu isu tidak memenuhi galeri dengan duplikat.
 
 ## 4. Alur produksi yang dituju
 
-Alur berikut adalah target R6. R5 menghapus Verifikator dan mempertahankan review
-manusia; R5 belum mengganti seluruh jalur penulisan/desain legacy dengan dua
-mode orisinal ini.
+Alur berikut adalah target R6 yang sudah diimplementasikan. R5 menghapus
+Verifikator dan mempertahankan review manusia; R6 mengganti jalur
+penulisan/desain legacy dengan dua mode orisinal ini.
 
 ```mermaid
 flowchart TD
@@ -430,11 +433,12 @@ row lock sebelum panggilan publikasi akhir. Hasil `unknown`/`publishing` ambigu
 memerlukan rekonsiliasi manual. Tidak ada izin autopost dari hilangnya Verifikator.
 
 Hash saat ini mencakup slides (termasuk descriptor aset), caption, hashtags dan
-content format. Perluasan hash materi merupakan rencana lanjutan bila mode R6
-membutuhkannya, bukan klaim implementasi R5. Tabel report arsip tidak ikut query
-keputusan runtime. Bukti, koreksi niche dan total suite akhir dicatat di
-[laporan R5](13_R5_REMOVE_VERIFICATOR.md): 606 unit lulus/1 skip, 56 DB/API,
-10 akses, 1 Chromium dan 84 renderer; suite beririsan, tidak dijumlahkan.
+content format. R6 memperluas hash secara kondisional ke `editorial_input`,
+`editorial_mode`, `caption_body`, `threads_caption`, `angle`, `scope_note` dan
+`editorial_references`; hash draf legacy tanpa field tersebut tidak berubah.
+Tabel report arsip tidak ikut query keputusan runtime. Bukti, koreksi niche dan
+total suite akhir dicatat di [laporan R5](13_R5_REMOVE_VERIFICATOR.md) dan
+[laporan R6](14_R6_ORIGINAL_EDITORIAL.md).
 
 ## 10. Perubahan data dan kompatibilitas
 
@@ -442,11 +446,13 @@ keputusan runtime. Bukti, koreksi niche dan total suite akhir dicatat di
   Berita lama tidak otomatis diproduksi kembali; gunakan batch fixture/berita baru
   yang dipilih untuk eksperimen.
 - Migrasi additive R1–R4 tetap historis; R5 melepas consumer verifier tanpa
-  schema removal. Tabel/kolom/enum dan report historis dipertahankan, tanpa
-  backfill atau penulisan ulang arsip.
-- Hash konten saat ini mencakup caption/slides/hashtags/content format dan
-  descriptor aset pada slides. Jika R6 menambah materi yang memengaruhi output,
-  kontrak revisi perlu mencakupnya. Perubahan output memerlukan review ulang.
+  schema removal. R6 menambahkan tujuh kolom nullable dan check mode pada
+  `drafts`; migrasi dijalankan dua kali untuk membuktikan idempotensi. Tabel/
+  kolom/enum dan report historis dipertahankan, tanpa backfill atau penulisan
+  ulang arsip.
+- Hash konten mencakup caption/slides/hashtags/content format, descriptor aset
+  pada slides, dan — untuk draf R6 — tujuh field editorial baru. Perubahan output
+  memerlukan review ulang.
 - Tidak ada reset ID sequence. ID konten baru tidak bertabrakan dengan riwayat
   lama yang masih tersimpan dalam audit/backup.
 - Kredensial Unified Instagram, Page token Facebook, Threads, provider, dan
@@ -469,8 +475,8 @@ Semua perubahan kode dimulai dari tes merah yang mereproduksi masalah.
 | R3 — Ilustrasi AI end-to-end | Revisi kontrak visual R1, adapter gambar, asset ID lokal, provenance/disclosure, hydration | **Kode/API/render teruji**, lihat [R3](11_R3_AI_ILLUSTRATIONS.md); fixture raster/label bertahan pada normal/fallback/regenerasi. Generasi provider nyata **tertahan kuota 0**, belum acceptance visual live |
 | R4 — Sources dan Analis | Topik/judul dan metadata saja bagi Analis/cluster, kurasi enam desk | **Selesai**, lihat [R4](12_R4_SOURCES_DESKS.md); allowlist sembilan field, 12 feed baru, 34 sumber (29 desk eksplisit/5 auto), migrasi/backup terverifikasi. Tidak backfill desk/cluster topik lama; input naskah legacy belum diganti |
 | R5 — Lepas Verifikator | Seluruh runtime/API/UI/config dan consumer report dilepas; archive schema dipertahankan | **Selesai, gate teknis lulus**, lihat [R5](13_R5_REMOVE_VERIFICATOR.md). Produksi/review tanpa report; human audit hash dan locked recheck wajib; koreksi niche dan seed enam query nasional terpasang tanpa mengubah data lama |
-| R6 — Penulisan dan desain | Naskah orisinal dua mode (umum/aktual), tanpa body/summary penerbit; default enam slide carousel-first dan caption isi 1.200–1.900 | **Belum diterapkan**. Hapus verbatim/fallback salin sumber; sampel enam desk tidak mengarang fakta, 3–9 slide bermakna dan render lulus |
-| R7 — Review visual owner | Satu carousel per desk dengan ilustrasi AI dan variasi cover/layout | Owner menyetujui orisinalitas/style/isi/disclosure; perbaiki sebelum batch |
+| R6 — Penulisan dan desain | Naskah orisinal dua mode (umum/aktual), tanpa body/summary penerbit; carousel 3–9 default enam dan caption isi 1.200–1.900 | **Selesai, gate teknis lulus**, lihat [R6](14_R6_ORIGINAL_EDITORIAL.md). Verbatim/fallback salin dihapus; corpus enam desk, caption/Threads, hash/publisher dan migrasi additive lulus. Tidak ada raster nyata, sampel visual owner atau publish |
+| R7 — Review visual owner | Satu carousel per desk dengan ilustrasi AI dan variasi cover/layout | Owner menyetujui orisinalitas/style/isi/disclosure; perbaiki sebelum batch. Quota gambar 0 harus diselesaikan lebih dulu |
 | R8 — Aktivasi bertahap | 20 draf berurutan, shadow, satu publish uji yang disetujui | Tidak ada drop ilustrasi, foto sumber, single/boilerplate; approval/hash/idempotency lulus |
 
 Jangan mengaktifkan kembali timer hanya karena test unit hijau. Keputusan style
@@ -602,11 +608,10 @@ menyediakan adapter gambar, aset lokal/provenance/disclosure serta kontinuitas
 preview/render/fallback yang diuji dengan TDD. Kuota gambar provider nyata
 masih tertahan; kelulusan fixture tidak menggantikan sampel nyata R7.
 R4 discovery/Analis/cluster dan R5 penghapusan Verifikator sudah selesai.
-Gate teknis R5 lulus; lanjut implementasikan **R6**:
-dua mode naskah orisinal, seluruh payload penulisan/desain tanpa body/summary
-penerbit, default enam slide carousel-first, caption isi 1.200–1.900 karakter,
-dan penghapusan verbatim/fallback salin sumber. Jalur naskah legacy saat ini
-belum memenuhi kontrak tersebut. Tidak ada permintaan gambar nyata tambahan
+R6 naskah orisinal dua mode juga selesai dan sudah dimigrasikan ke produksi;
+gate unit/DB/API/render/browser lulus, dengan bukti di
+[laporan R6](14_R6_ORIGINAL_EDITORIAL.md). Jalur naskah legacy sudah tidak
+dipakai untuk produksi baru. Tidak ada permintaan gambar nyata tambahan
 atau provider swap; quota 0 tetap penghalang sampel R7.
 
 Otomatisasi produksi/publish tetap dijeda sampai owner menyetujui sampel. Lihat

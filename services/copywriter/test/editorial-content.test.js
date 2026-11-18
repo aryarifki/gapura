@@ -1,38 +1,52 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildEvidenceBasedContent } from '../editorial.js';
+import { isDraftComplete } from '../editorial.js';
+import { buildEditorialBrief, validateOriginalContent } from '../../common/original-editorial.js';
+import { originalFixture, DISCOVERY_TOPICS } from '../../common/test/fixtures/original-editorial.js';
 
-test('uses only facts present in the article data in deterministic fallback copy', () => {
-  const result = buildEvidenceBasedContent({
-    title: 'BPS mencatat inflasi sebesar 2,1%',
-    summary: 'Inflasi tahunan Indonesia pada Oktober tercatat 2,1% menurut BPS.',
-    primary_source: 'BPS',
-    url: 'https://www.bps.go.id/rilis/1',
-    format: 'carousel',
-  });
-  const serialized = JSON.stringify(result);
-  assert.match(serialized, /2,1%/);
-  assert.match(serialized, /https:\/\/www\.bps\.go\.id\/rilis\/1/);
-  assert.doesNotMatch(serialized, /katalis domestik|stabilitas fundamental|transmisi kebijakan/);
-  assert.equal(result.format, 'single');
-  assert.equal(result.slides.length, 1);
-  assert.equal(result.slides[0].layout, 'cover-focus');
+function draft() {
+  const brief = buildEditorialBrief(DISCOVERY_TOPICS.sosial);
+  const content = validateOriginalContent(originalFixture(brief), brief);
+  return { ...content, id: 12, status: 'draft', content_format: content.format, rendered_count: content.slides.length };
+}
+
+test('only a fully rendered original carousel is complete, including JSONB string adapters', () => {
+  const content = draft();
+  assert.equal(isDraftComplete(content), true);
+  assert.equal(isDraftComplete({ ...content, slides: JSON.stringify(content.slides), editorial_input: JSON.stringify(content.editorial_input), editorial_references: JSON.stringify(content.editorial_references) }), true);
+  for (const status of ['approved', 'scheduled', 'published']) assert.equal(isDraftComplete({ ...content, status }), true);
 });
 
-test('flags missing source evidence and avoids manufacturing a body narrative', () => {
-  const result = buildEvidenceBasedContent({ title: 'OJK menerbitkan aturan baru', summary: '', primary_source: '', url: '' });
-  assert.equal(result.needs_review, true);
-  assert.equal(result.source_url, '');
-  assert.ok(result.caption.startsWith('OJK menerbitkan aturan baru\n\n'));
-  assert.doesNotMatch(result.caption, /Sumber primer|Status verifikasi/i);
-  assert.equal(result.slides.filter((slide) => slide.layout === 'big-statement').length, 0);
+test('legacy publisher-source originals and single drafts cannot be reused for R6', () => {
+  assert.equal(isDraftComplete({ id: 1, status: 'draft', content_format: 'single', rendered_count: 1, slides: [{ no: 1, layout: 'cover-focus', teks: 'Judul publisher' }] }), false);
+  const { editorial_input, ...legacy } = draft();
+  assert.equal(isDraftComplete(legacy), false);
 });
 
-test('supports a single-layer post without an injected carousel CTA', () => {
-  const result = buildEvidenceBasedContent({
-    title: 'BPS merilis inflasi 2,1%', summary: 'Inflasi Oktober 2,1%.', primary_source: 'BPS',
-    url: 'https://www.bps.go.id/rilis/1', format: 'single',
-  });
-  assert.equal(result.slides.length, 1);
-  assert.equal(result.format, 'single');
+test('partial, empty, duplicated, malformed and unaudited scripts are incomplete', () => {
+  for (const mutate of [
+    (value) => { value.rendered_count = 5; },
+    (value) => { value.status = 'failed'; },
+    (value) => { value.slides[1] = null; },
+    (value) => { value.slides[1].teks = ' '; },
+    (value) => { value.slides[1].teks = value.slides[2].teks; },
+    (value) => { value.slides[1].no = 3; },
+    (value) => { delete value.slides[1].purpose; },
+    (value) => { value.slides[1].claim_type = 'fact'; },
+    (value) => { value.slides[1].fact_ids = ['missing']; },
+    (value) => { value.slides[1].layout = 'chart-bar'; },
+    (value) => { value.slides = '{not-json'; },
+    (value) => { value.caption_body = 'Terlalu pendek'; },
+    (value) => { value.caption = 'x'.repeat(2201); },
+    (value) => { value.threads_caption = 'x'.repeat(501); },
+    (value) => { value.editorial_mode = 'current'; },
+    (value) => { value.editorial_input = { version: 0, mode: 'explainer', facts: [] }; },
+    (value) => { delete value.editorial_references; },
+    (value) => { value.editorial_references.caption[0].fact_ids = ['invented']; },
+    (value) => { value.editorial_references.caption.pop(); },
+    (value) => { value.editorial_references.threads = ['invented']; },
+  ]) {
+    const value = draft(); mutate(value);
+    assert.equal(isDraftComplete(value), false);
+  }
 });

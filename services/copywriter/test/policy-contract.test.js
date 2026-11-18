@@ -19,14 +19,22 @@ test('Scout and SEO accurately describe deterministic runtime and the role of th
     assert.match(document, /tidak.*(?:LLM|model)/i, agent);
   }
 });
-test('generator contracts permit single, ground carousel bodies, and preserve caption metadata', async () => {
+test('generator contracts require original six-slide carousels, explicit evidence and human-reviewed captions', async () => {
   const copy = await readFile(new URL('config/skills/copywriter.skills.md', root), 'utf8');
   const designer = await readFile(new URL('config/skills/designer.skills.md', root), 'utf8');
   const studio = await readFile(new URL('config/skills/studio.skills.md', root), 'utf8');
   assert.match(copy, /2200.*(?:hashtag|tag)/i);
-  assert.match(copy, /disclaimer.*relevan|relevan.*disclaimer/i);
-  assert.match(designer, /single.*tepat 1/i);
-  assert.match(designer, /allowlist/i);
+  assert.match(copy, /1200.{0,20}1900/);
+  assert.match(copy, /Threads[\s\S]*500/i);
+  assert.match(copy, /explainer/i);
+  assert.match(copy, /current/i);
+  assert.match(copy, /fact_ids/);
+  assert.match(copy, /caption_blocks/);
+  assert.match(copy, /(?:6|enam).{0,20}slide|slide.{0,20}(?:6|enam)/i);
+  assert.match(designer, /layout/i);
+  assert.match(designer, /naskah[\s\S]*(?:valid|orisinal)/i);
+  assert.doesNotMatch(copy, /gunakan hanya judul\/ringkasan sumber|caption.*petikan sumber|jika hanya satu poin, gunakan single/i);
+  assert.doesNotMatch(designer, /pilih.*single.*tepat 1|data\.image_url.*boleh|visual hanya menyusun bukti judul\/ringkasan/i);
   assert.match(designer, /tanpa.*filler|jangan.*filler/i);
   assert.match(studio, /plan_review/);
   assert.match(studio, /plan_review.*draf\/render atomik.*review manusia/);
@@ -50,5 +58,8 @@ test('system prompts align with evidence rules while preserving existing provide
   }
   assert.match(cfg.studio.system_prompt, /lolos Analis/);
   assert.match(cfg.studio.system_prompt, /review manusia/);
+  assert.match(cfg.copywriter.system_prompt, /orisinal|original/i);
+  assert.match(cfg.designer.system_prompt, /layout/i);
+  assert.doesNotMatch(cfg.copywriter.system_prompt, /petikan verbatim judul\/ringkasan/i);
   assert.doesNotMatch(cfg.studio.system_prompt, /verification_requested|verification_required|verifikator|verificator/i);
 });

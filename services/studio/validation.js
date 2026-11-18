@@ -1,4 +1,5 @@
 import { validatePublicSourceUrl } from '../common/sources.js';
+import { normalizeEditorialInput } from '../common/original-editorial.js';
 
 export function validateStudioTopic(topic, threshold = 76) {
   if (!topic) return { valid: false, reason: 'topic_not_found' };
@@ -18,17 +19,17 @@ export function normalizeStudioPlan(plan) {
   if (!title || title.length > 120 || sections.length < 2 || sections.length > 6) {
     throw new Error('Rencana perlu judul (maksimal 120 karakter) dan 2-6 poin isi.');
   }
-  if (plan.format !== undefined && !['single', 'carousel'].includes(plan.format)) throw new Error('Format rencana harus single atau carousel.');
-  const result = { title, sections };
+  if (plan.format !== undefined && plan.format !== 'carousel') throw new Error('Format rencana berita harus carousel.');
+  const result = { title, sections, format: 'carousel', slide_count_hint: 6, editorial_input: normalizeEditorialInput(plan.editorial_input) };
   for (const key of ['angle', 'goal', 'caption_tone', 'revision_instruction']) {
     if (plan[key] !== undefined) {
-      if (typeof plan[key] !== 'string' || plan[key].length > 1000) throw new Error(`${key} harus teks maksimal 1000 karakter.`);
+      const limit = key === 'caption_tone' ? 100 : 1000;
+      if (typeof plan[key] !== 'string' || plan[key].length > limit) throw new Error(`${key} harus teks maksimal ${limit} karakter.`);
       result[key] = plan[key].trim();
     }
   }
-  if (plan.format) result.format = plan.format;
   if (plan.slide_count_hint !== undefined) {
-    if (!Number.isInteger(plan.slide_count_hint) || plan.slide_count_hint < 1 || plan.slide_count_hint > 9) throw new Error('slide_count_hint harus 1-9.');
+    if (!Number.isInteger(plan.slide_count_hint) || plan.slide_count_hint < 3 || plan.slide_count_hint > 9) throw new Error('slide_count_hint harus 3-9.');
     result.slide_count_hint = plan.slide_count_hint;
   }
   if (Array.isArray(plan.hashtags)) result.hashtags = [...new Set(plan.hashtags.filter((tag) => typeof tag === 'string' && /^#[\p{L}\p{N}_]{1,40}$/u.test(tag)))].slice(0, 12);

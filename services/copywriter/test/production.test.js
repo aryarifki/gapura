@@ -1,20 +1,39 @@
 import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import sharp from '../../render/node_modules/sharp/lib/index.js';
+import { saveIllustrationRaster } from '../../designer/illustrations.js';
+import { buildEditorialBrief, validateOriginalContent } from '../../common/original-editorial.js';
+import { originalFixture } from '../../common/test/fixtures/original-editorial.js';
 
 mock.module('dotenv', { defaultExport: { config() {} } });
 mock.module('pg', { defaultExport: { Pool: class { query() { throw new Error('No live database in unit tests'); } } } });
 const callAgentLLM = mock.fn(async () => { throw new Error('No live LLM in unit tests'); });
+let config = { analis: { min_score_threshold: 76 } };
 mock.module('../../common/llm.js', { namedExports: {
-  loadAgentsConfig: () => ({ analis: { min_score_threshold: 76 } }), loadAgentSkills: () => '',
+  loadAgentsConfig: () => config, loadAgentSkills: () => '',
   callAgentLLM,
 } });
 const { produceSingleTopicDraft, regenerateDraft, runCopywriter, pool } = await import('../copywriter.js');
 const topic = { id: 42, title: 'BPS merilis inflasi Oktober', summary: 'Inflasi Oktober mencapai 2,1%.', primary_source: 'BPS', url: 'https://www.bps.go.id/rilis/1', status: 'scored' };
 
 test.beforeEach((t) => {
+  config = { analis: { min_score_threshold: 76 } };
   callAgentLLM.mock.resetCalls();
+  callAgentLLM.mock.mockImplementation(async (agent, prompt) => {
+    if (agent === 'copywriter') return JSON.stringify(originalFixture(JSON.parse(prompt.split('ORIGINAL_EDITORIAL_JSON: ')[1])));
+    const script = JSON.parse(prompt.split('NASKAH_GAPURA_JSON: ')[1].split('\nKembalikan')[0]);
+    return JSON.stringify({ slides: script.slides.map(({ no, layout }) => ({ no, layout })) });
+  });
   t.mock.method(console, 'warn', () => {});
 });
+
+function completeDraft(overrides = {}, options = {}) {
+  const brief = buildEditorialBrief(topic, options);
+  const content = validateOriginalContent(originalFixture(brief), brief);
+  return { ...content, id: 12, topic_id: topic.id, status: 'draft', content_format: content.format, rendered_count: content.slides.length, ...overrides };
+}
 
 function database(overrides = {}) {
   const sql = [];
@@ -34,6 +53,8 @@ function database(overrides = {}) {
           && (['publishing', 'unknown', 'published'].includes(target.status) || target.publish_attempted_at != null || target.remote_id != null)) };
       }
       if (/FROM audit_log\b/i.test(text)) return { rows: overrides.audit || [] };
+      if (/FROM media_assets\b/i.test(text)) return { rows: (overrides.assets || []).filter((asset) => /WHERE id=\$1/.test(text)
+        ? asset.id === values[0] : String(asset.topic_id) === String(values[0]) && asset.selected && asset.status === 'ready') };
       if (/INSERT INTO drafts\b/i.test(text)) { inserted++; return { rows: [{ id: 80 + inserted }] }; }
       return { rows: [], rowCount: 1 };
     },
@@ -161,7 +182,7 @@ test('an incomplete existing draft is not returned as an idempotent success', as
 
 test('complete existing output is reused after current source and analyst gates without reading archived reports', async (t) => {
   const render = mockRender(t);
-  const db = database({ topic: { status: 'produced' }, existing: [{ id: 12, status: 'draft', slides: [{ no: 1, layout: 'cover-focus', teks: topic.title }], rendered_count: 1, content_format: 'single' }] });
+  const db = database({ topic: { status: 'produced' }, existing: [completeDraft()] });
   const result = await produceSingleTopicDraft(topic, db.client);
   assert.equal(result.draft_id, 12);
   assert.equal(result.is_existing, true);
@@ -175,12 +196,12 @@ test('complete existing output is reused after current source and analyst gates 
 
 test('complete output cannot bypass newly failed analyst or source gates even with archived verified status', async (t) => {
   const render = mockRender(t);
-  const existing = [{ id: 12, status: 'draft', slides: [{ no: 1, layout: 'cover-focus', teks: topic.title }], rendered_count: 1, content_format: 'single' }];
+  const existing = [completeDraft()];
   for (const [override, reason] of [
     [{ score: null }, /score_not_passed/],
     [{ score: { score_total: 70 } }, /score_below_threshold/],
     [{ score: { verdict: 'rejected' } }, /score_not_passed/],
-    [{ topic: { summary: ' ' } }, /source_evidence_required/],
+    [{ topic: { primary_source: ' ' } }, /source_evidence_required/],
     [{ topic: { url: 'https://localhost/private' } }, /public_source_url_required/],
   ]) {
     const db = database({ ...override, topic: { status: 'produced', verification_status: 'verified', ...override.topic }, existing });
@@ -194,7 +215,7 @@ test('complete output cannot bypass newly failed analyst or source gates even wi
 
 test('new Studio briefs create their own output rather than reusing another editorial job draft', async (t) => {
   const render = mockRender(t);
-  const db = database({ topic: { status: 'produced' }, existing: [{ id: 12, status: 'draft', slides: [{ no: 1, layout: 'cover-focus', teks: topic.title }], rendered_count: 1, content_format: 'single' }] });
+  const db = database({ topic: { status: 'produced' }, existing: [completeDraft()] });
   const result = await produceSingleTopicDraft(topic, db.client, { forceReview: true, editorialBrief: { job_id: 9, prompt: 'Ringkas', plan: { format: 'single', sections: ['Data', 'Sumber'] } } });
   assert.equal(result.is_existing, false);
   assert.notEqual(result.draft_id, 12);
@@ -204,7 +225,7 @@ test('new Studio briefs create their own output rather than reusing another edit
 test('the same Studio brief retries its complete audited draft without rendering again', async (t) => {
   const render = mockRender(t);
   const editorialBrief = { job_id: 9, prompt: 'Ringkas', plan: { format: 'single', sections: ['Data', 'Sumber'] } };
-  const db = database({ topic: { status: 'produced' }, existing: [{ id: 12, status: 'draft', slides: [{ no: 1, layout: 'cover-focus', teks: topic.title }], rendered_count: 1, content_format: 'single' }], audit: [{ entity_id: 12, payload: { editorial_brief: editorialBrief } }] });
+  const db = database({ topic: { status: 'produced' }, existing: [completeDraft()], audit: [{ entity_id: 12, payload: { editorial_brief: editorialBrief } }] });
   const result = await produceSingleTopicDraft(topic, db.client, { forceReview: true, editorialBrief });
   assert.equal(result.is_existing, true);
   assert.equal(result.draft_id, 12);
@@ -288,7 +309,7 @@ test('a connected pg.Client is used directly even though it has a connect method
 
 test('unknown source evidence is rejected before designer and render costs', async (t) => {
   const render = mockRender(t);
-  for (const field of ['title', 'summary', 'primary_source']) {
+  for (const field of ['title', 'primary_source']) {
     const db = database({ topic: { [field]: ' ' } });
     await assert.rejects(produceSingleTopicDraft(topic, db.client), /source_evidence_required/);
     assert.equal(db.inserted, 0);
@@ -302,7 +323,7 @@ test('audit JSONB key ordering does not break retry idempotency for a Studio bri
   const render = mockRender(t);
   const editorialBrief = { job_id: 9, prompt: 'Ringkas', plan: { format: 'single', sections: ['Data', 'Sumber'] } };
   const storedBrief = { plan: { sections: ['Data', 'Sumber'], format: 'single' }, prompt: 'Ringkas', job_id: 9 };
-  const db = database({ topic: { status: 'produced' }, existing: [{ id: 12, status: 'draft', slides: [{ no: 1, layout: 'cover-focus', teks: topic.title }], rendered_count: 1, content_format: 'single' }], audit: [{ entity_id: 12, payload: { editorial_brief: storedBrief } }] });
+  const db = database({ topic: { status: 'produced' }, existing: [completeDraft()], audit: [{ entity_id: 12, payload: { editorial_brief: storedBrief } }] });
   const result = await produceSingleTopicDraft(topic, db.client, { forceReview: true, editorialBrief });
   assert.equal(result.is_existing, true);
   assert.equal(render.mock.callCount(), 0);
@@ -369,7 +390,7 @@ test('concurrent connections wait for the per-topic transaction and reuse its co
         if (/FROM drafts\b/.test(sql)) return { rows: completedDraft ? [completedDraft] : [] };
         if (/INSERT INTO drafts/.test(sql)) { insertionCount++; return { rows: [{ id: 81 }] }; }
         if (sql === 'COMMIT' && ownsLock) {
-          completedDraft = { id: 81, status: 'draft', slides: [{ no: 1, layout: 'cover-focus', teks: topic.title }], content_format: 'single', rendered_count: 1 };
+          completedDraft = completeDraft({ id: 81 });
           lockHeld = false;
           ownsLock = false;
           waiters.shift()?.();
@@ -412,4 +433,175 @@ test('a rendered record without actual slide text is still incomplete', async (t
   const db = database({ existing: [{ id: 12, status: 'draft', slides: [null], rendered_count: 1, content_format: 'single' }] });
   const result = await produceSingleTopicDraft(topic, db.client);
   assert.equal(result.is_existing, false);
+});
+
+test('R6 production needs no source summary and persists original input, platform captions and scope', async (t) => {
+  const render = mockRender(t);
+  const db = database({ topic: { summary: null, body: 'PUBLISHER_BODY_SENTINEL', image_url: 'https://img.antaranews.com/PUBLISHER_PHOTO_SENTINEL.jpg' } });
+  const result = await produceSingleTopicDraft(topic, db.client);
+  assert.equal(result.slides_count, 6);
+  const insert = db.sql.find(({ text }) => /INSERT INTO drafts\b/.test(text));
+  assert.match(insert.text, /editorial_input, editorial_mode, caption_body, threads_caption, angle, scope_note/);
+  assert.deepEqual(JSON.parse(insert.values[7]), { version: 1, mode: 'explainer', facts: [] });
+  assert.equal(insert.values[8], 'explainer');
+  assert.ok(insert.values[9].length >= 1200 && insert.values[9].length <= 1900);
+  assert.ok(insert.values[10].length <= 500);
+  assert.equal(insert.values[6], true);
+  assert.equal(insert.values[5], null);
+  assert.deepEqual(JSON.parse(insert.values[13]), {
+    caption: originalFixture().caption_blocks.map(({ kind, fact_ids }) => ({ kind, fact_ids })), threads: [],
+  });
+  const audit = JSON.parse(db.sql.find(({ text }) => /INSERT INTO audit_log/.test(text)).values[2]);
+  assert.deepEqual(audit.editorial_input, JSON.parse(insert.values[7]));
+  assert.equal(audit.caption_body, insert.values[9]);
+  assert.equal(audit.threads_caption, insert.values[10]);
+  assert.equal(audit.angle, insert.values[11]);
+  assert.equal(audit.scope_note, insert.values[12]);
+  assert.deepEqual(audit.editorial_references, JSON.parse(insert.values[13]));
+  assert.equal(audit.original_editorial_brief.mode, 'explainer');
+  for (const { arguments: [, prompt] } of callAgentLLM.mock.calls) assert.doesNotMatch(prompt, /PUBLISHER_(?:BODY|PHOTO)_SENTINEL|Inflasi Oktober mencapai 2,1%/);
+  assert.equal(render.mock.callCount(), 1);
+  assert.equal(db.sql.at(-1).text, 'COMMIT');
+});
+
+test('generation failure rolls back without inserting a draft, quarantining old records or rendering', async (t) => {
+  const render = mockRender(t);
+  callAgentLLM.mock.mockImplementation(async () => { throw new Error('provider unavailable'); });
+  const db = database({ existing: [{ id: 12, topic_id: 42, status: 'draft', slides: [], rendered_count: 0 }] });
+  await assert.rejects(produceSingleTopicDraft(topic, db.client), /original_generation_failed.*provider unavailable/);
+  assert.equal(db.inserted, 0);
+  assert.equal(render.mock.callCount(), 0);
+  assert.ok(!db.sql.some(({ text }) => /^\s*(UPDATE|INSERT|DELETE)\b/i.test(text)));
+  assert.equal(db.sql.at(-1).text, 'ROLLBACK');
+});
+
+test('regeneration provider failure leaves the previous revision and schedules unchanged before render', async (t) => {
+  const render = mockRender(t);
+  callAgentLLM.mock.mockImplementation(async () => { throw new Error('provider unavailable'); });
+  const db = database({ existing: [{ id: 12, topic_id: 42, status: 'draft' }] });
+  await assert.rejects(regenerateDraft(12, db.client), /original_generation_failed/);
+  assert.equal(db.inserted, 0);
+  assert.equal(render.mock.callCount(), 0);
+  assert.ok(!db.sql.some(({ text }) => /SAVEPOINT regeneration|^\s*(UPDATE|INSERT|DELETE)\b/i.test(text)));
+  assert.equal(db.sql.at(-1).text, 'ROLLBACK');
+});
+
+test('needs_media remains an early gate before LLM calls or draft mutations', async (t) => {
+  config.designer = { image_generation: { enabled: true } };
+  const render = mockRender(t);
+  const db = database();
+  await assert.rejects(produceSingleTopicDraft(topic, db.client), /needs_media/);
+  assert.equal(callAgentLLM.mock.callCount(), 0);
+  assert.equal(render.mock.callCount(), 0);
+  assert.equal(db.inserted, 0);
+  assert.equal(db.sql.at(-1).text, 'ROLLBACK');
+});
+
+test('rendered legacy source-copy drafts are regenerated instead of silently reused for R6', async (t) => {
+  const render = mockRender(t);
+  const legacy = { id: 12, topic_id: 42, status: 'draft', content_format: 'carousel', rendered_count: 3, slides: [
+    { no: 1, layout: 'cover-focus', teks: topic.title, data: {} },
+    { no: 2, layout: 'big-statement', teks: topic.summary, data: {} },
+    { no: 3, layout: 'big-statement', teks: 'Kutipan sumber lainnya.', data: {} },
+  ] };
+  const db = database({ topic: { status: 'produced' }, existing: [legacy] });
+  const result = await produceSingleTopicDraft(topic, db.client);
+  assert.equal(result.is_existing, false);
+  assert.notEqual(result.draft_id, legacy.id);
+  assert.equal(render.mock.callCount(), 1);
+  assert.ok(db.sql.some(({ text, values }) => /UPDATE drafts SET status = 'failed'/.test(text) && values[0] === legacy.id));
+});
+
+const currentInput = () => ({ version: 1, mode: 'current', facts: [{ id: 'f1', text: 'BPS mencatat inflasi tahunan sebesar 2,1%.', source_url: 'https://www.bps.go.id/rilis/inflasi', source_name: 'BPS' }] });
+
+test('regeneration restores stored editorial input without inferring facts from publisher summary', async (t) => {
+  mockRender(t);
+  const editorialInput = currentInput();
+  const db = database({ existing: [{ id: 12, topic_id: 42, status: 'draft', editorial_input: editorialInput }] });
+  await regenerateDraft(12, db.client);
+  const update = db.sql.find(({ text }) => /UPDATE drafts SET slides/.test(text));
+  assert.deepEqual(JSON.parse(update.values[6]), editorialInput);
+  assert.equal(update.values[7], 'current');
+  assert.equal(JSON.parse(update.values[12]).caption[0].kind, 'fact');
+  assert.deepEqual(JSON.parse(update.values[12]).caption[0].fact_ids, ['f1']);
+  assert.match(update.text, /editorial_input = \$7, editorial_mode = \$8, caption_body = \$9, threads_caption = \$10, angle = \$11, scope_note = \$12/);
+  const brief = JSON.parse(callAgentLLM.mock.calls.find(({ arguments: [agent] }) => agent === 'copywriter').arguments[1].split('ORIGINAL_EDITORIAL_JSON: ')[1]);
+  assert.deepEqual(brief.facts, editorialInput.facts);
+  assert.doesNotMatch(JSON.stringify(brief), /Inflasi Oktober mencapai 2,1%/);
+});
+
+test('explicit editorial input takes priority over stored regeneration input', async (t) => {
+  mockRender(t);
+  const db = database({ existing: [{ id: 12, topic_id: 42, status: 'draft', editorial_input: '{malformed legacy input' }] });
+  await regenerateDraft(12, db.client, { editorialInput: { mode: 'explainer' } });
+  const update = db.sql.find(({ text }) => /UPDATE drafts SET slides/.test(text));
+  assert.deepEqual(JSON.parse(update.values[6]), { version: 1, mode: 'explainer', facts: [] });
+  assert.equal(update.values[7], 'explainer');
+});
+
+test('invalid explicit original inputs fail before generation, rendering or draft writes', async (t) => {
+  const render = mockRender(t);
+  for (const editorialInput of [null, false, { mode: 'current', facts: [] }, { summary: 'PUBLISHER_SENTINEL' }, { mode: 'explainer', facts: currentInput().facts }]) {
+    const db = database();
+    await assert.rejects(produceSingleTopicDraft(topic, db.client, { editorialInput }), /original_editorial_input/);
+    assert.equal(db.inserted, 0);
+    assert.equal(db.sql.at(-1).text, 'ROLLBACK');
+  }
+  assert.equal(callAgentLLM.mock.callCount(), 0);
+  assert.equal(render.mock.callCount(), 0);
+});
+
+test('regeneration preserves the local pinned illustration revision even when another asset is selected', async (t) => {
+  const storagePath = await fs.mkdtemp('/tmp/opencode/gapura-r6-copywriter-media-');
+  t.after(() => fs.rm(storagePath, { recursive: true, force: true }));
+  const bytes = await sharp({ create: { width: 640, height: 480, channels: 3, background: '#1f7e81' } }).png().toBuffer();
+  const id = randomUUID();
+  const raster = await saveIllustrationRaster(id, { bytes, mime: 'image/png' }, { storagePath });
+  const asset = { ...raster, id, topic_id: 42, status: 'ready', kind: 'ai_generated', selected: false };
+  const newlySelected = { ...asset, id: randomUUID(), selected: true };
+  const existing = completeDraft();
+  existing.slides[0].data = { ...existing.slides[0].data, asset_id: id, asset_sha256: asset.sha256, image_kind: 'ai_generated', disclosure_version: 1 };
+  existing.slides = JSON.stringify(existing.slides);
+  const db = database({ existing: [existing], assets: [asset, newlySelected] });
+  mockRender(t, (request) => {
+    assert.equal(request.slides[0].data.asset_id, id);
+    assert.equal(request.slides[0].data.asset_sha256, asset.sha256);
+    assert.match(request.slides[0].data.image_data, /^data:image\/png;base64,/);
+    return { ok: true, json: async () => ({ rendered_slides: request.slides.map(({ no }) => ({ slide_no: no, file_path: `/test/${no}.png` })) }) };
+  });
+  await regenerateDraft(12, db.client, { imageOptions: { storagePath } });
+  const slides = JSON.parse(db.sql.find(({ text }) => /UPDATE drafts SET slides/.test(text)).values[1]);
+  assert.equal(slides[0].data.asset_id, id);
+  assert.equal(slides[0].data.asset_sha256, asset.sha256);
+  assert.equal(slides[0].data.image_data, undefined);
+  assert.ok(!db.sql.some(({ text }) => /FROM media_assets.*selected AND status/s.test(text)), 'existing immutable cover wins over the current topic selection');
+  for (const { arguments: [, prompt] } of callAgentLLM.mock.calls) {
+    assert.ok(!prompt.includes(id));
+    assert.ok(!prompt.includes(asset.sha256));
+    assert.ok(!prompt.includes(newlySelected.id));
+  }
+});
+
+test('reuse compares normalized curated facts, retaining JSONB key-order independence', async (t) => {
+  const render = mockRender(t);
+  const editorialInput = currentInput();
+  const reordered = { facts: [{ source_name: 'BPS', source_url: editorialInput.facts[0].source_url, text: editorialInput.facts[0].text, id: 'f1' }], mode: 'current' };
+  const db = database({ topic: { status: 'produced' }, existing: [completeDraft({}, { editorialInput })] });
+  const result = await produceSingleTopicDraft(topic, db.client, { editorialInput: reordered });
+  assert.equal(result.is_existing, true);
+  assert.equal(render.mock.callCount(), 0);
+  assert.equal(callAgentLLM.mock.callCount(), 0);
+});
+
+test('changed curated facts create a new reviewed original instead of reusing another claim set', async (t) => {
+  const render = mockRender(t);
+  const previous = currentInput();
+  const changed = currentInput(); changed.facts[0].text = 'BPS mencatat inflasi tahunan sebesar 2,2%.';
+  const db = database({ topic: { status: 'produced' }, existing: [completeDraft({}, { editorialInput: previous })] });
+  const result = await produceSingleTopicDraft(topic, db.client, { editorialInput: changed });
+  assert.equal(result.is_existing, false);
+  assert.equal(render.mock.callCount(), 1);
+  const insert = db.sql.find(({ text }) => /INSERT INTO drafts\b/.test(text));
+  assert.equal(JSON.parse(insert.values[7]).facts[0].text, changed.facts[0].text);
+  assert.equal(insert.values[6], true);
 });

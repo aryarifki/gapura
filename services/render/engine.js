@@ -9,7 +9,7 @@ import path from 'path';
 import yaml from 'js-yaml';
 import satori from 'satori';
 import sharp from 'sharp';
-import { validateDraftId, validateSlides, validatePreview } from './validation.js';
+import { validateDraftId, validateSlides, validatePreview, validateLayoutData } from './validation.js';
 
 // ponytail: this queue coordinates one process; multiple workers still need the
 // database draft lock held by the web boundary.
@@ -368,7 +368,7 @@ export class RenderEngine {
                   type: 'div',
                   props: {
                     style: { display: 'flex', flex: 1, maxWidth: '640px', lineHeight: '1.35' },
-                    children: showSource && source ? source : brand.tagline || '',
+                    children: showSource && source ? source : '',
                   },
                 },
                 {
@@ -443,6 +443,13 @@ export class RenderEngine {
               children: body,
             },
           } : null,
+          ...['cta', 'disclaimer'].filter((field) => data[field]?.trim()).map((field) => ({
+            type: 'div',
+            props: {
+              style: { fontSize: field === 'cta' ? '20px' : '14px', lineHeight: '1.45', color: field === 'cta' ? palette.accent : palette.muted },
+              children: data[field],
+            },
+          })),
         ].filter(Boolean),
       },
     }, { slideNo: slideIndex, totalSlides, source: slide.source });
@@ -455,7 +462,8 @@ export class RenderEngine {
     const headline = String(data.title || data.headline || slide.teks || '')
       .replace(/\s+/g, ' ')
       .trim();
-    const rawStat = data.value || data.stat ? String(data.value || data.stat).trim() : '';
+    const body = String(slide.teks || '').replace(/\s+/g, ' ').trim();
+    const rawStat = String(data.value ?? data.stat ?? '').trim();
     // Label generik ("DATA UTAMA", "PASAR MODAL") bukan informasi: jangan tampil di cover.
     const statVal = /\d/.test(rawStat) ? rawStat : '';
     const statLabel = String(data.subtext || data.unit || data.label || '')
@@ -559,6 +567,13 @@ export class RenderEngine {
                   },
                 }
               : null,
+            body && body !== headline ? {
+              type: 'div',
+              props: {
+                style: { fontSize: `${fitFontSize(body, { max: 30, min: 18, ratio: CHAR_RATIO.body, maxLines: 8, step: 1 })}px`, lineHeight: '1.5', color: palette.cover_ink || '#F3F4E9' },
+                children: body,
+              },
+            } : null,
           ].filter(Boolean),
         },
       },
@@ -570,6 +585,7 @@ export class RenderEngine {
   resolveLayout(slide, slideIndex, totalSlides) {
     const layout = slide.layout || 'cover-stat';
     const { palette, typography } = this.tokens;
+    validateLayoutData(layout, slide.data ?? {});
 
     // Slide pertama — atau layout apa pun yang menyebut "cover" — selalu cover murni.
     if (slideIndex === 1 || /cover/i.test(layout)) {
@@ -742,9 +758,7 @@ export class RenderEngine {
                                 lineHeight: '1.5',
                                 color: palette.ink || '#102B45',
                               },
-                              children:
-                                subtext ||
-                                'Laporan editorial mendalam tentang isu publik: politik, sosial, hukum, lingkungan, ekonomi nasional, dan bursa.',
+                              children: subtext,
                             },
                           },
                         ],
@@ -769,7 +783,7 @@ export class RenderEngine {
                       alignSelf: 'flex-start',
                       marginTop: '8px',
                     },
-                    children: 'GESER KE KIRI UNTUK ANALISIS ➔',
+                    children: slide.data?.cta || '',
                   },
                 },
               ],
@@ -870,6 +884,13 @@ export class RenderEngine {
                       },
                     }
                   : null,
+                slide.data?.quote && slide.teks && slide.teks !== slide.data.quote ? {
+                  type: 'div',
+                  props: {
+                    style: { fontSize: `${fitFontSize(slide.teks, { max: 30, min: 18, width: CONTENT_WIDTH - 80, ratio: CHAR_RATIO.body, maxLines: 8, step: 1 })}px`, lineHeight: '1.5', color: palette.ink || '#102B45' },
+                    children: slide.teks,
+                  },
+                } : null,
               ].filter(Boolean),
             },
           },
@@ -885,10 +906,7 @@ export class RenderEngine {
           ratio: CHAR_RATIO.display,
           maxLines: 4,
         });
-        const items = slide.data?.items || [
-          { label: 'Data 1', value: '10%' },
-          { label: 'Data 2', value: '25%' },
-        ];
+        const items = slide.data.items;
         return this.wrapSlide(
           {
             type: 'div',
@@ -968,8 +986,7 @@ export class RenderEngine {
 
       case 'chart-bar': {
         const barTitleSize = fitFontSize(slide.teks, { max: 36, min: 22, maxLines: 3 });
-        const labels = slide.data?.labels || ['A', 'B', 'C'];
-        const values = slide.data?.values || [10, 20, 30];
+        const { labels, values } = slide.data;
         const maxVal = Math.max(...values, 1);
 
         return this.wrapSlide(
@@ -994,7 +1011,7 @@ export class RenderEngine {
                   props: {
                     style: { display: 'flex', flexDirection: 'column', gap: '20px', width: '100%' },
                     children: labels.map((lbl, i) => {
-                      const val = values[i] || 0;
+                      const val = values[i];
                       const pct = Math.round((val / maxVal) * 100);
                       return {
                         type: 'div',
@@ -1051,8 +1068,7 @@ export class RenderEngine {
 
       case 'chart-line': {
         const lineTitleSize = fitFontSize(slide.teks, { max: 36, min: 22, maxLines: 3 });
-        const labels = slide.data?.labels || ['Bln 1', 'Bln 2', 'Bln 3'];
-        const values = slide.data?.values || [10, 15, 12];
+        const { labels, values } = slide.data;
         const minVal = Math.min(...values);
         const maxVal = Math.max(...values);
         const range = maxVal - minVal || 1;
@@ -1088,7 +1104,7 @@ export class RenderEngine {
                       borderRadius: '8px',
                     },
                     children: labels.map((lbl, idx) => {
-                      const val = values[idx] || 0;
+                      const val = values[idx];
                       const barH = Math.max(20, Math.round(((val - minVal) / range) * 240));
                       const isUp = idx > 0 ? val >= values[idx - 1] : true;
                       return {
@@ -1209,10 +1225,7 @@ export class RenderEngine {
 
       case 'timeline': {
         const timelineTitleSize = fitFontSize(slide.teks, { max: 36, min: 22, maxLines: 3 });
-        const events = slide.data?.events || [
-          { date: 'Tahap 1', text: 'Peristiwa awal' },
-          { date: 'Tahap 2', text: 'Perkembangan selanjutnya' },
-        ];
+        const events = slide.data.events;
         return this.wrapSlide(
           {
             type: 'div',
@@ -1269,8 +1282,7 @@ export class RenderEngine {
 
       case 'comparison': {
         const compareTitleSize = fitFontSize(slide.teks, { max: 36, min: 22, maxLines: 3 });
-        const left = slide.data?.left || { title: 'Sebelum', text: 'Kondisi lama' };
-        const right = slide.data?.right || { title: 'Sesudah', text: 'Kondisi baru' };
+        const { left, right } = slide.data;
 
         return this.wrapSlide(
           {
@@ -1339,9 +1351,9 @@ export class RenderEngine {
       }
 
       case 'cta-close': {
-        const headline = slide.teks || 'SIMPAN DATA INI UNTUK REFERENSI';
+        const headline = slide.teks || slide.data?.title || slide.data?.headline;
         const ctaHeadlineSize = fitFontSize(headline, { max: 56, min: 24, maxLines: 4 });
-        const ctaText = slide.data?.cta || `Ikuti ${this.tokens.brand?.handle || '@gapuramedia'} untuk konteks isu publik harian.`;
+        const ctaText = slide.data?.cta;
         const disclaimer = slide.data?.disclaimer;
 
         return this.wrapSlide(
@@ -1367,7 +1379,7 @@ export class RenderEngine {
                     children: headline,
                   },
                 },
-                {
+                ctaText?.trim() ? {
                   type: 'div',
                   props: {
                     style: {
@@ -1378,117 +1390,7 @@ export class RenderEngine {
                     },
                     children: ctaText,
                   },
-                },
-                // Action Grid
-                {
-                  type: 'div',
-                  props: {
-                    style: {
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '12px',
-                      width: '100%',
-                    },
-                    children: [
-                      {
-                        type: 'div',
-                        props: {
-                          style: {
-                            display: 'flex',
-                            alignItems: 'center',
-                            backgroundColor: '#ffffff',
-                            border: `1.5px solid ${palette.border || '#DED9CC'}`,
-                            borderRadius: '12px',
-                            padding: '16px 20px',
-                            gap: '16px',
-                          },
-                          children: [
-                            {
-                              type: 'div',
-                              props: {
-                                style: {
-                                  backgroundColor: palette.accent || '#1F7E81',
-                                  color: '#ffffff',
-                                  fontFamily: 'Archivo Black',
-                                  fontSize: '13px',
-                                  borderRadius: '6px',
-                                  padding: '5px 12px',
-                                  letterSpacing: '0.5px',
-                                },
-                                children: 'SIMPAN',
-                              },
-                            },
-                            { type: 'span', props: { style: { fontSize: '19px', fontWeight: 600, color: palette.ink || '#102B45' }, children: 'Arsipkan untuk referensi cepat kapan pun dibutuhkan.' } },
-                          ],
-                        },
-                      },
-                      {
-                        type: 'div',
-                        props: {
-                          style: {
-                            display: 'flex',
-                            alignItems: 'center',
-                            backgroundColor: '#ffffff',
-                            border: `1.5px solid ${palette.border || '#DED9CC'}`,
-                            borderRadius: '12px',
-                            padding: '16px 20px',
-                            gap: '16px',
-                          },
-                          children: [
-                            {
-                              type: 'div',
-                              props: {
-                                style: {
-                                  backgroundColor: palette.highlight || '#D79344',
-                                  color: '#ffffff',
-                                  fontFamily: 'Archivo Black',
-                                  fontSize: '13px',
-                                  borderRadius: '6px',
-                                  padding: '5px 12px',
-                                  letterSpacing: '0.5px',
-                                },
-                                children: 'BAGIKAN',
-                              },
-                            },
-                            { type: 'span', props: { style: { fontSize: '19px', fontWeight: 600, color: palette.ink || '#102B45' }, children: 'Bagikan kepada publik yang membutuhkan konteks.' } },
-                          ],
-                        },
-                      },
-                      {
-                        type: 'div',
-                        props: {
-                          style: {
-                            display: 'flex',
-                            alignItems: 'center',
-                            backgroundColor: '#ffffff',
-                            border: `1.5px solid ${palette.border || '#DED9CC'}`,
-                            borderRadius: '12px',
-                            padding: '16px 20px',
-                            gap: '16px',
-                          },
-                          children: [
-                            {
-                              type: 'div',
-                              props: {
-                                style: {
-                                  backgroundColor: palette.ink || '#102B45',
-                                  color: '#ffffff',
-                                  fontFamily: 'Archivo Black',
-                                  fontSize: '13px',
-                                  borderRadius: '6px',
-                                  padding: '5px 12px',
-                                  letterSpacing: '0.5px',
-                                },
-                                children: 'DISKUSI',
-                              },
-                            },
-                            { type: 'span', props: { style: { fontSize: '19px', fontWeight: 600, color: palette.ink || '#102B45' }, children: 'Tulis pandangan atau pertanyaan di kolom komentar.' } },
-                          ],
-                        },
-                      },
-                    ],
-                  },
-                },
+                } : null,
                 // Explicit editorial disclaimer, when supplied.
                 ...(disclaimer?.trim() ? [{
                   type: 'div',
@@ -1505,7 +1407,7 @@ export class RenderEngine {
                     children: disclaimer,
                   },
                 }] : []),
-              ],
+              ].filter(Boolean),
             },
           },
           { slideNo: slideIndex, totalSlides, source: slide.source, imageData: slide.data, category: 'PENUTUP' }
@@ -1523,7 +1425,9 @@ export class RenderEngine {
     const { palette, typography } = this.tokens;
     const data = slide.data || {};
     const text = slide.teks || '';
-    const title = data.title || data.headline || (data.value || data.stat || data.items || data.quote ? text : '');
+    const value = data.value ?? data.stat;
+    const hasValue = value !== undefined && value !== null && value !== '';
+    const title = data.title || data.headline || (hasValue || data.items || data.quote ? text : '');
     const subtitle = data.subtitle || data.subtext || '';
     const category = data.category || (slideIndex === 1 ? 'LAPORAN UTAMA' : 'ANALISIS EDITORIAL');
 
@@ -1541,10 +1445,10 @@ export class RenderEngine {
       data.author,
       data.callout || data.regulasi || data.note,
       Array.isArray(bullets) ? bullets.join(' ') : '',
-      Array.isArray(items) ? items.map((i) => `${i.value || ''} ${i.label || i.text || ''}`).join(' ') : '',
+      Array.isArray(items) ? items.map((i) => `${i.value ?? i.stat ?? i.number ?? ''} ${i.label || i.text || ''}`).join(' ') : '',
       text !== title ? text : '',
     ].filter(Boolean).join(' ').replace(/\s+/g, ' ').length;
-    const blockCount = [subtitle, title, data.value || data.stat, items?.length, data.left, data.quote, data.callout, text !== title ? text : ''].filter(Boolean).length;
+    const blockCount = [subtitle, title, hasValue, items?.length, data.left, data.quote, data.callout, text !== title ? text : ''].filter(Boolean).length;
     const score = density + blockCount * 55;
     const scale = score < 200 ? 1.45 : score < 330 ? 1.28 : score < 480 ? 1.12 : 1.0;
     const px = (v) => `${Math.round(v * scale)}px`;
@@ -1610,8 +1514,8 @@ export class RenderEngine {
     }
 
     // 3. Hero Stat (if present)
-    if (data.value || data.stat) {
-      const val = String(data.value || data.stat);
+    if (hasValue) {
+      const val = String(value);
       const unit = data.unit || data.label || '';
       children.push({
         type: 'div',
@@ -1711,7 +1615,7 @@ export class RenderEngine {
                       color: palette.accent,
                       lineHeight: '1.1',
                     },
-                    children: String(it.value || it.stat || it.number || ''),
+                    children: String(it.value ?? it.stat ?? it.number ?? ''),
                   },
                 },
                 {
@@ -1767,7 +1671,7 @@ export class RenderEngine {
                         fontSize: '22px',
                         color: palette.ink,
                       },
-                      children: data.left.title || 'SEBELUMNYA',
+                      children: data.left.title || '',
                     },
                   },
                   {
@@ -1807,7 +1711,7 @@ export class RenderEngine {
                         fontSize: '22px',
                         color: palette.ink,
                       },
-                      children: data.right.title || 'SAAT INI / DAMPAK',
+                      children: data.right.title || '',
                     },
                   },
                   {
@@ -1892,7 +1796,7 @@ export class RenderEngine {
     }
 
     // 7. Quote / Statement Box (if present)
-    if (data.quote || data.author) {
+    if (data.quote) {
       children.push({
         type: 'div',
         props: {
@@ -1915,7 +1819,7 @@ export class RenderEngine {
                   color: palette.ink,
                   fontStyle: 'italic',
                 },
-                children: `“${data.quote || text}”`,
+                children: `“${data.quote}”`,
               },
             },
             data.author
@@ -1959,7 +1863,7 @@ export class RenderEngine {
     }
 
     // 9. Narrative Body Text (if text was not already used as title/quote)
-    if (text && text !== title && !data.quote) {
+    if (text && text !== title && text !== data.quote) {
       children.push({
         type: 'div',
         props: {
@@ -1977,59 +1881,8 @@ export class RenderEngine {
       });
     }
 
-    // 10. CTA Button / Footer Action (if present or last slide)
-    if (slideIndex === totalSlides && totalSlides > 1) {
-      children.push({
-        type: 'div',
-        props: {
-          style: {
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '12px',
-            width: '100%',
-            marginTop: '8px',
-          },
-          children: [
-            {
-              type: 'div',
-              props: {
-                style: {
-                  display: 'flex',
-                  alignItems: 'center',
-                  backgroundColor: '#ffffff',
-                  border: `1.5px solid ${palette.border || '#DED9CC'}`,
-                  borderRadius: '12px',
-                  padding: '14px 20px',
-                  gap: '12px',
-                },
-                children: [
-                  { type: 'span', props: { style: { fontSize: '20px' }, children: '💾' } },
-                  { type: 'span', props: { style: { fontSize: '16px', fontWeight: 700, color: palette.ink || '#102B45' }, children: 'Simpan postingan ini untuk referensi dan bacaan lanjutan.' } },
-                ],
-              },
-            },
-            {
-              type: 'div',
-              props: {
-                style: {
-                  display: 'flex',
-                  alignItems: 'center',
-                  backgroundColor: '#ffffff',
-                  border: `1.5px solid ${palette.border || '#DED9CC'}`,
-                  borderRadius: '12px',
-                  padding: '14px 20px',
-                  gap: '12px',
-                },
-                children: [
-                  { type: 'span', props: { style: { fontSize: '20px' }, children: '✈️' } },
-                  { type: 'span', props: { style: { fontSize: '16px', fontWeight: 700, color: palette.ink || '#102B45' }, children: 'Bagikan kepada publik yang membutuhkan konteks.' } },
-                ],
-              },
-            },
-          ],
-        },
-      });
-    } else if (data.cta) {
+    // 10. An explicit action is optional on every slide, including the last.
+    if (data.cta?.trim()) {
       children.push({
         type: 'div',
         props: {

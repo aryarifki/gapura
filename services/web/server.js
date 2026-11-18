@@ -18,7 +18,7 @@ import { createOriginGuard, mergeAgentConfig, redactAgentConfig } from './access
 import { isValidSignedStorageRequest } from '../common/storage-signature.js';
 import { renderPayload } from '../common/images.js';
 import { validatePublicSourceUrl, parsePublicSourceUrl } from '../common/sources.js';
-import { validateDesignOutput } from '../common/carousel.js';
+import { buildEditorialBrief, normalizeEditorialInput, validateOriginalContent } from '../common/original-editorial.js';
 import { draftContentHash } from '../common/draft-revision.js';
 import { validateDraftApproval } from '../common/editorial.js';
 import { validateAgent, validateAgentConfig } from '../common/agent-config.js';
@@ -29,7 +29,7 @@ import { saveSettings } from './settings-store.js';
 import { DraftError, editDraft, validateSlides as validateDraftSlides } from './drafts.js';
 import { createZip } from './export.js';
 import { createScheduler } from './scheduler.js';
-import { produceSingleTopicDraft, regenerateDraft } from '../copywriter/copywriter.js';
+import { buildCarouselSlides, produceSingleTopicDraft, regenerateDraft } from '../copywriter/copywriter.js';
 import { AGENT_KEYS, callAgentLLM, loadAgentsConfig, loadAgentSkills, saveAgentSkills } from '../common/llm.js';
 import { runScout } from '../scout/scout.js';
 import { validateSourceType } from '../scout/sources.js';
@@ -96,6 +96,52 @@ const pool = new Pool({
   database: process.env.HME_DB_NAME || 'hme',
 });
 const draftDependencies = { pool, renderUrl: RENDER_SERVICE_URL, renderSecret: RENDER_SECRET, storagePath: STORAGE_PATH };
+
+function editorialError(res, error) {
+  if (/original_|generation_required/u.test(error.message)) return res.status(422).json({ error: 'Naskah editorial belum valid. Periksa mode, catatan fakta dan rujukannya, lalu buat ulang. Mode explainer memakai fakta kosong; mode current memerlukan fakta beratribusi.' });
+  if (/needs_media|illustration_/u.test(error.message)) return res.status(409).json({ error: 'needs_media: Ilustrasi topik belum siap atau revisinya tidak cocok. Buat atau pilih ilustrasi topik sebelum produksi.' });
+  if (/not_found|tidak ditemukan/u.test(error.message)) return res.status(404).json({ error: 'Topik, draf, atau job tidak ditemukan.' });
+  if (/Render|render/u.test(error.message)) return res.status(502).json({ error: 'Render belum selesai. Tinjau status draf sebelum mencoba ulang.' });
+  if (/Rencana perlu|Rencana harus|Poin sections|Format rencana|slide_count_hint|harus teks maksimal/u.test(error.message)) return res.status(422).json({ error: 'Periksa rencana: judul maksimal 120 karakter, 2-6 fokus editorial, format carousel dengan 3-9 slide, dan arahan berupa teks.' });
+  if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
+  return res.status(409).json({ error: 'Permintaan belum dapat diproses. Periksa status, skor topik dan rencana editorial, lalu coba ulang.' });
+}
+
+function customOriginalContent(body) {
+  const input = normalizeEditorialInput(body.editorial_input);
+  if (body.editorial_mode !== input.mode) throw new Error('original_mode_mismatch');
+  const brief = buildEditorialBrief({ title: body.title, url: body.source_url, primary_source: body.primary_source }, { editorialInput: input });
+  const tags = Array.isArray(body.hashtags) ? body.hashtags : [];
+  const tagSuffix = tags.length ? `\n\n${tags.join(' ')}` : '';
+  const threads = typeof body.threads_caption === 'string' ? body.threads_caption : '';
+  const references = body.editorial_references;
+  const paragraphs = typeof body.caption_body === 'string' ? body.caption_body.split(/\n\s*\n/u) : [];
+  if (!references || !Array.isArray(references.caption) || references.caption.length !== paragraphs.length || !Array.isArray(references.threads)) throw new Error('original_references_invalid');
+  const blocks = paragraphs.map((text, index) => ({ ...references.caption[index], text }));
+  const media = [];
+  const slides = Array.isArray(body.slides) ? body.slides.map((value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('original_slide_invalid');
+    const { source, ...slide } = value;
+    const { asset_id, asset_sha256, image_kind, disclosure_version, ...authoredData } = slide.data || {};
+    const descriptor = { asset_id, asset_sha256, image_kind, disclosure_version };
+    if (Object.values(descriptor).some((field) => field !== undefined)) {
+      if (typeof asset_id !== 'string' || !ASSET_ID.test(asset_id)
+          || (asset_sha256 !== undefined && (typeof asset_sha256 !== 'string' || !/^[a-f0-9]{64}$/iu.test(asset_sha256)))
+          || (image_kind !== undefined && image_kind !== 'ai_generated') || (disclosure_version !== undefined && disclosure_version !== 1)) throw new Error('illustration_id_invalid');
+      media.push(descriptor);
+      slide.data = authoredData;
+    } else media.push(null);
+    return slide;
+  }) : body.slides;
+  const content = validateOriginalContent({ format: body.format, mode: input.mode, slides,
+    angle: body.angle, scope_note: body.scope_note, caption_blocks: blocks,
+    threads_body: tagSuffix && threads.endsWith(tagSuffix) ? threads.slice(0, -tagSuffix.length) : threads,
+    threads_fact_ids: references.threads, hashtags: tags }, brief);
+  if (body.caption !== content.caption || body.caption_body !== content.caption_body || body.threads_caption !== content.threads_caption) throw new Error('original_caption_mismatch');
+  // Descriptor ownership, readiness and the pinned hash are checked against the
+  // selected topic by pinIllustrationSlides before any insert or raster fetch.
+  return { ...content, slides: content.slides.map((slide, index) => media[index] ? { ...slide, data: { ...slide.data, ...media[index] } } : slide) };
+}
 
 async function writeAudit(entity, entityId, action, actor = 'web_admin', payload = {}) {
   try {
@@ -330,20 +376,21 @@ app.get('/api/drafts/:id', async (req, res) => {
 app.post('/api/drafts/:id/regenerate-ai', async (req, res) => {
   const draftId = parseInt(req.params.id);
   try {
-    const result = await regenerateDraft(draftId, pool);
-    const { rows: [draft] } = await pool.query('SELECT caption,hashtags FROM drafts WHERE id=$1', [draftId]);
+    const options = req.body?.editorial_input === undefined ? {} : { editorialInput: normalizeEditorialInput(req.body.editorial_input) };
+    const result = await regenerateDraft(draftId, pool, options);
+    const { rows: [draft] } = await pool.query('SELECT caption,hashtags,editorial_input,editorial_mode,editorial_references,caption_body,threads_caption,angle,scope_note FROM drafts WHERE id=$1', [draftId]);
     const { rows: slides } = await pool.query('SELECT slide_no,layout,text_snapshot AS text,data_snapshot AS data FROM draft_slides WHERE draft_id=$1 ORDER BY slide_no', [draftId]);
     res.json({ status: 'success', ...result, ...draft, needs_review: true, rendered_slides: slides.map((slide) => ({ ...slide, image_url: `/storage/drafts/${draftId}/slide_${slide.slide_no}.png` })) });
   } catch (err) {
     console.error('[Web API] Error regenerating draft:', err);
-    res.status(/not_found/.test(err.message) ? 404 : /Render/.test(err.message) ? 502 : 409).json({ error: err.message });
+    return editorialError(res, err);
   }
 });
 
 // 2d. On-the-fly AI Slide Generator (Studio Desain & Playground)
 app.post('/api/designer/generate-slides', async (req, res) => {
-  const { title, summary, primary_source, url } = req.body;
-  if (!title || title.trim().length === 0) {
+  const { title, primary_source, url } = req.body || {};
+  if (typeof title !== 'string' || !title.trim() || title.length > 240) {
     return res.status(400).json({ error: 'Judul / topik berita wajib diisi.' });
   }
   try {
@@ -351,27 +398,30 @@ app.post('/api/designer/generate-slides', async (req, res) => {
     const sourceError = validatePublicSourceUrl(sourceUrl);
     if (sourceError) return res.status(400).json({ error: `URL sumber primer wajib valid: ${sourceError}` });
     const topic = {
-      id: 0,
       title: title.trim(),
-      summary: (summary || '').trim(),
-      primary_source: (primary_source || '@gapuramedia').trim(),
+      primary_source: typeof primary_source === 'string' ? primary_source.trim().slice(0, 100) : '',
       url: sourceUrl,
     };
-    const design = await (await import('../designer/designer.js')).designCarouselContent(topic);
-    res.json({ status: 'success', format: design.format, slides: design.slides });
+    const content = await buildCarouselSlides(topic, { editorialInput: normalizeEditorialInput(req.body.editorial_input) });
+    res.json({ status: 'success', ...content });
   } catch (err) {
     console.error('[Web API] Error generating slides via AI Designer:', err);
-    res.status(500).json({ error: err.message });
+    return editorialError(res, err);
   }
 });
 
 // 2e. Create Draft & Slides from Custom Studio Design
 app.post('/api/drafts/create-from-custom', async (req, res) => {
-  const { title, summary, primary_source, source_url, slides, caption, hashtags, format } = req.body;
-  if (!title || !Array.isArray(slides) || slides.length === 0) {
+  const { title, summary, primary_source, source_url, slides, caption, hashtags, format } = req.body || {};
+  if (typeof title !== 'string' || !title.trim() || title.length > 240 || !Array.isArray(slides) || slides.length === 0) {
     return res.status(400).json({ error: 'Data draf tidak lengkap atau slide kosong.' });
   }
   if (validatePublicSourceUrl(source_url)) return res.status(400).json({ error: 'Sumber primer HTTPS yang dapat diverifikasi wajib diisi.' });
+  let original = null;
+  try {
+    if (req.body.editorial_mode !== undefined || req.body.editorial_input !== undefined) original = customOriginalContent(req.body);
+    else if (!(format === 'single' && slides.length === 1) && (slides.length < 3 || slides.length > 9)) throw new Error('original_slide_count_invalid');
+  } catch (error) { return editorialError(res, error); }
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -388,15 +438,15 @@ app.post('/api/drafts/create-from-custom', async (req, res) => {
         [title, summary || '', primary_source || parsePublicSourceUrl(source_url).sourceName, source_url]);
       topicId = topic.id;
     }
-    let pinnedSlides = await pinIllustrationSlides(validateDraftSlides(slides), { client, topic_id: topicId });
+    let pinnedSlides = await pinIllustrationSlides(validateDraftSlides(original?.slides || slides), { client, topic_id: topicId });
     if (!pinnedSlides[0].data.asset_id) {
       const asset = await selectedIllustration(client, topicId);
       if (asset) pinnedSlides[0].data = { ...pinnedSlides[0].data, ...illustrationDescriptor(asset) };
       else if (loadAgentsConfig().designer?.image_generation?.enabled === true) throw new DraftError('needs_media: Ilustrasi topik belum siap.', 409);
     }
     // 2. Simpan draft as a review-only design preview; it is not marked as scored.
-    const defaultCaption = caption || [title, summary].filter(Boolean).join('\n\n');
-    const defaultHashtags = Array.isArray(hashtags) && hashtags.length > 0 ? hashtags : ['#GapuraMedia', '#BeritaNasional', '#IsuPublik', '#Indonesia'];
+    const defaultCaption = original?.caption || caption || [title, summary].filter(Boolean).join('\n\n');
+    const defaultHashtags = original?.hashtags || (Array.isArray(hashtags) && hashtags.length > 0 ? hashtags : ['#GapuraMedia', '#BeritaNasional', '#IsuPublik', '#Indonesia']);
 
     const { rows: draftRows } = await client.query(
       `INSERT INTO drafts (topic_id, slides, content_format, caption, hashtags, disclaimer_type, status, needs_review, tokens_version, copy_model)
@@ -404,6 +454,9 @@ app.post('/api/drafts/create-from-custom', async (req, res) => {
       [topicId, JSON.stringify(pinnedSlides), req.body?.format === 'single' && slides.length === 1 ? 'single' : 'carousel', defaultCaption, defaultHashtags]
     );
     const draftId = draftRows[0].id;
+    if (original) await client.query(
+      'UPDATE drafts SET editorial_input=$2,editorial_mode=$3,caption_body=$4,threads_caption=$5,angle=$6,scope_note=$7,editorial_references=$8 WHERE id=$1',
+      [draftId, JSON.stringify(original.editorial_input), original.editorial_mode, original.caption_body, original.threads_caption, original.angle, original.scope_note, JSON.stringify(original.editorial_references)]);
 
     // 3. Render slides
     const renderResp = await fetch(`${RENDER_SERVICE_URL}/render`, {
@@ -456,7 +509,7 @@ app.post('/api/drafts/create-from-custom', async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('[Web API] Error creating custom draft:', err);
-    res.status(err.statusCode || (/^illustration_/u.test(err.message) ? 409 : 500)).json({ error: err.message });
+    return editorialError(res, err);
   } finally { client.release(); }
 });
 
@@ -794,15 +847,16 @@ app.post('/api/topics/:id/auto-produce', async (req, res) => {
   const topicId = parseInt(req.params.id);
   const force = req.body?.force === true || req.query?.force === 'true';
   try {
+    const options = req.body?.editorial_input === undefined ? {} : { editorialInput: normalizeEditorialInput(req.body.editorial_input) };
     let result;
     if (force) {
       const { rows } = await pool.query('SELECT id FROM drafts WHERE topic_id=$1 ORDER BY id DESC LIMIT 1', [topicId]);
-      result = rows.length ? await regenerateDraft(rows[0].id, pool) : await produceSingleTopicDraft(topicId, pool);
-    } else result = await produceSingleTopicDraft(topicId, pool);
+      result = rows.length ? await regenerateDraft(rows[0].id, pool, options) : await produceSingleTopicDraft(topicId, pool, options);
+    } else result = await produceSingleTopicDraft(topicId, pool, options);
     res.json({ status: 'success', ...result });
   } catch (err) {
     console.error('[Web API] Auto-produce error:', err);
-    res.status(/not_found/.test(err.message) ? 404 : /Render/.test(err.message) ? 502 : 409).json({ error: err.message });
+    return editorialError(res, err);
   }
 });
 
@@ -1478,6 +1532,7 @@ app.post('/api/studio/jobs', async (req, res) => {
   }
   if (!Number.isInteger(topicId) || topicId < 1) return res.status(400).json({ error: 'Pilih topik Radar yang sudah lolos Analis dan memiliki sumber primer.' });
   try {
+    const editorialInput = normalizeEditorialInput(req.body?.editorial_input);
     const { rows: topicRows } = await pool.query(
       `SELECT t.id, t.status, t.url, t.title, ts.score_total, ts.verdict AS score_verdict
        FROM topics t LEFT JOIN LATERAL (
@@ -1489,14 +1544,14 @@ app.post('/api/studio/jobs', async (req, res) => {
     const { rowCount: existingDraftCount } = await pool.query('SELECT 1 FROM drafts WHERE topic_id = $1 LIMIT 1', [topicId]);
     if (existingDraftCount) return res.status(409).json({ error: 'Topik sudah memiliki draf. Buka draf tersebut dari Radar Topik untuk diedit.' });
     const { rows } = await pool.query(
-      `INSERT INTO prompt_jobs (prompt, mode, topic_id, actor) VALUES ($1, 'review', $2, 'admin') RETURNING *`,
-      [prompt, topicId]
+      `INSERT INTO prompt_jobs (prompt, mode, topic_id, actor, plan) VALUES ($1, 'review', $2, 'admin', $3) RETURNING *`,
+      [prompt, topicId, JSON.stringify({ editorial_input: editorialInput })]
     );
     await writeAudit('prompt_job', rows[0].id, 'created', 'admin', { mode: 'review', topic_id: topicId, prompt_len: prompt.length });
     res.json({ status: 'success', job: rows[0] });
   } catch (err) {
     await writeAudit('prompt_job', 0, 'error_create', 'admin', { error: err.message });
-    res.status(500).json({ error: err.message });
+    return editorialError(res, err);
   }
 });
 
@@ -1561,11 +1616,12 @@ app.get('/api/studio/jobs/:id/stream', async (req, res) => {
 app.post('/api/studio/jobs/:id/regenerate-plan', async (req, res) => {
   const id = parseInt(req.params.id, 10);
   try {
-    const plan = await regeneratePlan(id, String(req.body?.instruction || '').slice(0, 1000));
+    const options = req.body?.editorial_input === undefined ? {} : { editorialInput: normalizeEditorialInput(req.body.editorial_input) };
+    const plan = await regeneratePlan(id, String(req.body?.instruction || '').slice(0, 1000), options);
     res.json({ status: 'success', plan });
   } catch (err) {
     await writeAudit('prompt_job', id, 'error_regenerate_plan', 'admin', { error: err.message });
-    res.status(500).json({ error: err.message });
+    return editorialError(res, err);
   }
 });
 
@@ -1577,7 +1633,7 @@ app.post('/api/studio/jobs/:id/plan', async (req, res) => {
     res.json({ status: 'success', plan });
   } catch (err) {
     await writeAudit('prompt_job', id, 'error_update_plan', 'admin', { error: err.message });
-    res.status(500).json({ error: err.message });
+    return editorialError(res, err);
   }
 });
 

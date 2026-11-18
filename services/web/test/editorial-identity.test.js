@@ -30,3 +30,11 @@ test('Studio sample pages cover the six desks without fictional current-news fig
   assert.ok(slides.every((slide) => slide.source === 'Contoh redaksi · Gapura Media'));
   assert.doesNotMatch(JSON.stringify(slides), /\d+%|IHSG|rekomendasi investasi|nasihat hukum/u);
 });
+
+test('empty editor layout fields never offer automatic metrics, dates or stock-market framing', () => {
+  const source = read('services/web/public/app.js');
+  const editor = source.slice(source.indexOf('function renderLayoutFields('), source.indexOf('\nfunction renderThumbnailsStrip('));
+  assert.doesNotMatch(editor, /value: '10%'|value: '25%'|data\.events \|\| \[\s*\{ date: 'Tahap|data\.cta \|\| 'Simpan/);
+  const html = read('services/web/public/index.html');
+  assert.doesNotMatch(html, /Standar Instagram: 5 slide|angka di depan/);
+});

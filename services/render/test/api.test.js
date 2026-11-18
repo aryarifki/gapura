@@ -91,6 +91,17 @@ test('preview endpoint validates slide counts, text, nested collections and safe
   }
 });
 
+test('both endpoints reject data layouts without supplied data before mocked rendering', async () => {
+  for (const [layout, field] of [['stat-grid', /items/], ['chart-bar', /labels|values/], ['chart-line', /labels|values/], ['timeline', /events/], ['comparison', /left|right/]]) {
+    const entry = { no: 2, layout, teks: 'Membaca konteks layanan publik.', data: {} };
+    for (const [endpoint, payload] of [['/render', { draft_id: 41, slides: [slide, entry] }], ['/render/preview', { slide: entry, slide_no: 2, total_slides: 3 }]]) {
+      const response = await post(endpoint, payload);
+      assert.equal(response.status, 400, `${endpoint}: ${layout}`);
+      assert.match((await response.json()).error, field);
+    }
+  }
+});
+
 test('both endpoints reject remote, SVG, invalid and oversized embedded image data', async () => {
   const values = [
     'https://example.invalid/image.png', 'file:///etc/passwd',

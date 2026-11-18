@@ -3,7 +3,7 @@
 > Akun Instagram Resmi: **[`@gapuramedia`](https://instagram.com/gapuramedia)**  
 > Portal Dashboard: **[https://gapura.avenia.my.id](https://gapura.avenia.my.id)** · Canvas / Fallback Manual n8n: **[https://n8n.avenia.my.id](https://n8n.avenia.my.id)**
 
-**Mode evaluasi editorial — 17 November 2026:** hasil draf/desain dan antrean
+**Mode evaluasi editorial — 18 November 2026:** hasil draf/desain dan antrean
 publikasi telah dikosongkan dengan backup/restore teruji. Timer intake dan
 publisher tetap `disabled/inactive`, worker background dijeda dengan
 `GAPURA_DISABLE_WORKERS=true`, dashboard
@@ -22,15 +22,18 @@ atau perpindahan provider gambar. [R4](docs/plans/12_R4_SOURCES_DESKS.md) selesa
 untuk discovery enam desk dan proyeksi metadata Analis/cluster.
 [R5](docs/plans/13_R5_REMOVE_VERIFICATOR.md) selesai: Verifikator dilepas dari
 jalur aktif; koreksi niche enam desk terpasang dan seluruh gate teknis lulus.
-**R6 belum diterapkan:** dua mode naskah orisinal, payload penulisan/desain tanpa
-body/summary penerbit, default enam slide carousel-first, serta caption isi
-1.200–1.900 karakter. Tidak ada publikasi nyata atau aktivasi otomatisasi.
+[R6](docs/plans/14_R6_ORIGINAL_EDITORIAL.md) selesai: naskah orisinal dua mode
+(`explainer`/`current`) tanpa body/summary/foto penerbit, carousel 3–9 slide
+dengan default enam, caption isi 1.200–1.900 karakter, Threads ≤500, dan
+persistensi tujuh kolom baru yang sudah dimigrasikan ke produksi setelah
+backup/restore test. Tidak ada generasi raster nyata, publikasi nyata, atau
+aktivasi otomatisasi.
 
 ---
 
 ## 📌 Ringkasan Proyek
 
-**Gapura Media Engine (GME v2.1)** adalah platform otomasi ruang redaksi modern (*newsroom automation*) untuk isu nasional Indonesia pada enam desk: **politik, sosial, hukum, lingkungan, ekonomi nasional, dan bursa saham**. Arah produknya adalah topik dan metadata discovery yang dikembangkan menjadi naskah serta ilustrasi orisinal Gapura Media. Proyeksi discovery R4 sudah tersedia; penggantian jalur penulisan lama menjadi naskah orisinal end-to-end tetap pekerjaan R6.
+**Gapura Media Engine (GME v2.1)** adalah platform otomasi ruang redaksi modern (*newsroom automation*) untuk isu nasional Indonesia pada enam desk: **politik, sosial, hukum, lingkungan, ekonomi nasional, dan bursa saham**. Arah produknya adalah topik dan metadata discovery yang dikembangkan menjadi naskah serta ilustrasi orisinal Gapura Media. Proyeksi discovery R4 dan jalur naskah orisinal R6 sudah tersedia; sampel visual R7 dan aktivasi bertahap R8 masih menunggu keputusan owner.
 
 Platform ini menggabungkan **6 agen: Scout, Analis, Copywriter, Designer, SEO, dan Studio**, dengan pengawasan manusia (*Human-in-the-Loop*), mesin render deterministik berbasis SVG-to-PNG (*Satori + Sharp*), serta dashboard editorial berbasis web yang responsif. Scout dan SEO mengumpulkan serta menilai momentum secara deterministik; agen produksi memakai model sesuai konfigurasi provider.
 
@@ -64,7 +67,7 @@ flowchart TD
    - **Simpan & Render Ulang Seketika:** Render ulang slide tunggal dalam < 200 ms dengan pembaruan pratinjau live tanpa reload halaman.
 4. **AI Creative Director (Designer Otonom)**
    - Perancangan arsitektur visual berbasis AI (`gemini-3.5-flash-lite`) yang bebas dan tidak kaku dengan template tertentu.
-   - Jalur lama masih mendukung single 1 slide dan carousel 3–9 slide. Default enam slide carousel-first merupakan target R6, belum perilaku produksi yang selesai.
+   - Jalur R6 selalu menghasilkan carousel 3–9 slide dengan default enam. Draf yang disusutkan menjadi 1–2 slide ditolak sebelum pin/render/penulisan; draf legacy single tetap dapat diedit.
    - **Tombol Regenerate AI Instan:** Rancang ulang seluruh carousel secara adaptif dalam 1 klik tanpa dialog popup yang memblokir.
 5. **Studio Desain & Pembuatan Postingan Kustom**
    - Membuat postingan mandiri on-the-fly dari form Studio Desain.
@@ -173,7 +176,7 @@ Dokumen evaluasi teknis, daftar permasalahan yang telah diselesaikan, dan fitur 
 - [x] R4 — discovery enam desk, cluster judul dan proyeksi metadata Analis/cluster
 - [x] R5 — penghapusan Verifikator dari jalur aktif; arsip schema dipertahankan
 - [x] R5 — gate unit/DB/API/browser/render dan koreksi niche enam desk lulus; web/render dimuat ulang, timer tetap dijeda
-- [ ] R6 — naskah orisinal dua mode tanpa body/summary penerbit; carousel-first enam slide dan caption isi 1.200–1.900 karakter
+- [x] R6 — naskah orisinal dua mode tanpa body/summary penerbit; carousel 3–9 default enam dan caption isi 1.200–1.900 karakter; migrasi additive terpasang di produksi
 - [ ] R7 — sampel ilustrasi AI nyata dan review visual owner (quota gambar 0 masih menghalangi)
 - [x] Katalog Provider & Model multi-provider (registry + fallback lintas provider + uji dari dashboard)
 - [x] P2 — [audit skor historis & validasi constraint](docs/P2_SCORE_INTEGRITY_AUDIT.md): 1.062 baris valid, 0 perubahan data; `topic_scores_component_total` tervalidasi

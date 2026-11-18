@@ -3,7 +3,8 @@
 Tanggal: 17 November 2026. Status: **keputusan produk owner**. Mengubah arah
 [blueprint R0–R8](07_EDITORIAL_REDESIGN_BLUEPRINT.md). Dokumen awal adalah PR #9;
 hasil implementasi visual [R3](11_R3_AI_ILLUSTRATIONS.md) dicatat terpisah.
-Input/naskah orisinal seluruh agen belum diterapkan.
+Keputusan input/naskah orisinal ini diimplementasikan pada R6
+([laporan](14_R6_ORIGINAL_EDITORIAL.md)); lihat pembaruan di akhir dokumen.
 
 ## 1. Ringkasan keputusan
 
@@ -266,3 +267,17 @@ masing 200 dengan nol item; kedua timer tetap disabled/inactive dan drop-in
 worker tetap `GAPURA_DISABLE_WORKERS=true`. Pemeriksaan GET melalui domain
 publik mendapat 403; pemeriksaan lokal tidak membuktikan jalur domain publik
 sehat. Tidak ada restart/deploy atau perubahan runtime dalam perubahan ini.
+
+---
+
+## Pembaruan implementasi (18 November 2026)
+
+R6 sudah menerapkan keputusan dokumen ini pada jalur produksi: dua mode
+`explainer`/`current`, input eksplisit tanpa body/summary/foto penerbit, serta
+carousel 3–9 default enam dengan caption isi 1.200–1.900 karakter dan Threads
+≤500. Pertanyaan "sumber primer/alat riset untuk mode aktual" dijawab dengan
+catatan fakta teratribusi yang disediakan redaksi (`facts` dengan URL HTTPS
+publik, kutipan dan speaker opsional); mode `current` tidak boleh berjalan tanpa
+fakta. Bukti kontrak, migrasi, gate dan batas ada di
+[laporan R6](14_R6_ORIGINAL_EDITORIAL.md). Dokumen ini tidak berubah menjadi
+klaim raster AI nyata atau penerimaan visual owner; keduanya tetap R7.

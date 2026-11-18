@@ -230,8 +230,26 @@
 
             <label class="editor-review-confirmation" for="editor-reviewed">
               <input id="editor-reviewed" type="checkbox">
-              <span>Saya sudah membaca sumber, memeriksa angka, caption, dan seluruh slide. Perubahan terbaru sudah ditinjau sebelum persetujuan.</span>
+              <span>Saya sudah memeriksa mode, batas cakupan, fakta beserta rujukannya, caption, dan seluruh slide. Perubahan terbaru sudah ditinjau sebelum persetujuan.</span>
             </label>
+            <div class="editor-form-card" id="editor-original-review" style="margin-bottom:16px;">
+              <p id="editor-editorial-mode"></p>
+              <p id="editor-editorial-angle"></p>
+              <p id="editor-editorial-scope"></p>
+              <div id="editor-editorial-references" style="overflow-wrap:anywhere;"></div>
+              <details style="margin-top:12px;">
+                <summary>Ubah mode atau catatan untuk rancang ulang</summary>
+                <p class="form-help-text">Periksa rujukan sendiri sebelum memasukkan fakta. Perubahan diterapkan melalui Rancang ulang dan memerlukan review baru.</p>
+                <label class="form-label-editor" for="editor-regenerate-mode">Mode naskah</label>
+                <select id="editor-regenerate-mode" class="form-input-dark">
+                  <option value="explainer">Explainer — konteks dan analisis umum</option>
+                  <option value="current">Current — fakta terkini beratribusi</option>
+                </select>
+                <label class="form-label-editor" for="editor-regenerate-facts">Catatan fakta dan referensi (JSON array)</label>
+                <textarea id="editor-regenerate-facts" class="form-input-dark" rows="5" spellcheck="false" aria-describedby="editor-regenerate-help">[]</textarea>
+                <p id="editor-regenerate-help" class="form-help-text">Explainer: gunakan []. Current: isi minimal satu {"id":"layanan","text":"Layanan dibuka kembali.","source_url":"https://example.org/rilis","source_name":"Dinas"}. Kutipan opsional: "quote":{"text":"kutipan persis di dalam text","speaker":"nama pembicara"}. Catatan harus ditulis dan diperiksa redaksi; jangan tempel artikel atau foto publisher.</p>
+              </details>
+            </div>
             <div class="editor-main-grid">
               <!-- Left Column: Carousel Preview -->
               <div class="editor-preview-column">
@@ -530,7 +548,7 @@
                   <span class="pill-status active"><span class="dot"></span> Full AI Dynamic</span>
                 </div>
                 <p style="font-size: 11px; color: var(--muted); margin-bottom: 10px;">
-                  AI Designer merancang jumlah slide, arsitektur visual, teks editorial, dan layout secara otonom tanpa batasan template kaku.
+                  Copywriter menulis naskah Gapura yang orisinal; Designer memilih layout. Berita dibuat sebagai carousel bermakna dan menunggu review redaksi.
                 </p>
 
                 <div class="form-group-editor" style="margin-bottom: 8px;">
@@ -552,6 +570,18 @@
                 <div class="form-group-editor" style="margin-bottom: 10px;">
                   <label class="form-label-editor" for="studio-custom-source-url">URL sumber primer</label>
                   <input type="url" id="studio-custom-source-url" class="form-input-dark" placeholder="https://www.bps.go.id/..." required>
+                </div>
+                <div class="form-group-editor">
+                  <label class="form-label-editor" for="studio-custom-editorial-mode">Mode naskah</label>
+                  <select id="studio-custom-editorial-mode" class="form-input-dark">
+                    <option value="explainer">Explainer — konteks dan analisis umum</option>
+                    <option value="current">Current — fakta terkini beratribusi</option>
+                  </select>
+                </div>
+                <div class="form-group-editor">
+                  <label class="form-label-editor" for="studio-custom-editorial-facts">Catatan fakta dan referensi (JSON array)</label>
+                  <textarea id="studio-custom-editorial-facts" class="form-input-dark" rows="5" spellcheck="false" aria-describedby="studio-custom-editorial-help">[]</textarea>
+                  <p id="studio-custom-editorial-help" class="form-help-text">Explainer memakai [] dan hanya menjelaskan mekanisme umum. Current memerlukan minimal satu catatan: {"id":"layanan","text":"Layanan dibuka kembali.","source_url":"https://example.org/rilis","source_name":"Dinas"}. Periksa catatan dan rujukan sendiri. Jangan tempel body, ringkasan artikel atau foto publisher. Judul Radar hanya membantu memilih topik.</p>
                 </div>
 
                 <button class="btn btn-lime" id="btn-studio-generate-ai" style="width: 100%; justify-content: center; font-weight: 700;">
@@ -607,7 +637,8 @@
                   </div>
                 </div>
 
-                <button class="btn btn-lime" id="btn-studio-save-to-drafts" style="width: 100%; justify-content: center; font-weight: 700; margin-top: 12px;">
+                <p id="studio-generated-scope" class="form-help-text" role="status" style="margin-top:12px;">Buat naskah orisinal sebelum menyimpan ke meja review.</p>
+                <button class="btn btn-lime" id="btn-studio-save-to-drafts" disabled style="width: 100%; justify-content: center; font-weight: 700; margin-top: 12px;">
                   <svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#save"></use></svg> Simpan sebagai Draf Produksi (Kirim ke Meja Review)
                 </button>
               </div>
@@ -1259,7 +1290,7 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
             <div class="agent-config-card">
               <div class="agent-card-title-row">
                 <h3 class="agent-card-title"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#pen-line"></use></svg> Konfigurasi Agen Copywriter</h3>
-                <span class="pill-status active"><span class="dot"></span> Karakteristik Brand Data-Editorial</span>
+                <span class="pill-status active"><span class="dot"></span> Naskah orisinal enam desk</span>
               </div>
               <p class="agent-card-desc">Mengatur model teks AI, jumlah slide carousel, nada suara, kata-kata terlarang, dan klausul disclaimer.</p>
 
@@ -1299,12 +1330,12 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
               <div class="form-grid-2col">
                 <div class="form-group-editor">
                   <label class="form-label-editor">Jumlah Slide Carousel Standar</label>
-                  <input type="number" id="copywriter-slides-count" class="form-input-dark" min="3" max="10" value="5">
-                  <span class="form-help-text">Standar Instagram: 5 slide (Hook, Konteks, Data, Implikasi, CTA).</span>
+                  <input type="number" id="copywriter-slides-count" class="form-input-dark" min="3" max="9" value="6">
+                  <span class="form-help-text">Default enam slide, rentang 3–9 kontribusi bermakna. Format berita selalu carousel; tanpa CTA atau filler wajib.</span>
                 </div>
                 <div class="form-group-editor">
                   <label class="form-label-editor">Tone of Voice (Karakter Tulisan)</label>
-                  <input type="text" id="copywriter-tone" class="form-input-dark" value="Data-editorial netral, berwibawa, angka di depan, tanpa hiperbola dan tanpa spekulasi">
+                  <input type="text" id="copywriter-tone" class="form-input-dark" value="Penjelas isu nasional yang jernih, netral dan berwibawa; mendahulukan kepentingan publik">
                 </div>
               </div>
 
@@ -1610,7 +1641,7 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
           <div style="margin-bottom: 20px;">
             <span class="redaksi-greeting">Meja Naskah</span>
             <h2 style="font-family: 'Archivo Black', sans-serif; font-size: 28px; color: #fff; margin-bottom: 6px;">STUDIO PROMPT</h2>
-            <p style="font-size: 13px; color: var(--muted);">Tulis permintaan Anda; AI menyusun rencana, memproduksi draft, dan mengirim ke review. Anda tetap memegang kendali akhir sebelum tayang.</p>
+            <p style="font-size: 13px; color: var(--muted);">Pilih topik discovery dan mode naskah. AI menyusun rencana untuk Anda tinjau sebelum menghasilkan carousel orisinal. Naskah dan seluruh rujukan tetap diperiksa redaksi sebelum tayang.</p>
           </div>
 
           <div class="trend-panel" style="margin-bottom: 24px;">
@@ -1625,7 +1656,17 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
                   <option value="">Pilih topik skor analis</option>
                 </select>
               </div>
+              <div class="form-group-editor">
+                <label for="studio-editorial-mode" class="form-label-editor">Mode naskah</label>
+                <select id="studio-editorial-mode" class="form-input-dark form-select-dark">
+                  <option value="explainer">Explainer — konteks dan analisis umum</option>
+                  <option value="current">Current — fakta terkini beratribusi</option>
+                </select>
+              </div>
             </div>
+            <label for="studio-editorial-facts" class="form-label-editor">Catatan fakta dan referensi (JSON array)</label>
+            <textarea id="studio-editorial-facts" class="form-input-dark" rows="5" style="width:100%;" spellcheck="false" aria-describedby="studio-editorial-help">[]</textarea>
+            <p id="studio-editorial-help" class="form-help-text">Explainer memakai []: konteks dan analisis umum tanpa mengklaim kejadian terbaru. Current memerlukan catatan yang telah Anda periksa: [{"id":"layanan","text":"Layanan dibuka kembali.","source_url":"https://example.org/rilis","source_name":"Dinas"}]. ID harus unik. Kutipan opsional memakai quote berisi text dan speaker; text kutipan harus ada dalam catatan fakta. Jangan tempel body, ringkasan artikel atau foto publisher. Referensi dan fakta disimpan untuk review; headline discovery bukan bukti kejadian.</p>
             <div style="display: flex; gap: 12px; align-items: center;">
               <button type="button" class="btn btn-lime" id="btn-studio-submit"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#rocket"></use></svg> <span>Buat Rencana</span></button>
               <span style="font-size: 12px; color: var(--muted);" id="studio-submit-hint">Rencana bisa Anda edit / generate ulang sebelum diproduksi.</span>
@@ -1649,6 +1690,6 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
   <!-- Toast -->
   <div id="toast" class="toast"></div>
 
-  <script src="/app.js?v=3.10.0"></script>
+  <script src="/app.js?v=3.11.0"></script>
 </body>
 </html>

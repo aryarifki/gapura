@@ -31,7 +31,19 @@ test('rejects invalid or failed scoring metadata and ignores archival verificati
 test('plan normalization validates format/tone and keeps sections as editorial guidance', () => {
   assert.throws(() => normalizeStudioPlan({ title: 'Judul', sections: ['Sumber', 'Konteks'], format: 'video' }), /format/i);
   assert.throws(() => normalizeStudioPlan({ title: 'Judul', sections: [{ claim: 'fake' }, 'Konteks'] }), /poin|section/i);
-  const normalized = normalizeStudioPlan({ title: 'Judul', sections: ['Sumber', 'Konteks'], format: 'single', unexpected_fact: 'bukan bukti' });
-  assert.equal(normalized.format, 'single');
+  assert.throws(() => normalizeStudioPlan({ title: 'Judul', sections: ['Sumber', 'Konteks'], format: 'single' }), /carousel/i);
+  const normalized = normalizeStudioPlan({ title: 'Judul', sections: ['Sumber', 'Konteks'], unexpected_fact: 'bukan bukti' });
+  assert.equal(normalized.format, 'carousel');
+  assert.equal(normalized.slide_count_hint, 6);
+  assert.deepEqual(normalized.editorial_input, { version: 1, mode: 'explainer', facts: [] });
   assert.equal(normalized.unexpected_fact, undefined);
+});
+
+test('reviewed plans retain strict editorial input and accept only carousel slide hints', () => {
+  const editorial_input = { version: 1, mode: 'current', facts: [{ id: 'release', text: 'Layanan dibuka kembali.', source_url: 'https://example.org/rilis', source_name: 'Dinas' }] };
+  const plan = { title: 'Layanan publik', sections: ['Konteks layanan', 'Hak warga'], editorial_input };
+  assert.deepEqual(normalizeStudioPlan(plan).editorial_input, editorial_input);
+  for (const slide_count_hint of [1, 2, 10, '6']) assert.throws(() => normalizeStudioPlan({ ...plan, slide_count_hint }), /3-9/);
+  assert.throws(() => normalizeStudioPlan({ ...plan, editorial_input: { mode: 'current', facts: [] } }), /fact|fakta/i);
+  assert.throws(() => normalizeStudioPlan({ ...plan, editorial_input: { mode: 'explainer', body: 'PUBLISHER_BODY' } }), /field|input|body/i);
 });

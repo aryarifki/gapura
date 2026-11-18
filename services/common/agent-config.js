@@ -109,7 +109,7 @@ export function validateAgentConfig(config) {
     try { new RegExp(pattern, 'i'); } catch { errors.push(`analis: pola fast-fail tidak valid (${pattern.slice(0, 40)}).`); }
   }
   const slides = Number(config.copywriter?.slide_count ?? 5);
-  if (!Number.isInteger(slides) || slides < 1 || slides > 8) errors.push('copywriter: jumlah slide default harus 1-8.');
+    if (!Number.isInteger(slides) || slides < 3 || slides > 9) errors.push('copywriter: jumlah slide default harus 3-9.');
 
   return errors;
 }

@@ -52,6 +52,7 @@ function claimRow(overrides = {}) {
     attempts: 1, caption: 'Halo Gapura', slides: [{ no: 1 }, { no: 2 }], content_format: 'carousel',
     hashtags: ['#gapura'], needs_review: false, draft_status: 'scheduled', human_approved: true,
     source_url: 'https://www.bps.go.id/fixture', analyst_passed: true,
+    editorial_input: null, editorial_mode: null, caption_body: null, threads_caption: null, angle: null, scope_note: null, editorial_references: null,
     ...overrides,
   };
   return { ...row, approved_content_hash: draftContentHash(row), content_hash: draftContentHash(row), ...overrides };
@@ -75,6 +76,7 @@ function assertReviewEvidence(q) {
   assert.match(q, /ORDER BY scores\.created_at DESC NULLS LAST, scores\.id DESC LIMIT 1/);
   assert.match(q, /SELECT topic\.url FROM topics topic WHERE topic\.id = d\.topic_id/);
   assert.match(q, /d\.hashtags/);
+  for (const field of ['editorial_input', 'editorial_mode', 'caption_body', 'threads_caption', 'angle', 'scope_note', 'editorial_references']) assert.match(q, new RegExp(`d\\.${field}\\b`));
 }
 
 function fakePool(rows, { inserted = 1, failPublishedOnce = false, saveContainerCount = 1 } = {}) {
@@ -148,7 +150,7 @@ function fakePool(rows, { inserted = 1, failPublishedOnce = false, saveContainer
 function graphFetch(responses) {
   const calls = [];
   const fetchImpl = async (url, init) => {
-    calls.push({ url, method: init.method, authorization: init.headers.Authorization });
+    calls.push({ url, method: init.method, authorization: init.headers.Authorization, body: init.body == null ? null : new URLSearchParams(init.body) });
     const next = responses.shift();
     if (!next) throw new Error(`Unexpected Meta call: ${init.method} ${url}`);
     if (next instanceof Error) throw next;
@@ -512,5 +514,155 @@ test('publication still requires a public source and the latest passed analyst r
     assert.equal(result.blocked, 1);
     assert.equal(calls.length, 0);
     assert.equal(pool.state.audits.length, 0);
+  }
+});
+
+const originalMetadata = {
+  editorial_input: { version: 1, mode: 'explainer', facts: [] }, editorial_mode: 'explainer',
+  caption_body: 'Penjelasan warga', threads_caption: 'Penjelasan ringkas Threads #GapuraMedia',
+  angle: 'Akses warga', scope_note: 'Mekanisme umum',
+  editorial_references: { caption: [{ kind: 'context', fact_ids: [] }], threads: [] },
+};
+const originalChanges = [
+  { editorial_mode: 'current' }, { editorial_input: { version: 1, mode: 'current', facts: [{ id: 'f1', text: 'Fakta terkurasi' }] } },
+  { caption_body: 'Isi diubah' }, { threads_caption: 'Threads diubah' }, { angle: 'Angle diubah' }, { scope_note: 'Cakupan diubah' },
+  { editorial_references: { caption: [{ kind: 'fact', fact_ids: ['f1'] }], threads: ['f1'] } },
+];
+const threadsConfig = () => publicationConfigFromEnv({ ...baseEnv, META_PUBLISH_MODE: 'live', META_PLATFORMS: 'threads', META_THREADS_USER_ID: '99', META_THREADS_ACCESS_TOKEN: 'threads-token' });
+
+test('both Meta SQL projections include all original metadata used by the approved revision', async () => {
+  const pool = fakePool([claimRow({ ...originalMetadata })]);
+  const graph = graphFetch([{ id: 'child-1' }, { id: 'child-2' }, { id: 'parent-1' }, { status_code: 'FINISHED' }, { id: 'media-original' }, { permalink: 'https://www.instagram.com/p/original/' }]);
+  assert.equal((await createMetaPublisherWorker({ pool, config: liveConfig(), fetchImpl: graph.fetchImpl }).runOnce()).published, 1);
+  const projections = pool.state.queries.filter((q) => /^WITH candidate|^SELECT t\.\*/.test(q));
+  assert.equal(projections.length, 3);
+  for (const projection of projections) assertReviewEvidence(projection);
+});
+
+test('original metadata revised after review is blocked before any Meta request', async () => {
+  for (const change of originalChanges) {
+    const row = claimRow({ ...originalMetadata });
+    Object.assign(row, change);
+    const pool = fakePool([row]); const graph = graphFetch([]);
+    const result = await createMetaPublisherWorker({ pool, config: liveConfig(), fetchImpl: graph.fetchImpl }).runOnce();
+    assert.equal(result.blocked, 1, JSON.stringify(change));
+    assert.equal(result.published, 0);
+    assert.equal(graph.calls.length, 0);
+    assert.equal(pool.state.updates[0].status, 'blocked');
+  }
+});
+
+test('original metadata changes during container preparation require review of the newly prepared payload', async () => {
+  for (const change of originalChanges) for (const reapproved of [false, true]) {
+    const pool = fakePool([claimRow({ ...originalMetadata })]);
+    const graph = graphFetch([
+      () => {
+        Object.assign(pool.state.current, change);
+        if (reapproved) pool.state.current.content_hash = pool.state.current.approved_content_hash = draftContentHash(pool.state.current);
+        return Response.json({ id: 'child-1' });
+      },
+      { id: 'child-2' }, { id: 'parent-1' }, { status_code: 'FINISHED' },
+    ]);
+    const result = await createMetaPublisherWorker({ pool, config: liveConfig(), fetchImpl: graph.fetchImpl }).runOnce();
+    assert.equal(result.blocked, 1, JSON.stringify({ change, reapproved }));
+    assert.equal(result.published, 0);
+    assert.equal(graph.calls.some(({ url }) => url.endsWith('/media_publish')), false);
+    assert.ok(pool.state.queries.includes('ROLLBACK'));
+  }
+});
+
+test('Threads publishes the reviewed original caption verbatim without appending hashtags again', async () => {
+  const reviewed = `${'x'.repeat(487)} #GapuraMedia`;
+  assert.equal(reviewed.length, 500);
+  const row = claimRow({ ...originalMetadata, platform: 'threads', account_id: '99', slides: [{ no: 1 }],
+    caption: 'Long Instagram caption '.repeat(40), threads_caption: reviewed, hashtags: ['#GapuraMedia'] });
+  const pool = fakePool([row]);
+  const graph = graphFetch([{ id: 'threads-container' }, { status: 'FINISHED' }, { id: 'threads-post' }, { permalink: 'https://www.threads.net/@gapura/post/fixture' }]);
+  const result = await createMetaPublisherWorker({ pool, config: threadsConfig(), fetchImpl: graph.fetchImpl }).runOnce();
+  assert.equal(result.published, 1);
+  assert.equal(graph.calls[0].body.get('text'), reviewed);
+  assert.equal(pool.state.updates[0].captionHash, captionHash(reviewed));
+});
+
+test('original Instagram and Facebook captions already contain the reviewed hashtags', async () => {
+  for (const platform of ['instagram', 'facebook']) {
+    const row = claimRow({ ...originalMetadata, platform, caption: 'Penjelasan warga\n\n#GapuraMedia', hashtags: ['#GapuraMedia'],
+      account_id: platform === 'instagram' ? baseEnv.META_INSTAGRAM_ACCOUNT_ID : baseEnv.META_PAGE_ID, slides: [{ no: 1 }] });
+    const pool = fakePool([row]);
+    const graph = graphFetch(platform === 'instagram'
+      ? [{ id: 'container' }, { status_code: 'FINISHED' }, { id: 'media' }, { permalink: 'https://instagram.com/p/fixture' }]
+      : [{ id: 'photo' }, { permalink_url: 'https://facebook.com/posts/fixture' }]);
+    const result = await createMetaPublisherWorker({ pool, config: liveConfig(), fetchImpl: graph.fetchImpl }).runOnce();
+    assert.equal(result.published, 1);
+    const sent = graph.calls.find(({ body }) => body?.has('caption'));
+    assert.equal(sent.body.get('caption'), row.caption);
+  }
+});
+
+test('legacy Threads drafts retain caption-plus-hashtag fallback and its 500-character guard', async () => {
+  for (const caption of ['Historical caption', 'x'.repeat(500)]) {
+    const row = claimRow({ platform: 'threads', account_id: '99', slides: [{ no: 1 }], caption });
+    const pool = fakePool([row]);
+    const graph = graphFetch([{ id: 'container' }, { status: 'FINISHED' }, { id: 'post' }, {}]);
+    const result = await createMetaPublisherWorker({ pool, config: threadsConfig(), fetchImpl: graph.fetchImpl }).runOnce();
+    if (caption.length === 500) {
+      assert.equal(result.failed, 1);
+      assert.equal(graph.calls.length, 0);
+    } else {
+      assert.equal(result.published, 1);
+      assert.equal(graph.calls[0].body.get('text'), `${caption}\n\n#gapura`);
+    }
+  }
+});
+
+test('R6 Threads requires a nonblank reviewed string of at most 500 characters in live and shadow mode', async () => {
+  for (const mode of ['live', 'shadow']) for (const editorial_mode of ['explainer', 'current']) for (const threads_caption of [null, undefined, '', '  \n\t', false, 0, {}, [], 'x'.repeat(501)]) {
+    const pool = fakePool([claimRow({ ...originalMetadata, platform: 'threads', account_id: '99', editorial_mode,
+      caption: 'Short Instagram caption must never substitute for Threads', threads_caption })]);
+    const graph = graphFetch([]);
+    const result = await createMetaPublisherWorker({ pool, config: { ...threadsConfig(), mode }, fetchImpl: graph.fetchImpl, logger: { warn() {} } }).runOnce();
+    assert.equal(result.blocked, 1, JSON.stringify({ mode, editorial_mode, threads_caption }));
+    assert.equal(result.published, 0);
+    assert.equal(result.shadow, 0);
+    assert.equal(result.unknown, 0);
+    assert.equal(graph.calls.length, 0);
+    assert.equal(pool.state.updates[0].status, 'blocked');
+    assert.match(pool.state.updates[0].error, /Caption Threads.*500/);
+    assert.equal(pool.state.queries.some((q) => /^UPDATE publication_targets SET container_id/.test(q)), false);
+    assert.equal(pool.state.audits.length, 0);
+  }
+});
+
+test('historical metadata without an original marker cannot replace the Threads text covered by its legacy approval', async () => {
+  const row = claimRow({ platform: 'threads', account_id: '99', slides: [{ no: 1 }], threads_caption: 'Annotation outside the legacy revision hash' });
+  const pool = fakePool([row]);
+  const graph = graphFetch([{ id: 'container' }, { status: 'FINISHED' }, { id: 'post' }, {}]);
+  assert.equal((await createMetaPublisherWorker({ pool, config: threadsConfig(), fetchImpl: graph.fetchImpl }).runOnce()).published, 1);
+  assert.equal(graph.calls[0].body.get('text'), 'Halo Gapura\n\n#gapura');
+  assert.equal(pool.state.updates[0].captionHash, captionHash(row.caption));
+});
+
+test('shadow uses the same complete R6 revision as live publication, including curated facts and paragraph references', async () => {
+  const current = {
+    ...originalMetadata, editorial_mode: 'current',
+    editorial_input: { version: 1, mode: 'current', facts: [{ id: 'f1', text: 'BPS mencatat inflasi 2,1%.', source_url: 'https://www.bps.go.id/fixture', source_name: 'BPS' }] },
+    slides: [{ no: 1, teks: 'Inflasi 2,1% menurut BPS', claim_type: 'fact', fact_ids: ['f1'] }],
+    editorial_references: { caption: [{ kind: 'fact', fact_ids: ['f1'] }], threads: ['f1'] },
+  };
+  for (const change of [null, ...originalChanges.map((change) => change.editorial_mode ? { editorial_mode: 'explainer' }
+    : change.editorial_references ? { editorial_references: { caption: [], threads: ['f1'] } } : change),
+    { editorial_input: { ...current.editorial_input, facts: [{ ...current.editorial_input.facts[0], text: 'Angka diubah setelah persetujuan' }] } },
+    { slides: [{ ...current.slides[0], fact_ids: [] }] },
+    { editorial_references: { caption: [{ kind: 'fact', fact_ids: [] }], threads: ['f1'] } },
+    { editorial_references: { caption: [{ kind: 'fact', fact_ids: ['f1'] }], threads: [] } },
+  ]) {
+    const row = claimRow(current);
+    if (change) Object.assign(row, change);
+    const pool = fakePool([row]); const graph = graphFetch([]);
+    const result = await createMetaPublisherWorker({ pool, config: publicationConfigFromEnv(baseEnv), fetchImpl: graph.fetchImpl }).runOnce();
+    assert.equal(result[change ? 'blocked' : 'shadow'], 1, JSON.stringify(change));
+    assert.equal(result.published, 0);
+    assert.equal(graph.calls.length, 0);
+    assert.equal(pool.state.updates[0].status, change ? 'blocked' : 'shadow');
   }
 });

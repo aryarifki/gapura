@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 import { RenderEngine } from '../engine.js';
 import { validateSlide } from '../validation.js';
+import { layoutData } from './helpers/layout-data.js';
 
 const designPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../design-system');
 const engine = new RenderEngine(designPath);
@@ -116,6 +117,23 @@ test('unknown layouts and the direct fluid fallback retain the same AI image and
   }
 });
 
+test('an illustrated fluid slide preserves an explicit CTA and disclaimer on the final slide', async (t) => {
+  t.mock.method(globalThis, 'fetch', async () => { throw new Error('External requests disabled'); });
+  const slide = makeSlide('editorial-fallback', 3);
+  slide.data.cta = 'Baca petunjuk layanan yang tersedia.';
+  slide.data.disclaimer = 'Catatan redaksi: identitas narasumber dilindungi.';
+  const rendered = texts(engine.resolveLayout(slide, 3, 3));
+  assert.equal(rendered.filter((text) => text === slide.data.cta).length, 1);
+  assert.equal(rendered.filter((text) => text === slide.data.disclaimer).length, 1);
+  assertIllustrationTree(engine.resolveLayout(slide, 3, 3));
+  const plain = structuredClone(slide);
+  delete plain.data.cta;
+  delete plain.data.disclaimer;
+  const png = await engine.renderSlideToBuffer(slide, 3, 3);
+  await assertIllustrationPixels(png, 'explicit editorial notes');
+  assert.notDeepEqual(await sharp(png).raw().toBuffer(), await sharp(await engine.renderSlideToBuffer(plain, 3, 3)).raw().toBuffer());
+});
+
 test('retired verifikasi layout ignores machine verdicts and uses the ordinary fluid fallback', () => {
   const decisions = [{}, ...['status', 'verdict'].flatMap((field) =>
     ['verified', 'mostly_verified', 'opinion', 'speculation', 'needs_context', 'misleading', 'hoax', 'unverified']
@@ -144,7 +162,9 @@ test('retired verifikasi layout ignores machine verdicts and uses the ordinary f
 
 test('AI assets keep their label when attached to an existing body layout', () => {
   for (const layout of ['big-statement', 'stat-grid', 'chart-bar', 'chart-line', 'regulasi', 'timeline', 'comparison', 'cta-close']) {
-    assertIllustrationTree(engine.resolveLayout(makeSlide(layout, 2), 2, 3));
+    const slide = makeSlide(layout, 2);
+    Object.assign(slide.data, structuredClone(layoutData[layout] || {}));
+    assertIllustrationTree(engine.resolveLayout(slide, 2, 3));
   }
 });
 

@@ -90,6 +90,29 @@ function textFields(data, fields) {
   for (const field of fields) if (data[field] !== undefined && data[field] !== null) text(data[field], `slide.data.${field}`);
 }
 
+const hasText = (value) => typeof value === 'string' && Boolean(value.trim());
+
+// Historical data layouts remain available, but every displayed datum must come
+// from the caller. Share this check with direct layout resolution and the API.
+export function validateLayoutData(layout, data = {}) {
+  if (layout === 'stat-grid' && (!Array.isArray(data.items) || !data.items.length || data.items.some((item) =>
+    !hasText(item?.label) || !(hasText(item?.value) || (typeof item?.value === 'number' && Number.isFinite(item.value)))))) {
+    invalid('stat-grid requires non-empty slide.data.items with a label and value for every item');
+  }
+  if (['chart-bar', 'chart-line'].includes(layout) && (!Array.isArray(data.labels) || !Array.isArray(data.values)
+    || !data.labels.length || data.labels.length !== data.values.length || data.labels.some((label) => !hasText(label))
+    || data.values.some((value) => typeof value !== 'number' || !Number.isFinite(value)))) {
+    invalid(`${layout} requires non-empty slide.data.labels and finite numeric values of matching length`);
+  }
+  if (layout === 'timeline' && (!Array.isArray(data.events) || !data.events.length
+    || data.events.some((event) => !hasText(event?.date) || !hasText(event?.text)))) {
+    invalid('timeline requires non-empty slide.data.events with a date and text for every event');
+  }
+  if (layout === 'comparison' && ['left', 'right'].some((side) => !hasText(data[side]?.title) || !hasText(data[side]?.text))) {
+    invalid('comparison requires slide.data.left and right, each with a non-empty title and text');
+  }
+}
+
 export function validateSlide(slide, budget = { nodes: 0, text: 0, imageBytes: 0 }) {
   object(slide, 'slide');
   bounded(slide, 'slide', budget);
@@ -134,6 +157,7 @@ export function validateSlide(slide, budget = { nodes: 0, text: 0, imageBytes: 0
   });
   if (data.list?.length && data.list.some((entry) => typeof entry !== typeof data.list[0])) invalid('slide.data.list must contain only text or only objects');
   for (const key of ['left', 'right']) if (data[key] !== undefined) { object(data[key], `slide.data.${key}`); textFields(data[key], ['title', 'text', 'content']); }
+  validateLayoutData(slide.layout, data);
   return slide;
 }
 

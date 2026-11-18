@@ -35,6 +35,8 @@ export async function editDraft(draftId, change, { pool, renderUrl, renderSecret
     if (metaBusy.length) throw new DraftError('Publikasi Meta sudah dicoba. Rekonsiliasi hasil sebelum mengubah aset draf.', 409);
     const next = await change(structuredClone(draft), client);
     let slides = validateSlides(next.slides ?? draft.slides);
+    const original = draft.editorial_input != null || draft.editorial_mode != null;
+    if (original && slides.length < 3) throw new DraftError('Draf editorial R6 harus mempertahankan carousel 3-9 slide.');
     // Body slides can move: only the single-slide edit route restores omitted body
     // metadata. The cover stays pinned during ordinary full/text/structure edits.
     const preserve = replaceIllustration ? [] : next.preserveIllustrations ? draft.slides : [draft.slides[0]];
@@ -42,8 +44,15 @@ export async function editDraft(draftId, change, { pool, renderUrl, renderSecret
     catch (error) { throw new DraftError(error.message, 409); }
     const caption = next.caption ?? draft.caption;
     const hashtags = next.hashtags ?? draft.hashtags;
+    const metadata = Object.fromEntries(['editorial_input', 'editorial_mode', 'caption_body', 'threads_caption', 'angle', 'scope_note', 'editorial_references'].map((field) => [field, draft[field]]));
+    // Generation metadata is read-only here. Keep the editor's exact caption as
+    // its new body; hashtag boundaries cannot be inferred from arbitrary prose.
+    if (original && caption !== draft.caption) {
+      metadata.caption_body = caption;
+      metadata.editorial_references = { ...draft.editorial_references, caption: [] };
+    }
     if (typeof caption !== 'string' || !Array.isArray(hashtags) || hashtags.some((tag) => typeof tag !== 'string')) throw new DraftError('Caption atau hashtag tidak valid.');
-    if ([caption, hashtags.join(' ')].join('\n\n').length > 2200) throw new DraftError('Caption dan hashtag maksimal 2200 karakter.');
+    if ((original ? caption : [caption, hashtags.join(' ')].join('\n\n')).length > 2200) throw new DraftError('Caption dan hashtag maksimal 2200 karakter.');
     if (next.render !== false) {
       let response;
       try {
@@ -63,8 +72,8 @@ export async function editDraft(draftId, change, { pool, renderUrl, renderSecret
     }
     await client.query("UPDATE scheduled_posts SET status = 'failed', error_message = 'Dibatalkan karena draf diedit; perlu review ulang' WHERE draft_id = $1 AND status = 'pending'", [draftId]);
     await client.query(
-      "UPDATE drafts SET slides=$2, content_format=$3, caption=$4, hashtags=$5, status='draft', needs_review=TRUE, telegram_dispatched_at=NULL, updated_at=NOW() WHERE id=$1",
-      [draftId, JSON.stringify(slides), slides.length === 1 ? 'single' : 'carousel', caption, hashtags]
+      "UPDATE drafts SET slides=$2, content_format=$3, caption=$4, hashtags=$5, caption_body=$6, editorial_references=$7, status='draft', needs_review=TRUE, telegram_dispatched_at=NULL, updated_at=NOW() WHERE id=$1",
+      [draftId, JSON.stringify(slides), slides.length === 1 ? 'single' : 'carousel', caption, hashtags, metadata.caption_body ?? null, metadata.editorial_references == null ? null : JSON.stringify(metadata.editorial_references)]
     );
     await client.query('DELETE FROM draft_slides WHERE draft_id=$1', [draftId]);
     for (const slide of slides) await client.query(
@@ -74,7 +83,7 @@ export async function editDraft(draftId, change, { pool, renderUrl, renderSecret
     );
     await client.query("INSERT INTO audit_log(entity,entity_id,action,actor,payload) VALUES('draft',$1,'edited_review_required','web_admin',$2)", [draftId, JSON.stringify({ slides_count: slides.length })]);
     await client.query('COMMIT');
-    return { ...draft, ...next, slides, caption, hashtags, content_format: slides.length === 1 ? 'single' : 'carousel', status: 'draft', needs_review: true };
+    return { ...draft, ...next, ...metadata, slides, caption, hashtags, content_format: slides.length === 1 ? 'single' : 'carousel', status: 'draft', needs_review: true };
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     throw error;
