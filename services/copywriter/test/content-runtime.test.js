@@ -68,6 +68,29 @@ test('copywriter authors the full six-slide story before designer sees only its 
   assert.doesNotMatch(JSON.stringify(script), /source_url|source_name|summary|content_html|image_url/);
 });
 
+test('topic article material is projected into attributed current-news facts', async () => {
+  const { topicEditorialInput } = await import('../../common/source-editorial.js');
+  const material = {
+    version: 1,
+    extraction: { status: 'full' }, publisher: 'Media Uji', article_url: 'https://example.org/article',
+    paragraphs: [
+      { id: 'p1', role: 'reporting', source_url: 'https://example.org/article', text: 'OJK mencatat pembiayaan UMKM Sumatera Barat tumbuh 8,2% pada semester pertama 2026.' },
+      { id: 'p2', role: 'reporting', source_url: 'https://example.org/article', text: 'Penyaluran pembiayaan mencapai Rp12,4 triliun dan tersebar pada 210 ribu pelaku usaha.' },
+      { id: 'p3', role: 'reporting', source_url: 'https://example.org/article', text: 'OJK menyebut akses pembiayaan produktif menjadi salah satu fokus pengawasan daerah.' },
+      { id: 'p4', role: 'reporting', source_url: 'https://example.org/article', text: 'Data tersebut dihimpun dari laporan lembaga jasa keuangan di wilayah Sumatera Barat.' },
+    ],
+  };
+  const editorialInput = topicEditorialInput(material);
+  assert.equal(editorialInput.mode, 'current');
+  assert.equal(editorialInput.facts.length, 4);
+  responses.copywriter = originalFixture(buildEditorialBrief(topic, { editorialInput }));
+  const content = await buildCarouselSlides(topic, { editorialInput });
+  const brief = JSON.parse(calls[0].prompt.split('ORIGINAL_EDITORIAL_JSON: ')[1]);
+  assert.equal(brief.facts.length, 4);
+  assert.ok(brief.facts.every((item) => item.source_url === 'https://example.org/article' && item.source_name === 'Media Uji'));
+  assert.equal(content.editorial_mode, 'current');
+});
+
 test('empty summaries and a legacy single preference still generate a complete original carousel', async () => {
   const content = await buildCarouselSlides({ ...topic, summary: '', format: 'single' });
   assert.equal(content.format, 'carousel');

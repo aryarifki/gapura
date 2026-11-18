@@ -9,7 +9,11 @@ const enabled = Boolean(process.env.GAPURA_TEST_BASE);
 const base = process.env.GAPURA_TEST_BASE;
 const pool = enabled ? new pkg.Pool({ host: process.env.HME_DB_HOST, port: process.env.HME_DB_PORT, user: process.env.HME_DB_USER, password: process.env.HME_DB_PASSWORD, database: process.env.HME_DB_NAME }) : null;
 const headers = { 'Content-Type': 'application/json' };
-const currentInput = { version: 1, mode: 'current', facts: [{ id: 'service', text: 'Layanan dibuka kembali.', source_url: 'https://example.org/rilis', source_name: 'Dinas' }] };
+const currentInput = { version: 1, mode: 'current', facts: [
+  { id: 'service', text: 'Layanan dibuka kembali untuk warga setelah proses perbaikan fasilitas selesai.', source_url: 'https://example.org/rilis', source_name: 'Dinas' },
+  { id: 'access', text: 'Warga dapat mengakses layanan melalui kantor kecamatan sesuai jadwal yang berlaku.', source_url: 'https://example.org/rilis', source_name: 'Dinas' },
+  { id: 'requirements', text: 'Petugas memberikan penjelasan mengenai persyaratan dan dokumen yang perlu disiapkan.', source_url: 'https://example.org/rilis', source_name: 'Dinas' },
+] };
 const post = (route, body) => fetch(`${base}${route}`, { method: 'POST', headers, body: JSON.stringify(body) });
 test.before(() => { if (enabled) { assert.equal(process.env.NODE_ENV, 'test'); assert.match(process.env.HME_DB_NAME, /^gapura_test_/); assert.equal(process.env.GAPURA_DISABLE_WORKERS, 'true'); } });
 test.after(async () => { if (pool) await pool.end(); });
@@ -127,12 +131,36 @@ test('unmarked custom news never defaults to a one/two slide draft', { skip: !en
   }
 });
 
+test('headline-only source generation fails closed and never creates a short-caption draft', { skip: !enabled }, async (t) => {
+  const topic = await seed(t);
+  const response = await post(`/api/topics/${topic.id}/auto-produce`, {});
+  assert.equal(response.status, 422, await response.clone().text());
+  assert.match((await response.json()).error, /domain sumber|tiga fakta/i);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM drafts WHERE topic_id=$1', [topic.id])).rows[0].n, 0);
+});
+
+test('legacy Studio short-copy drafts cannot be approved even with a current cover and revision hash', { skip: !enabled }, async (t) => {
+  const topic = await seed(t);
+  const cover = { no: 1, layout: 'cover-focus', teks: topic.title, data: {
+    title: topic.title, asset_id: topic.illustration.id, asset_sha256: topic.illustration.sha256,
+    image_kind: 'ai_generated', disclosure_version: 1,
+  } };
+  const slides = [cover, { no: 2, layout: 'big-statement', teks: 'Layanan dibuka kembali.' }];
+  const { rows: [draft] } = await pool.query("INSERT INTO drafts(topic_id,slides,caption,content_format,copy_model,status,needs_review) VALUES($1,$2,'Caption pendek','carousel','studio-ai-designer','draft',true) RETURNING id", [topic.id, JSON.stringify(slides)]);
+  const detail = await (await fetch(`${base}/api/drafts/${draft.id}`)).json();
+  const response = await post(`/api/drafts/${draft.id}/approve`, { mode: 'auto', reviewed: true, expected_revision: detail.revision });
+  assert.equal(response.status, 409, await response.clone().text());
+  assert.match((await response.json()).error, /kontrak berita bersumber/i);
+  assert.equal((await pool.query('SELECT status FROM drafts WHERE id=$1', [draft.id])).rows[0].status, 'draft');
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM scheduled_posts WHERE draft_id=$1', [draft.id])).rows[0].n, 0);
+});
+
 test('normal production rejects invalid current input and generation failure never becomes a source-copy draft', { skip: !enabled }, async (t) => {
   const topic = await seed(t);
   const invalid = await post(`/api/topics/${topic.id}/auto-produce`, { editorial_input: { mode: 'current', facts: [] } });
   assert.equal(invalid.status, 422, await invalid.clone().text());
   await pool.query("UPDATE topics SET title='FIXTURE_GENERATION_ERROR' WHERE id=$1", [topic.id]);
-  const failed = await post(`/api/topics/${topic.id}/auto-produce`, {});
+  const failed = await post(`/api/topics/${topic.id}/auto-produce`, { editorial_input: currentInput });
   assert.equal(failed.status, 422, await failed.clone().text());
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM drafts WHERE topic_id=$1', [topic.id])).rows[0].n, 0);
   await pool.query('UPDATE topics SET title=$2,summary=NULL WHERE id=$1', [topic.id, topic.title]);

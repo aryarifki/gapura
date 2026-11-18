@@ -80,14 +80,15 @@ function bindClick(id, handler) {
   };
 }
 
-function readEditorialInput(modeId, factsId) {
+function readEditorialInput(modeId, factsId, { allowEmptyCurrent = false } = {}) {
   const mode = document.getElementById(modeId)?.value || 'explainer';
   let facts;
   try { facts = JSON.parse(document.getElementById(factsId)?.value || '[]'); }
   catch { throw new Error('Catatan fakta harus JSON array yang valid.'); }
   if (!Array.isArray(facts)) throw new Error('Catatan fakta harus berupa JSON array.');
   if (mode === 'explainer' && facts.length) throw new Error('Mode explainer memakai []. Pilih current untuk memakai catatan fakta.');
-  if (mode === 'current' && !facts.length) throw new Error('Mode current memerlukan minimal satu catatan fakta dengan nama sumber dan URL HTTPS publik.');
+  if (mode === 'current' && facts.length === 0 && allowEmptyCurrent) return undefined;
+  if (mode === 'current' && facts.length < 3) throw new Error('Mode berita memerlukan minimal tiga catatan fakta substantif dengan nama sumber dan URL HTTPS publik.');
   return { version: 1, mode, facts };
 }
 
@@ -121,7 +122,7 @@ function renderOriginalReview() {
     map.textContent = `Rujukan caption: ${(references.caption || []).map((block, index) => `paragraf ${index + 1} (${block.kind}): ${block.fact_ids?.join(', ') || 'konteks umum'}`).join('; ')}. Threads: ${references.threads?.join(', ') || 'konteks umum'}.`;
     container.append(map);
   }
-  document.getElementById('editor-regenerate-mode').value = mode || 'explainer';
+  document.getElementById('editor-regenerate-mode').value = mode || 'current';
   document.getElementById('editor-regenerate-facts').value = JSON.stringify(facts, null, 2);
 }
 
@@ -1870,9 +1871,11 @@ function updateStudioSlideUI() {
 }
 
 async function generateStudioCarouselAI() {
-  const title = document.getElementById('studio-custom-topic-text')?.value?.trim();
-  const source = document.getElementById('studio-custom-source-text')?.value?.trim() || '@gapuramedia';
-  const sourceUrl = document.getElementById('studio-custom-source-url')?.value?.trim() || '';
+  const selectedTopicId = Number(document.getElementById('studio-quick-topic-select')?.value || 0);
+  const selectedTopic = selectedTopicId ? cachedTopics.find((item) => Number(item.id) === selectedTopicId) : null;
+  const title = selectedTopic?.title || document.getElementById('studio-custom-topic-text')?.value?.trim();
+  const source = selectedTopic?.primary_source || document.getElementById('studio-custom-source-text')?.value?.trim() || '@gapuramedia';
+  const sourceUrl = selectedTopic?.url || document.getElementById('studio-custom-source-url')?.value?.trim() || '';
   if (!title || !sourceUrl) {
     showToast('Judul dan URL sumber primer wajib diisi.');
     return;
@@ -1891,11 +1894,12 @@ async function generateStudioCarouselAI() {
   }
 
   try {
-    const editorial_input = readEditorialInput('studio-custom-editorial-mode', 'studio-custom-editorial-facts');
+    let editorial_input = readEditorialInput('studio-custom-editorial-mode', 'studio-custom-editorial-facts', { allowEmptyCurrent: selectedTopicId > 0 });
+    if (selectedTopicId && editorial_input.mode === 'explainer' && editorial_input.facts.length === 0) editorial_input = undefined;
     const res = await fetch('/api/designer/generate-slides', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, primary_source: source, url: sourceUrl, editorial_input }),
+      body: JSON.stringify({ title, primary_source: source, url: sourceUrl, ...(selectedTopicId ? { topic_id: selectedTopicId } : {}), ...(editorial_input ? { editorial_input } : {}) }),
     });
 
     if (!res.ok) {
@@ -1910,7 +1914,7 @@ async function generateStudioCarouselAI() {
 
     studioSlides = data.slides;
     studioGeneratedContent = data;
-    studioGeneratedInput = JSON.stringify({ title, source, sourceUrl, editorial_input, topicId: document.getElementById('studio-quick-topic-select')?.value || '' });
+    studioGeneratedInput = JSON.stringify({ title, source, sourceUrl, editorial_input: editorial_input || null, topicId: selectedTopicId || '' });
     document.getElementById('btn-studio-save-to-drafts').disabled = false;
     document.getElementById('studio-generated-scope').textContent = `${data.editorial_mode === 'current' ? 'Current' : 'Explainer'} · ${data.angle || ''} · ${data.scope_note || ''} · Periksa semua slide, caption dan rujukan sebelum menyetujui.`;
     activeStudioSlideIndex = 0;
@@ -1933,9 +1937,11 @@ async function saveStudioToDrafts() {
     return;
   }
 
-  const title = document.getElementById('studio-custom-topic-text')?.value?.trim() || studioSlides[0]?.data?.title || 'Carousel Studio Gapura';
-  const source = document.getElementById('studio-custom-source-text')?.value?.trim() || '@gapuramedia';
-  const sourceUrl = document.getElementById('studio-custom-source-url')?.value?.trim() || '';
+  const selectedTopicId = Number(document.getElementById('studio-quick-topic-select')?.value || 0);
+  const selectedTopic = selectedTopicId ? cachedTopics.find((item) => Number(item.id) === selectedTopicId) : null;
+  const title = selectedTopic?.title || document.getElementById('studio-custom-topic-text')?.value?.trim() || studioSlides[0]?.data?.title || 'Carousel Studio Gapura';
+  const source = selectedTopic?.primary_source || document.getElementById('studio-custom-source-text')?.value?.trim() || '@gapuramedia';
+  const sourceUrl = selectedTopic?.url || document.getElementById('studio-custom-source-url')?.value?.trim() || '';
 
   const btn = document.getElementById('btn-studio-save-to-drafts');
   const origHtml = btn.innerHTML;
@@ -1943,8 +1949,9 @@ async function saveStudioToDrafts() {
   btn.innerHTML = '💾 Menyimpan Draf ke Database...';
 
   try {
-    const editorial_input = readEditorialInput('studio-custom-editorial-mode', 'studio-custom-editorial-facts');
-    const currentInput = JSON.stringify({ title, source, sourceUrl, editorial_input, topicId: document.getElementById('studio-quick-topic-select')?.value || '' });
+    let editorial_input = readEditorialInput('studio-custom-editorial-mode', 'studio-custom-editorial-facts', { allowEmptyCurrent: selectedTopicId > 0 });
+    if (selectedTopicId && editorial_input.mode === 'explainer' && editorial_input.facts.length === 0) editorial_input = undefined;
+    const currentInput = JSON.stringify({ title, source, sourceUrl, editorial_input: editorial_input || null, topicId: selectedTopicId || '' });
     if (currentInput !== studioGeneratedInput) throw new Error('Topik, mode, atau catatan berubah. Buat ulang naskah sebelum menyimpan.');
     const res = await fetch('/api/drafts/create-from-custom', {
       method: 'POST',
@@ -3677,11 +3684,12 @@ async function submitStudioPrompt() {
   btn.disabled = true;
   btn.innerHTML = '<span>⏳</span> <span>Mengirim prompt…</span>';
   try {
-    const editorial_input = readEditorialInput('studio-editorial-mode', 'studio-editorial-facts');
+    let editorial_input = readEditorialInput('studio-editorial-mode', 'studio-editorial-facts', { allowEmptyCurrent: true });
+    if (editorial_input.mode === 'explainer' && editorial_input.facts.length === 0) editorial_input = undefined;
     const res = await fetch('/api/studio/jobs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, topic_id: topicId, editorial_input }),
+      body: JSON.stringify({ prompt, topic_id: topicId, ...(editorial_input ? { editorial_input } : {}) }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);

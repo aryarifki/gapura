@@ -9,7 +9,7 @@ const BLOCKS = 'p,h2,h3,h4,h5,h6,li,blockquote';
 const BLOCK_NAMES = new Set(BLOCKS.split(','));
 const SPACED_NAMES = new Set([...BLOCK_NAMES, 'div', 'ul', 'ol', 'section', 'article', 'br']);
 const REMOVE = 'nav,header,footer,aside,form,script,style,noscript,template,iframe,button,input,select,textarea';
-const NOISE = /(?:^|[\s_-])(?:ad|ads|adslot|advert|advertisement|advertising|adsbygoogle|sponsored|related|recommended|recommendations|social|share|sharing|newsletter|cookie|comments?|byline|breadcrumb|read-also|baca-juga)(?:$|[\s_-])/i;
+const NOISE = /(?:^|[\s_-])(?:ad|ads|adslot|advert|advertisement|advertising|adsbygoogle|sponsored|related|recommended|recommendations|social|share|sharing|newsletter|cookie|comments?|byline|reporter|editor|breadcrumb|read-also|baca-juga|article[-_ ]?body[-_ ]?footer)(?:$|[\s_-])/i;
 const PAYWALL = /(?:paywall|regwall|subscription-wall|subscribe-wall|premium-wall|content-requires-login|login-required|registration-required)/i;
 const LOGIN_TEXT = /(?:subscribe|sign\s*in|log\s*in|register)\s+(?:\w+\s+){0,4}(?:to\s+)?(?:continue\s+reading|read\s+(?:this|the|full|more)|access\s+(?:this|the|full))|(?:masuk|login|berlangganan|daftar)\s+(?:\w+\s+){0,4}(?:membaca\s+(?:artikel\s+)?(?:lengkap|selengkapnya)|melanjutkan\s+membaca)|content\s+requires\s+login/i;
 const DENIED_TEXT = /^(?:access denied|403(?: forbidden)?|forbidden|just a moment\.*|attention required!?|verify (?:that )?you are (?:a )?human|checking your browser)/i;
@@ -100,7 +100,8 @@ function paragraphsIn($, root) {
       if (BLOCK_NAMES.has(parent.name)) return false;
     }
     return true;
-  }).map((element) => clean(textOf(element))).filter(Boolean);
+  }).map((element) => clean(textOf(element)))
+    .filter((value) => value && !/^(?:baca(?:\s+juga)?\s*:|pewarta\s*:|reporter\s*:|editor\s*:|copyright\s*[©(]|dilarang keras (?:mengambil|melakukan)|follow\s+us\b)/iu.test(value));
 }
 
 function jsonParagraphs(value) {

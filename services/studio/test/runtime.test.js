@@ -298,7 +298,11 @@ test('planning accepts discovery without a summary and projects away publisher b
 });
 
 test('a queued editorial input seed must become a reviewed plan before original production', async () => {
-  const editorial_input = { version: 1, mode: 'current', facts: [{ id: 'service', text: 'Layanan dibuka kembali.', source_url: 'https://example.org/rilis', source_name: 'Dinas' }] };
+  const editorial_input = { version: 1, mode: 'current', facts: [
+    { id: 'service', text: 'Dinas menyatakan layanan kembali dibuka bagi warga setelah perbaikan fasilitas selesai.', source_url: 'https://example.org/rilis', source_name: 'Dinas' },
+    { id: 'access', text: 'Warga dapat mengakses layanan melalui kantor kecamatan sesuai jadwal yang ditetapkan.', source_url: 'https://example.org/rilis', source_name: 'Dinas' },
+    { id: 'requirements', text: 'Petugas menyediakan informasi mengenai persyaratan dan dokumen yang perlu disiapkan.', source_url: 'https://example.org/rilis', source_name: 'Dinas' },
+  ] };
   state.job = { ...state.job, status: 'queued', plan: { editorial_input } };
   const result = await executeJob(9);
   assert.equal(result.awaiting_plan_review, true);
@@ -311,7 +315,11 @@ test('a queued editorial input seed must become a reviewed plan before original 
 });
 
 test('manual plan updates and plan regeneration preserve input unless explicitly replaced', async () => {
-  const editorial_input = { version: 1, mode: 'current', facts: [{ id: 'service', text: 'Layanan dibuka kembali.', source_url: 'https://example.org/rilis', source_name: 'Dinas' }] };
+  const editorial_input = { version: 1, mode: 'current', facts: [
+    { id: 'service', text: 'Dinas menyatakan layanan kembali dibuka bagi warga setelah perbaikan fasilitas selesai.', source_url: 'https://example.org/rilis', source_name: 'Dinas' },
+    { id: 'access', text: 'Warga dapat mengakses layanan melalui kantor kecamatan sesuai jadwal yang ditetapkan.', source_url: 'https://example.org/rilis', source_name: 'Dinas' },
+    { id: 'requirements', text: 'Petugas menyediakan informasi mengenai persyaratan dan dokumen yang perlu disiapkan.', source_url: 'https://example.org/rilis', source_name: 'Dinas' },
+  ] };
   state.job.plan.editorial_input = editorial_input;
   const { editorial_input: ignored, ...edited } = plan;
   assert.deepEqual((await updatePlan(9, edited)).editorial_input, editorial_input);

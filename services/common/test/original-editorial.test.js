@@ -268,3 +268,27 @@ test('ordinary word phrases remain usable and direction strings are bounded', ()
   const supported = originalFixture(currentBrief); supported.slides[1].teks = 'Inflasi 2,1%.';
   assert.doesNotThrow(() => validateOriginalContent(supported, currentBrief));
 });
+
+test('current news text rejects generic source prompts and editorial placeholder headings', () => {
+  const brief = current();
+  for (const filler of [
+    'Baca rilis lengkap di sumber primer dan cek pembaruan berikutnya.',
+    'Konteks dan batas informasi perlu dibaca bersama sumber primer agar tidak menjadi spekulasi.',
+    'Yang perlu diperiksa',
+  ]) {
+    const raw = originalFixture(brief);
+    raw.slides[1] = { ...raw.slides[1], claim_type: 'fact', fact_ids: ['f1'], teks: filler };
+    assert.throws(() => validateOriginalContent(raw, brief), /original_/, filler);
+  }
+});
+
+test('current news slide body rejects headline-length fragments', () => {
+  const brief = buildEditorialBrief(topic, { editorialInput: { mode: 'current', facts: [
+    fact,
+    { ...fact, id: 'f2', text: 'Bank sentral mengatur likuiditas melalui berbagai instrumen kebijakan moneter.' },
+    { ...fact, id: 'f3', text: 'Perubahan biaya pinjaman dapat memengaruhi rencana belanja rumah tangga dan usaha.' },
+  ] } });
+  const raw = originalFixture(brief);
+  raw.slides[1] = { ...raw.slides[1], claim_type: 'fact', fact_ids: ['f1'], teks: 'Inflasi tercatat 2,1% menurut BPS.' };
+  assert.throws(() => validateOriginalContent(raw, brief), /original_slide_text_length/);
+});

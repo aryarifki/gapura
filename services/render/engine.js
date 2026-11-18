@@ -340,7 +340,7 @@ export class RenderEngine {
                 display: 'flex',
                 flexDirection: 'column',
                 flex: 1,
-                justifyContent: 'flex-start',
+                justifyContent: 'center',
                 paddingTop: '40px',
                 paddingBottom: '32px',
               },
@@ -426,25 +426,25 @@ export class RenderEngine {
   renderIllustration(slide, slideIndex, totalSlides) {
     const data = slide.data || {};
     const { palette } = this.tokens;
-    const headline = data.title || data.headline || slide.teks;
-    const body = slide.teks !== headline ? slide.teks : '';
+    const headline = data.title || data.headline || '';
+    const body = slide.teks === headline ? '' : slide.teks;
     return this.wrapSlide({
       type: 'div',
       props: {
-        style: { display: 'flex', flexDirection: 'column', gap: '28px', width: '100%' },
+        style: { display: 'flex', flexDirection: 'column', gap: '20px', width: '100%' },
         children: [
           this.renderImage(data),
-          {
+          headline ? {
             type: 'div',
             props: {
-              style: { fontFamily: 'Archivo Black', fontSize: `${fitFontSize(headline, { max: 56, min: 26, maxLines: 3 })}px`, lineHeight: '1.2', color: palette.ink || '#102B45' },
+              style: { fontFamily: 'Archivo Black', fontSize: `${fitFontSize(headline, { max: 32, min: 22, maxLines: 3 })}px`, lineHeight: '1.2', color: palette.ink || '#102B45' },
               children: headline,
             },
-          },
+          } : null,
           body ? {
             type: 'div',
             props: {
-              style: { fontSize: `${fitFontSize(body, { max: 30, min: 18, ratio: CHAR_RATIO.body, maxLines: 8, step: 1 })}px`, lineHeight: '1.5', color: palette.ink || '#102B45' },
+              style: { fontSize: `${fitFontSize(body, { max: 26, min: 18, ratio: CHAR_RATIO.body, maxLines: 10, step: 1 })}px`, lineHeight: '1.5', color: palette.ink || '#102B45' },
               children: body,
             },
           } : null,
@@ -589,7 +589,7 @@ export class RenderEngine {
   // 9 Layout Resolvers
   resolveLayout(slide, slideIndex, totalSlides) {
     const layout = slide.layout || 'cover-stat';
-    const { palette, typography } = this.tokens;
+    const { palette } = this.tokens;
     validateLayoutData(layout, slide.data ?? {});
 
     // Slide pertama — atau layout apa pun yang menyebut "cover" — selalu cover murni.
@@ -769,28 +769,6 @@ export class RenderEngine {
                         ],
                       },
                     },
-                // 4. Swipe prompt at bottom
-                {
-                  type: 'div',
-                  props: {
-                    style: {
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      backgroundColor: palette.accent || '#1F7E81',
-                      color: '#ffffff',
-                      fontSize: '15px',
-                      fontFamily: 'Inter',
-                      fontWeight: 700,
-                      padding: '12px 28px',
-                      borderRadius: '30px',
-                      letterSpacing: '0.5px',
-                      alignSelf: 'flex-start',
-                      marginTop: '8px',
-                    },
-                    children: slide.data?.cta || '',
-                  },
-                },
               ],
             },
           },
@@ -800,8 +778,8 @@ export class RenderEngine {
 
       case 'big-statement': {
         const statementSize = fitFontSize(slide.teks, {
-          max: 44,
-          min: 22,
+          max: 32,
+          min: 20,
           width: CONTENT_WIDTH - 80,
           ratio: CHAR_RATIO.body,
           maxLines: 7,
@@ -905,8 +883,8 @@ export class RenderEngine {
 
       case 'stat-grid': {
         const gridTitleSize = fitFontSize(slide.teks, {
-          max: 38,
-          min: 22,
+          max: 32,
+          min: 20,
           width: CONTENT_WIDTH,
           ratio: CHAR_RATIO.display,
           maxLines: 4,
@@ -990,7 +968,7 @@ export class RenderEngine {
       }
 
       case 'chart-bar': {
-        const barTitleSize = fitFontSize(slide.teks, { max: 36, min: 22, maxLines: 3 });
+        const barTitleSize = fitFontSize(slide.teks, { max: 32, min: 20, maxLines: 3 });
         const { labels, values } = slide.data;
         const maxVal = Math.max(...values, 1);
 
@@ -1072,7 +1050,7 @@ export class RenderEngine {
       }
 
       case 'chart-line': {
-        const lineTitleSize = fitFontSize(slide.teks, { max: 36, min: 22, maxLines: 3 });
+        const lineTitleSize = fitFontSize(slide.teks, { max: 32, min: 20, maxLines: 3 });
         const { labels, values } = slide.data;
         const minVal = Math.min(...values);
         const maxVal = Math.max(...values);
@@ -1229,7 +1207,7 @@ export class RenderEngine {
       }
 
       case 'timeline': {
-        const timelineTitleSize = fitFontSize(slide.teks, { max: 36, min: 22, maxLines: 3 });
+        const timelineTitleSize = fitFontSize(slide.teks, { max: 32, min: 20, maxLines: 3 });
         const events = slide.data.events;
         return this.wrapSlide(
           {
@@ -1286,7 +1264,7 @@ export class RenderEngine {
       }
 
       case 'comparison': {
-        const compareTitleSize = fitFontSize(slide.teks, { max: 36, min: 22, maxLines: 3 });
+        const compareTitleSize = fitFontSize(slide.teks, { max: 32, min: 20, maxLines: 3 });
         const { left, right } = slide.data;
 
         return this.wrapSlide(
@@ -1357,7 +1335,7 @@ export class RenderEngine {
 
       case 'cta-close': {
         const headline = slide.teks || slide.data?.title || slide.data?.headline;
-        const ctaHeadlineSize = fitFontSize(headline, { max: 56, min: 24, maxLines: 4 });
+        const ctaHeadlineSize = fitFontSize(headline, { max: 34, min: 22, maxLines: 4 });
         const ctaText = slide.data?.cta;
         const disclaimer = slide.data?.disclaimer;
 
@@ -1427,36 +1405,18 @@ export class RenderEngine {
   // Universal Fluid Layout Renderer (Full AI Adaptive Creative Direction)
   renderFluidLayout(slide, slideIndex, totalSlides) {
     if (isMediaImage(slide.data)) return this.renderIllustration(slide, slideIndex, totalSlides);
-    const { palette, typography } = this.tokens;
+    const { palette } = this.tokens;
     const data = slide.data || {};
     const text = slide.teks || '';
     const value = data.value ?? data.stat;
     const hasValue = value !== undefined && value !== null && value !== '';
     const title = data.title || data.headline || (hasValue || data.items || data.quote ? text : '');
     const subtitle = data.subtitle || data.subtext || '';
-    const category = data.category || (slideIndex === 1 ? 'LAPORAN UTAMA' : 'ANALISIS EDITORIAL');
+    const category = data.category || '';
 
-    // Derifasi awal agar kepadatan konten bisa dihitung sebelum menyusun node.
     const items = data.items || data.cards || data.metrics || (Array.isArray(data.list) && typeof data.list[0] === 'object' ? data.list : null);
     const bullets = data.bullets || data.points || (Array.isArray(data.list) && typeof data.list[0] === 'string' ? data.list : null);
-
-    // Kepadatan konten → skala tipografi.
-    // Slide ringkas dinaikkan skalanya supaya kanvas tidak menyisakan rongga
-    // besar; slide padat tetap 1.0 seperti sebelumnya (aman dari overflow).
-    const density = [
-      title,
-      subtitle,
-      data.quote,
-      data.author,
-      data.callout || data.regulasi || data.note,
-      Array.isArray(bullets) ? bullets.join(' ') : '',
-      Array.isArray(items) ? items.map((i) => `${i.value ?? i.stat ?? i.number ?? ''} ${i.label || i.text || ''}`).join(' ') : '',
-      text !== title ? text : '',
-    ].filter(Boolean).join(' ').replace(/\s+/g, ' ').length;
-    const blockCount = [subtitle, title, hasValue, items?.length, data.left, data.quote, data.callout, text !== title ? text : ''].filter(Boolean).length;
-    const score = density + blockCount * 55;
-    const scale = score < 200 ? 1.45 : score < 330 ? 1.28 : score < 480 ? 1.12 : 1.0;
-    const px = (v) => `${Math.round(v * scale)}px`;
+    const px = (v) => `${v}px`;
 
     const children = [];
 
@@ -1502,7 +1462,7 @@ export class RenderEngine {
 
     // 2. Title / Main Statement
     if (title) {
-      const fontSize = `${fitFontSize(title, { max: Math.round(50 * scale), min: 26, maxLines: 4 })}px`;
+      const fontSize = `${fitFontSize(title, { max: 34, min: 24, maxLines: 4 })}px`;
       children.push({
         type: 'div',
         props: {

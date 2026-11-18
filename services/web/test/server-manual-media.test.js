@@ -4,6 +4,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import pkg from 'pg';
 import sharp from '../../render/node_modules/sharp/lib/index.js';
+import { buildEditorialBrief, validateOriginalContent } from '../../common/original-editorial.js';
+import { originalFixture } from '../../common/test/fixtures/original-editorial.js';
 
 const enabled = Boolean(process.env.GAPURA_TEST_BASE);
 const base = process.env.GAPURA_TEST_BASE;
@@ -57,11 +59,18 @@ async function upload(t, topicId, overrides = {}) {
   return response.json();
 }
 
-async function customDraft(t, item, { slides, format = 'single' } = {}) {
+async function customDraft(t, item) {
+  const editorialInput = { version: 1, mode: 'current', facts: [
+    { id: 'f1', text: 'Dinas menyatakan layanan kembali dibuka bagi warga setelah perbaikan fasilitas selesai.', source_url: item.url, source_name: 'Dinas' },
+    { id: 'f2', text: 'Warga dapat mengakses layanan melalui kantor kecamatan sesuai jadwal yang ditetapkan.', source_url: item.url, source_name: 'Dinas' },
+    { id: 'f3', text: 'Petugas menyediakan informasi mengenai persyaratan dan dokumen yang perlu disiapkan.', source_url: item.url, source_name: 'Dinas' },
+  ] };
+  const brief = buildEditorialBrief({ title: 'Penjelasan layanan publik', url: item.url, primary_source: 'Dinas' }, { editorialInput });
+  const original = validateOriginalContent(originalFixture(brief), brief);
   const response = await post('/api/drafts/create-from-custom', {
+    ...original,
     topic_id: Number(item.id), title: 'Penjelasan layanan publik', primary_source: 'Dinas', source_url: item.url,
-    slides: slides || [{ no: 1, layout: 'cover-focus', teks: 'Ringkasan layanan untuk warga', data: { title: 'Ringkasan layanan untuk warga' } }],
-    caption: 'Naskah custom Gapura yang sudah ditulis redaksi.', hashtags: ['#GapuraMedia'], format,
+    slides: original.slides,
   });
   assert.equal(response.status, 200, await response.clone().text());
   return (await response.json()).draft_id;
@@ -117,8 +126,7 @@ test('a manual cover can be uploaded, pinned to slide 1 and approved as a new re
 test('body slides accept an optional manual image without forcing a cover image', { skip: !enabled }, async (t) => {
   const item = await topic(t, 'Catatan layanan wilayah');
   const uploaded = await upload(t, item.id);
-  const slides = [1, 2, 3].map((no) => ({ no, layout: 'big-statement', teks: `Poin ${no} layanan warga`, data: { title: `Poin ${no}` } }));
-  const draftId = await customDraft(t, item, { slides, format: 'carousel' });
+  const draftId = await customDraft(t, item);
   const attached = await post(`/api/drafts/${draftId}/slide-media`, { slide_no: 2, asset_id: uploaded.descriptor.asset_id });
   assert.equal(attached.status, 200, await attached.clone().text());
   const draft = (await pool.query('SELECT * FROM drafts WHERE id=$1', [draftId])).rows[0];

@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import sharp from '../../render/node_modules/sharp/lib/index.js';
 import { saveIllustrationRaster } from '../../designer/illustrations.js';
+import { saveManualMediaRaster } from '../../designer/manual-media.js';
 import { buildEditorialBrief, validateOriginalContent } from '../../common/original-editorial.js';
 import { originalFixture } from '../../common/test/fixtures/original-editorial.js';
 
@@ -15,8 +16,13 @@ mock.module('../../common/llm.js', { namedExports: {
   loadAgentsConfig: () => config, loadAgentSkills: () => '',
   callAgentLLM,
 } });
-const { produceSingleTopicDraft, regenerateDraft, runCopywriter, pool } = await import('../copywriter.js');
+const { produceSingleTopicDraft: produceNewsDraft, regenerateDraft: regenerateNewsDraft, runCopywriter, pool } = await import('../copywriter.js');
 const topic = { id: 42, title: 'BPS merilis inflasi Oktober', summary: 'Inflasi Oktober mencapai 2,1%.', primary_source: 'BPS', url: 'https://www.bps.go.id/rilis/1', status: 'scored' };
+const testExplainerInput = { version: 1, mode: 'explainer', facts: [] };
+const produceSingleTopicDraft = (source, db, options = {}) => produceNewsDraft(source, db,
+  options.editorialInput !== undefined ? options : { editorialInput: testExplainerInput, ...options });
+const regenerateDraft = (id, db, options = {}) => regenerateNewsDraft(id, db,
+  options.editorialInput !== undefined ? options : { editorialInput: testExplainerInput, ...options });
 
 test.beforeEach((t) => {
   config = { analis: { min_score_threshold: 76 } };
@@ -55,6 +61,7 @@ function database(overrides = {}) {
       if (/FROM audit_log\b/i.test(text)) return { rows: overrides.audit || [] };
       if (/FROM media_assets\b/i.test(text)) return { rows: (overrides.assets || []).filter((asset) => /WHERE id=\$1/.test(text)
         ? asset.id === values[0] : String(asset.topic_id) === String(values[0]) && asset.selected && asset.status === 'ready') };
+      if (/FROM manual_media_assets\b/i.test(text)) return { rows: (overrides.manualMediaAssets || []).filter((asset) => asset.id === values[0]) };
       if (/INSERT INTO drafts\b/i.test(text)) { inserted++; return { rows: [{ id: 80 + inserted }] }; }
       return { rows: [], rowCount: 1 };
     },
@@ -435,7 +442,7 @@ test('a rendered record without actual slide text is still incomplete', async (t
   assert.equal(result.is_existing, false);
 });
 
-test('R6 production needs no source summary and persists original input, platform captions and scope', async (t) => {
+test('explicit explainer input remains available for non-news editorial fixtures', async (t) => {
   const render = mockRender(t);
   const db = database({ topic: { summary: null, body: 'PUBLISHER_BODY_SENTINEL', image_url: 'https://img.antaranews.com/PUBLISHER_PHOTO_SENTINEL.jpg' } });
   const result = await produceSingleTopicDraft(topic, db.client);
@@ -486,15 +493,16 @@ test('regeneration provider failure leaves the previous revision and schedules u
   assert.equal(db.sql.at(-1).text, 'ROLLBACK');
 });
 
-test('needs_media remains an early gate before LLM calls or draft mutations', async (t) => {
+test('manual-first production may create a reviewed draft without an image, but cover gate remains downstream', async (t) => {
   config.designer = { image_generation: { enabled: true } };
   const render = mockRender(t);
   const db = database();
-  await assert.rejects(produceSingleTopicDraft(topic, db.client), /needs_media/);
-  assert.equal(callAgentLLM.mock.callCount(), 0);
-  assert.equal(render.mock.callCount(), 0);
-  assert.equal(db.inserted, 0);
-  assert.equal(db.sql.at(-1).text, 'ROLLBACK');
+  const result = await produceSingleTopicDraft(topic, db.client);
+  assert.equal(result.draft_id, 81);
+  assert.equal(JSON.parse(db.sql.find(({ text }) => /INSERT INTO drafts/.test(text)).values[1])[0].data.asset_id, undefined);
+  assert.equal(JSON.parse(db.sql.find(({ text }) => /INSERT INTO drafts/.test(text)).values[6]), true);
+  assert.equal(callAgentLLM.mock.callCount(), 2);
+  assert.equal(render.mock.callCount(), 1);
 });
 
 test('rendered legacy source-copy drafts are regenerated instead of silently reused for R6', async (t) => {
@@ -512,13 +520,17 @@ test('rendered legacy source-copy drafts are regenerated instead of silently reu
   assert.ok(db.sql.some(({ text, values }) => /UPDATE drafts SET status = 'failed'/.test(text) && values[0] === legacy.id));
 });
 
-const currentInput = () => ({ version: 1, mode: 'current', facts: [{ id: 'f1', text: 'BPS mencatat inflasi tahunan sebesar 2,1%.', source_url: 'https://www.bps.go.id/rilis/inflasi', source_name: 'BPS' }] });
+const currentInput = () => ({ version: 1, mode: 'current', facts: [
+  { id: 'f1', text: 'BPS mencatat inflasi tahunan sebesar 2,1%, ukuran perubahan harga konsumen dalam satu tahun.', source_url: 'https://www.bps.go.id/rilis/inflasi', source_name: 'BPS' },
+  { id: 'f2', text: 'Angka inflasi membantu menjelaskan perubahan daya beli rumah tangga selama periode laporan.', source_url: 'https://www.bps.go.id/rilis/inflasi', source_name: 'BPS' },
+  { id: 'f3', text: 'Perbandingan periode dan cakupan indeks perlu diperhatikan saat membaca data harga.', source_url: 'https://www.bps.go.id/rilis/inflasi', source_name: 'BPS' },
+] });
 
 test('regeneration restores stored editorial input without inferring facts from publisher summary', async (t) => {
   mockRender(t);
   const editorialInput = currentInput();
   const db = database({ existing: [{ id: 12, topic_id: 42, status: 'draft', editorial_input: editorialInput }] });
-  await regenerateDraft(12, db.client);
+  await regenerateNewsDraft(12, db.client);
   const update = db.sql.find(({ text }) => /UPDATE drafts SET slides/.test(text));
   assert.deepEqual(JSON.parse(update.values[6]), editorialInput);
   assert.equal(update.values[7], 'current');
@@ -582,10 +594,35 @@ test('regeneration preserves the local pinned illustration revision even when an
   }
 });
 
+test('regeneration preserves and hydrates an immutable manual cover and its credit', async (t) => {
+  const storagePath = await fs.mkdtemp('/tmp/opencode/gapura-quality-manual-cover-');
+  t.after(() => fs.rm(storagePath, { recursive: true, force: true }));
+  const bytes = await sharp({ create: { width: 900, height: 1200, channels: 3, background: '#1f7e81' } }).png().toBuffer();
+  const id = randomUUID();
+  const raster = await saveManualMediaRaster(id, bytes, { storagePath });
+  const asset = { ...raster, id, topic_id: 42, kind: 'editor_upload', rights_basis: 'own_work', credit: 'Grafis redaksi', rights_reference: null };
+  const existing = completeDraft();
+  existing.slides[0].data = { ...existing.slides[0].data, asset_id: id, asset_sha256: asset.sha256,
+    image_kind: 'editor_upload', credit: asset.credit, rights_basis: asset.rights_basis };
+  const db = database({ existing: [existing], manualMediaAssets: [asset] });
+  mockRender(t, (request) => {
+    assert.equal(request.slides[0].data.image_kind, 'editor_upload');
+    assert.equal(request.slides[0].data.credit, 'Grafis redaksi');
+    assert.equal(request.slides[0].data.rights_basis, 'own_work');
+    assert.match(request.slides[0].data.image_data, /^data:image\/jpeg;base64,/);
+    return { ok: true, json: async () => ({ rendered_slides: request.slides.map(({ no }) => ({ slide_no: no, file_path: `/test/${no}.png` })) }) };
+  });
+  await regenerateDraft(12, db.client, { editorialInput: testExplainerInput, imageOptions: { storagePath } });
+  const updated = JSON.parse(db.sql.find(({ text }) => /UPDATE drafts SET slides/.test(text)).values[1]);
+  assert.equal(updated[0].data.asset_id, id);
+  assert.equal(updated[0].data.asset_sha256, asset.sha256);
+  assert.equal(updated[0].data.credit, 'Grafis redaksi');
+});
+
 test('reuse compares normalized curated facts, retaining JSONB key-order independence', async (t) => {
   const render = mockRender(t);
   const editorialInput = currentInput();
-  const reordered = { facts: [{ source_name: 'BPS', source_url: editorialInput.facts[0].source_url, text: editorialInput.facts[0].text, id: 'f1' }], mode: 'current' };
+  const reordered = { facts: editorialInput.facts.map(({ id, text, source_url, source_name }) => ({ source_name, source_url, text, id })), mode: 'current' };
   const db = database({ topic: { status: 'produced' }, existing: [completeDraft({}, { editorialInput })] });
   const result = await produceSingleTopicDraft(topic, db.client, { editorialInput: reordered });
   assert.equal(result.is_existing, true);

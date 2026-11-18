@@ -33,6 +33,12 @@ teknis: unggah gambar manual menjadi jalur utama, cover slide 1 wajib bergambar
 sebelum approval/publish, slide isi opsional, dan enam sampel draf manual sudah
 dibuat untuk dinilai owner. Tidak ada generasi raster AI nyata, publikasi nyata,
 atau aktivasi otomatisasi; kuota gambar AI tetap 0.
+Perbaikan kualitas pra-R8 ada di
+[laporan](docs/plans/16_PRE_R8_EDITORIAL_QUALITY.md): generasi berita dari materi
+R2 kini terhubung dan gagal tertutup bila bahan/domain tidak memadai/diizinkan;
+domain AI allowlist masih kosong sampai redaksi memiliki izin tertulis. Renderer
+body dipusatkan, ukuran font diturunkan, serta CTA/filler default dibuang. R8,
+publish live, dan aktivasi timer tetap menunggu review owner dan mandat terpisah.
 
 ---
 

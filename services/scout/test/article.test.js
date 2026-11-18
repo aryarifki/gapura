@@ -77,6 +77,21 @@ test('supports only article roots or explicit publisher selectors, with no body/
   assert.equal(result.extraction.kind, 'article_html');
 });
 
+test('publisher article selector omits navigation, related links, byline and source processing notice', () => {
+  const html = `<title>Berita warga</title><div class="wrap__article-detail-content post-content">
+    <p>Jakarta (ANTARA) - Pemerintah mengumumkan kebijakan baru untuk kelompok masyarakat.</p>
+    <p>Penjelasan pertama mengenai pelaksanaan kebijakan tersebut.</p>
+    <p>Informasi tambahan menerangkan alasan dan konteks kebijakan.</p>
+    <p><span class="baca-juga">Baca juga: artikel lain.</span></p>
+    <p>Pewarta: Nama Reporter<br>Editor: Nama Editor<br>Copyright © ANTARA 2026</p>
+    <p class="alert alert-info">Dilarang keras mengambil konten, melakukan crawling atau pengindeksan otomatis untuk AI tanpa izin tertulis.</p>
+  </div><section class="related"><p>Berita terkait tidak boleh ikut.</p></section>`;
+  const result = extract(html, { articleSelectors: ['.wrap__article-detail-content.post-content'] });
+  assert.equal(result.extraction.status, 'full');
+  assert.equal(result.paragraphs.length, 3);
+  assert.doesNotMatch(result.body, /Baca juga|Pewarta|Editor:|Copyright|Dilarang keras|Berita terkait/iu);
+});
+
 test('handles invalid publisher selectors without throwing or losing an ordinary article', () => {
   const result = extract(htmlArticle('<p>Isi singkat.</p>'), { articleSelectors: ['[broken'] });
   assert.equal(result.body, 'Isi singkat.');

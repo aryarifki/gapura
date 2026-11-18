@@ -40,9 +40,11 @@ export function originalFixture(brief = {}) {
     threads_fact_ids: [], hashtags: ['#GapuraMedia', '#IsuPublik'],
   };
   if (brief.mode === 'current' && brief.facts?.[0]) {
-    const fact = brief.facts[0];
-    raw.slides[1] = { ...raw.slides[1], teks: fact.text, claim_type: 'fact', fact_ids: [fact.id] };
-    raw.caption_blocks.unshift({ kind: 'fact', text: fact.text, fact_ids: [fact.id] });
+    const facts = brief.facts.slice(0, 3);
+    facts.forEach((fact, index) => {
+      raw.slides[index + 1] = { ...raw.slides[index + 1], teks: `${fact.text} Rincian ini memberi konteks bagi pembaca untuk memahami perkembangan berita secara lebih utuh sesuai informasi yang tersedia.`, claim_type: 'fact', fact_ids: [fact.id] };
+    });
+    raw.caption_blocks = facts.map((fact) => ({ kind: 'fact', text: fact.text, fact_ids: [fact.id] })).concat(raw.caption_blocks);
   }
   return raw;
 }

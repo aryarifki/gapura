@@ -21,6 +21,7 @@ const DATE = /\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}\s+(?:Januari|Februari|Maret|April|
 const RELATIVE_DATE = /\b(?:kemarin|hari ini|besok|pekan ini|minggu ini|bulan ini|tahun ini)\b/iu;
 const CONDITIONAL = /\b(?:dapat|bisa|mungkin|jika|apabila|bila|bagaimana|mekanisme|berpotensi)\b/iu;
 const QUALIFIER = /\b(?:diduga|dugaan|dituduh|tuduhan|belum|berpotensi|diperkirakan|sementara(?!\s+itu\b)|kemungkinan)\b/iu;
+const EDITORIAL_FILLER = /\b(?:baca rilis lengkap|cek pembaruan berikutnya|yang perlu diperiksa|konteks dan batas informasi|ikuti pembaruan)\b/iu;
 
 const fail = (reason) => { throw new Error(`original_${reason}`); };
 const text = (value, field, max = TEXT_MAX) => {
@@ -129,7 +130,7 @@ function normalizeFactIds(value, map, field) {
 
 function checkOriginalText(value, { brief, factIds, claimType, field }) {
   const valueText = text(value, field);
-  if (INTERNAL.test(valueText) || /#[\p{L}\p{N}_]+/u.test(valueText)) fail(`${field}_internal`);
+  if (INTERNAL.test(valueText) || EDITORIAL_FILLER.test(valueText) || /#[\p{L}\p{N}_]+/u.test(valueText)) fail(`${field}_internal`);
   const facts = factIds.map((id) => factMap(brief).get(id));
   if (brief.mode === 'explainer') {
     if (claimType === 'fact' || factIds.length || NUMERIC.test(valueText) || QUOTE.test(valueText) || [...valueText.matchAll(ATTRIBUTION)].length
@@ -254,6 +255,7 @@ export function validateOriginalContent(raw, brief) {
     const factIds = normalizeFactIds(slide.fact_ids, map, `slide_${index}_fact_ids`);
     const teks = checkOriginalText(slide.teks, { brief, factIds, claimType: slide.claim_type, field: `slide_${index}_text` });
     if (teks.length > (index === 0 ? 120 : 500)) fail('slide_text_length');
+    if (brief.mode === 'current' && brief.facts.length >= 3 && index > 0 && teks.length < 80) fail('slide_text_length');
     if (seenText.has(normalized(teks))) fail('slide_text_duplicate');
     seenText.add(normalized(teks));
     const data = validateSlideData(slide, brief, map);
@@ -271,6 +273,11 @@ export function validateOriginalContent(raw, brief) {
   });
   if (brief.mode === 'current' && !slides.some((slide) => slide.claim_type === 'fact' && slide.fact_ids.length)
       && !blocks.some((block) => block.kind === 'fact' && block.fact_ids.length)) fail('current_facts_unused');
+  if (brief.mode === 'current' && brief.facts.length >= 3) {
+    const used = new Set(slides.flatMap((slide) => slide.fact_ids));
+    const captionUsed = new Set(blocks.flatMap((block) => block.fact_ids));
+    if (used.size < 3 || captionUsed.size < 3) fail('current_fact_coverage');
+  }
   const captionBody = blocks.map((block) => block.text).join('\n\n');
   if (captionBody.length < 1200 || captionBody.length > 1900) fail('caption_body_length');
   const hashtags = Array.isArray(raw.hashtags) ? raw.hashtags : [];

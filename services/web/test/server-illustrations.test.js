@@ -6,6 +6,8 @@ import path from 'node:path';
 import pkg from 'pg';
 import sharp from '../../render/node_modules/sharp/lib/index.js';
 import { createIllustrationService } from '../../designer/illustration-store.js';
+import { buildEditorialBrief, validateOriginalContent } from '../../common/original-editorial.js';
+import { originalFixture } from '../../common/test/fixtures/original-editorial.js';
 
 const enabled = Boolean(process.env.GAPURA_TEST_BASE);
 const base = process.env.GAPURA_TEST_BASE;
@@ -20,6 +22,11 @@ async function topic(t) {
   return row;
 }
 const mockGenerate = async () => ({ bytes: await sharp({ create: { width: 640, height: 480, channels: 3, background: '#1f7e81' } }).png().toBuffer(), mime: 'image/png', provider: 'gemini', model: 'fixture-image', prompt: 'Ilustrasi konseptual Gapura', generation_id: 'fixture', rights_reference: 'https://ai.google.dev/gemini-api/terms' });
+const newsInput = { version: 1, mode: 'current', facts: [
+  { id: 'f1', text: 'Dinas menyatakan layanan kembali dibuka bagi warga setelah perbaikan fasilitas selesai.', source_url: 'https://example.org/rilis', source_name: 'Dinas' },
+  { id: 'f2', text: 'Warga dapat mengakses layanan melalui kantor kecamatan sesuai jadwal yang ditetapkan.', source_url: 'https://example.org/rilis', source_name: 'Dinas' },
+  { id: 'f3', text: 'Petugas menyediakan informasi mengenai persyaratan dan dokumen yang perlu disiapkan.', source_url: 'https://example.org/rilis', source_name: 'Dinas' },
+] };
 
 test('illustration migration is additive/idempotent; service stores immutable raster and idempotent requests', { skip: !enabled }, async (t) => {
   const item = await topic(t);
@@ -130,7 +137,7 @@ test('production without verification reports pins the selected illustration and
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM verification_reports WHERE topic_id=$1', [item.id])).rows[0].n, 0);
   const service = createIllustrationService({ pool, storagePath, generate: mockGenerate });
   const first = await service.generate(item.id, { request_id: randomUUID() });
-  const response = await fetch(`${base}/api/topics/${item.id}/auto-produce`, { method: 'POST', headers, body: '{}' });
+  const response = await fetch(`${base}/api/topics/${item.id}/auto-produce`, { method: 'POST', headers, body: JSON.stringify({ editorial_input: newsInput }) });
   assert.equal(response.status, 200, await response.clone().text());
   const produced = await response.json();
   const draft = (await pool.query('SELECT * FROM drafts WHERE id=$1', [produced.draft_id])).rows[0];
@@ -149,16 +156,20 @@ test('production without verification reports pins the selected illustration and
   assert.equal(replaced.needs_review, true);
 });
 
-test('missing or failed illustration blocks production before a text-only draft is written', { skip: !enabled }, async (t) => {
+test('manual-first production remains reviewable when Gemini image generation is unavailable', { skip: !enabled }, async (t) => {
   const item = await topic(t);
   await pool.query("UPDATE topics SET status='scored' WHERE id=$1", [item.id]);
   await pool.query("INSERT INTO topic_scores(topic_id,score_relevance,score_credibility,score_momentum,score_engagement,score_compliance,score_total,verdict,model) VALUES($1,30,25,20,10,10,95,'passed','fixture')", [item.id]);
   const service = createIllustrationService({ pool, storagePath, generate: async () => { throw new Error('illustration_provider_http_429'); } });
   await service.generate(item.id, { request_id: randomUUID() });
-  const response = await fetch(`${base}/api/topics/${item.id}/auto-produce`, { method: 'POST', headers, body: '{}' });
-  assert.equal(response.status, 409);
-  assert.match((await response.json()).error, /needs_media/);
-  assert.equal((await pool.query('SELECT count(*)::int AS n FROM drafts WHERE topic_id=$1', [item.id])).rows[0].n, 0);
+  const response = await fetch(`${base}/api/topics/${item.id}/auto-produce`, { method: 'POST', headers, body: JSON.stringify({ editorial_input: newsInput }) });
+  assert.equal(response.status, 200, await response.clone().text());
+  const { draft_id } = await response.json();
+  const draft = (await pool.query('SELECT * FROM drafts WHERE id=$1', [draft_id])).rows[0];
+  assert.equal(draft.slides[0].data.asset_id, undefined);
+  assert.equal(draft.needs_review, true);
+  assert.equal(draft.status, 'draft');
+  assert.equal((await pool.query("SELECT count(*)::int AS n FROM scheduled_posts WHERE draft_id=$1", [draft_id])).rows[0].n, 0);
 });
 
 test('deleting a text slide does not copy its following illustration onto another text slide', { skip: !enabled }, async (t) => {
@@ -185,8 +196,10 @@ test('custom design can pin a selected topic illustration before inserting/rende
   const item = await topic(t);
   const service = createIllustrationService({ pool, storagePath, generate: mockGenerate });
   const { asset } = await service.generate(item.id, { request_id: randomUUID() });
-  const slides = [{ no: 1, layout: 'cover-focus', teks: 'Penjelasan orisinal custom', data: { title: 'Penjelasan custom' } }];
-  const body = { topic_id: Number(item.id), title: 'Penjelasan custom', source_url: item.url, slides, caption: 'Naskah custom Gapura', hashtags: ['#GapuraMedia'], format: 'single' };
+  const brief = buildEditorialBrief({ title: 'Layanan publik untuk warga', primary_source: 'Fixture', url: item.url }, { editorialInput: newsInput });
+  const content = validateOriginalContent(originalFixture(brief), brief);
+  const slides = content.slides;
+  const body = { ...content, topic_id: Number(item.id), title: 'Penjelasan custom', source_url: item.url, slides, format: 'carousel' };
   const response = await fetch(`${base}/api/drafts/create-from-custom`, { method: 'POST', headers, body: JSON.stringify(body) });
   assert.equal(response.status, 200, await response.clone().text());
   const result = await response.json();
@@ -195,10 +208,13 @@ test('custom design can pin a selected topic illustration before inserting/rende
   assert.equal(saved.slides[0].data.asset_id, asset.id);
   assert.equal(saved.slides[0].data.image_data, undefined);
   const other = await topic(t);
-  const invalid = await fetch(`${base}/api/drafts/create-from-custom`, { method: 'POST', headers, body: JSON.stringify({ ...body, topic_id: Number(other.id), slides: [{ ...slides[0], data: { asset_id: asset.id } }] }) });
+  const invalid = await fetch(`${base}/api/drafts/create-from-custom`, { method: 'POST', headers, body: JSON.stringify({ ...body, topic_id: Number(other.id), slides: slides.map((slide, index) => index ? slide : { ...slide, data: { ...slide.data, asset_id: asset.id } }) }) });
   assert.equal(invalid.status, 409);
   const missing = await fetch(`${base}/api/drafts/create-from-custom`, { method: 'POST', headers, body: JSON.stringify({ ...body, topic_id: Number(other.id) }) });
   assert.equal(missing.status, 200, await missing.clone().text());
-  const { rows: [uncovered] } = await pool.query('SELECT slides FROM drafts WHERE topic_id=$1', [other.id]);
+  const { draft_id: uncoveredDraft } = await missing.json();
+  const { rows: [uncovered] } = await pool.query('SELECT slides,status,needs_review FROM drafts WHERE id=$1', [uncoveredDraft]);
   assert.equal(uncovered.slides[0].data.asset_id, undefined);
+  assert.equal(uncovered.status, 'draft');
+  assert.equal(uncovered.needs_review, true);
 });

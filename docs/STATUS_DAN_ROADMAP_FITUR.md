@@ -26,7 +26,11 @@ carousel 3–9 slide default enam, caption isi 1.200–1.900 karakter, Threads
 mandiri ≤500, serta persistensi/hash/publisher yang memeriksa ulang metadata
 dalam row lock. Migrasi additive diterapkan ke produksi setelah backup/restore
 test; web/render dimuat ulang. Raster AI nyata, sampel visual owner dan publish
-live tetap belum ada.
+live tetap belum ada. Perbaikan kualitas pra-R8 menghubungkan generasi ke materi
+artikel R2 dengan izin domain fail-closed, menolak caption/slide berita yang
+kurang bahan atau berupa filler, dan merapikan tipografi/posisi konten body.
+Domain produksi belum diizinkan; detail gate dan tes di
+[laporan pra-R8](plans/16_PRE_R8_EDITORIAL_QUALITY.md).
 
 Enam agen aktif adalah **Scout, Analis, Copywriter, Designer, SEO, dan Studio**.
 Persetujuan manusia harus eksplisit atas revisi terkini, dicatat bersama hash
@@ -67,7 +71,8 @@ manusia.
 | **R5 — Lepas Verifikator** | ✅ **Selesai; gate teknis lulus** | Tidak ada Verifikator pada API/UI/config, produksi, Studio, Telegram atau publisher aktif; report/confidence bukan gate. Review manusia, audit hash, invalidasi approval dan locked recheck tetap wajib. Tabel/kolom/enum arsip dipertahankan. [Laporan R5](plans/13_R5_REMOVE_VERIFICATOR.md). |
 | **R6 — Naskah/desain orisinal dua mode** | ✅ **Selesai; gate teknis lulus** | `explainer` vs `current` dengan fakta teratribusi eksplisit, tanpa body/summary/foto penerbit pada payload generasi; carousel 3–9 default enam, caption isi 1.200–1.900 karakter, Threads ≤500. Tujuh kolom baru dan migrasi additive terpasang di produksi setelah backup/restore test. [Laporan R6](plans/14_R6_ORIGINAL_EDITORIAL.md). |
 | **R7 — Gambar manual dan cover wajib** | ✅ **Selesai; gate teknis lulus** | Unggah manual menjadi jalur utama; cover = slide 1 wajib bergambar sebelum approval/publish, slide isi opsional. Tabel `manual_media_assets` immutable, descriptor credit/hak, gate approval/publisher, UI unggah/pasang, dan renderer `Gambar: <credit>` teruji. Enam sampel draf 144–149 masih `draft`/`needs_review`, menunggu penilaian owner. [Laporan R7](plans/15_R7_MANUAL_MEDIA.md). |
-| **R8 — Aktivasi dan publish uji** | ⏳ **Belum dijalankan** | Batch 20 draf, shadow, lalu satu publish uji dengan persetujuan terpisah setelah sampel R7 disetujui dan izin Meta diperiksa ulang. Timer/worker tetap dijeda. |
+| **Perbaikan kualitas pra-R8** | ✅ **Gate teknis lulus; belum deploy** | Isi artikel, gate bahan/izin AI, caption substansial, filler, tipografi dan posisi body diperbaiki. Allowlist produksi tetap kosong sampai izin tertulis domain ditetapkan. [Laporan](plans/16_PRE_R8_EDITORIAL_QUALITY.md). |
+| **R8 — Aktivasi dan publish uji** | ⏳ **Belum dijalankan** | Menunggu review owner atas sampel R7 dan keputusan izin domain AI. Sesudah itu: batch 20 draf, shadow, lalu satu publish uji dengan persetujuan terpisah. Timer/worker tetap dijeda. |
 | **Telegram Approval Bot** | ⏳ **Belum Dikonfigurasi** | Engine dan kode notifikasi Telegram telah siap, namun menunggu input token Bot Telegram (`TELEGRAM_BOT_TOKEN`) dan Chat ID admin dari owner agar bot dapat aktif di polling. |
 | **Kalender Konten Interaktif** | ⏳ **Belum Dikerjakan** | Jadwal tersimpan di PostgreSQL; kalender visual dengan drag-and-drop belum tersedia. |
 | **Multi-User Role** | ⏳ **Belum Dikerjakan** | Dashboard dibuka langsung tanpa login/token admin atas permintaan owner. Validasi Origin dan redaksi API key tetap aktif; akun pengguna dan pembagian role belum tersedia. |

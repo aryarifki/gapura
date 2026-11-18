@@ -41,7 +41,11 @@ test('Chromium: newsroom opens without login, navigation, fresh draft review, Ra
   const manualAssetId = '9c1f4b52-6d0e-4a63-9f0e-2b7c8d1a4e55';
   let illustration = null;
   let manualAsset = null;
-  const currentInput = { version: 1, mode: 'current', facts: [{ id: 'service', text: 'Layanan dibuka kembali.', source_url: 'https://example.org/rilis', source_name: 'Dinas' }] };
+  const currentInput = { version: 1, mode: 'current', facts: [
+    { id: 'service', text: 'Dinas menyatakan layanan kembali dibuka bagi warga setelah perbaikan fasilitas selesai.', source_url: 'https://example.org/rilis', source_name: 'Dinas' },
+    { id: 'access', text: 'Warga dapat mengakses layanan melalui kantor kecamatan sesuai jadwal yang ditetapkan.', source_url: 'https://example.org/rilis', source_name: 'Dinas' },
+    { id: 'requirements', text: 'Petugas menyediakan informasi mengenai persyaratan dan dokumen yang perlu disiapkan.', source_url: 'https://example.org/rilis', source_name: 'Dinas' },
+  ] };
   const makeContent = (input = { mode: 'explainer', facts: [] }) => { const brief = buildEditorialBrief(topic, { editorialInput: input }); return validateOriginalContent(originalFixture(brief), brief); };
   let detailDraft = { ...draft, ...makeContent(currentInput), caption: 'Fresh detail caption for review', revision: 'fixture-reviewed-revision' };
   let jobs = [];

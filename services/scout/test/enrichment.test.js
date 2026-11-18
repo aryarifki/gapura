@@ -23,7 +23,7 @@ function fixture({ topic = { id: '7', title: 'Judul Radar', summary: 'Ringkasan 
     paragraphs: [1, 2, 3].map((id) => ({ id: `p${id}`, text: `Paragraf ${id} bahan artikel.`, source_url: topic.url, role: 'reporting' })),
     images: [], extraction: { kind: 'article_html', status: 'full', error_code: null },
   }; } };
-  return { service: createTopicMaterialService({ pool, reader }), calls, fetches };
+  return { service: createTopicMaterialService({ pool, reader, allowedHosts: new Set(['publisher.example.org', 'news.google.com', 'www.antaranews.com']) }), calls, fetches };
 }
 
 test('manual article enrichment saves a snapshot without rewriting discovery evidence or producing drafts', async () => {
@@ -44,6 +44,24 @@ test('publisher metadata is passed as resolver context, never used as the articl
   await f.service.enrich(7);
   assert.equal(f.fetches[0].url, topic.url);
   assert.equal(f.fetches[0].publisherUrl, topic.publisher_url);
+});
+
+test('approved publisher articles receive only a host-mapped content selector', async () => {
+  const topic = { id: '7', title: 'Berita Antara', summary: 'Ringkas.', url: 'https://www.antaranews.com/berita/1', primary_source: 'ANTARA' };
+  const f = fixture({ topic });
+  await f.service.enrich(7);
+  assert.deepEqual(f.fetches[0].articleSelectors, ['.wrap__article-detail-content.post-content']);
+});
+
+test('unapproved domains fail closed before the reader is called', async () => {
+  const f = fixture();
+  const denied = createTopicMaterialService({
+    pool: { connect: async () => ({ release() {}, query: async (sql) => ({ rows: sql.startsWith('SELECT t.*') ? [{ id: '7', title: 'Judul', url: 'https://publisher.example.org/a', primary_source: 'Media' }] : [] }) }) },
+    reader: { read: async () => { throw new Error('must_not_read'); } },
+    allowedHosts: new Set(),
+  });
+  await assert.rejects(denied.enrich(7), /source_material_permission_required/);
+  assert.equal(f.fetches.length, 0);
 });
 
 test('stored full material is reused without a fresh article request', async () => {

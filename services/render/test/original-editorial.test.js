@@ -131,6 +131,26 @@ test('ordinary body prose stays present alongside an explicitly supplied quotati
   }
 });
 
+test('body slide content is vertically centered and uses restrained body typography', () => {
+  const rendered = engine.resolveLayout(makeSlide('big-statement'), 2, 6);
+  const styles = [];
+  const visit = (node) => {
+    if (Array.isArray(node)) return node.forEach(visit);
+    if (!node || typeof node !== 'object') return;
+    if (node.props?.style) styles.push(node.props.style);
+    visit(node.props?.children);
+  };
+  visit(rendered);
+  assert.ok(styles.some((style) => style.justifyContent === 'center' && style.flex === 1));
+  assert.ok(!styles.some((style) => Number.parseInt(style.fontSize, 10) > 36));
+});
+
+test('body slides never inject source prompts or placeholder close copy', () => {
+  const rendered = texts(engine.resolveLayout(makeSlide('cta-close'), 3, 6)).join('\n');
+  assert.doesNotMatch(rendered, /Baca rilis lengkap|cek pembaruan berikutnya|Yang perlu diperiksa|RINGKASAN|ANALISIS EDITORIAL/iu);
+  assert.ok(rendered.includes(script));
+});
+
 test('an author field alone cannot turn ordinary fluid prose into an attributed quotation', () => {
   const slide = makeSlide('editorial-fallback', { author: 'Narasumber uji' });
   const rendered = texts(engine.resolveLayout(slide, 2, 3));

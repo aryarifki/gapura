@@ -51,6 +51,7 @@ import {
 import { randomUUID } from 'node:crypto';
 import { createTopicClusterHandler } from './clusters.js';
 import { normalizeDesk } from '../common/discovery.js';
+import { assertNewsEditorialInput, createTopicEditorialInputLoader, resolveTopicEditorialInput } from '../copywriter/source-input.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -108,6 +109,7 @@ const draftDependencies = { pool, renderUrl: RENDER_SERVICE_URL, renderSecret: R
 
 function editorialError(res, error) {
   if (/original_|generation_required/u.test(error.message)) return res.status(422).json({ error: 'Naskah editorial belum valid. Periksa mode, catatan fakta dan rujukannya, lalu buat ulang. Mode explainer memakai fakta kosong; mode current memerlukan fakta beratribusi.' });
+  if (/source_material_permission_required|source_material_insufficient|source_material_url_invalid/u.test(error.message)) return res.status(422).json({ error: 'Materi sumber belum siap untuk generasi berita. Pastikan domain sumber diizinkan untuk pemrosesan AI atau masukkan sedikitnya tiga fakta substantif yang sudah dikurasi, dengan nama sumber dan URL untuk masing-masing fakta.' });
   if (/needs_media|illustration_/u.test(error.message)) return res.status(409).json({ error: 'needs_media: Ilustrasi topik belum siap atau revisinya tidak cocok. Buat atau pilih ilustrasi topik sebelum produksi.' });
   if (/not_found|tidak ditemukan/u.test(error.message)) return res.status(404).json({ error: 'Topik, draf, atau job tidak ditemukan.' });
   if (/Render|render/u.test(error.message)) return res.status(502).json({ error: 'Render belum selesai. Tinjau status draf sebelum mencoba ulang.' });
@@ -166,6 +168,7 @@ async function writeAudit(entity, entityId, action, actor = 'web_admin', payload
 
 const scheduler = createScheduler();
 const topicMaterials = createTopicMaterialService({ pool, reader: createArticleReader() });
+const topicEditorialLoader = createTopicEditorialInputLoader({ pool, reader: createArticleReader() });
 const illustrations = createIllustrationService({ pool, storagePath: STORAGE_PATH });
 const illustrationRequests = new Map();
 let activeIllustrationRequests = 0;
@@ -385,6 +388,8 @@ app.get('/api/drafts/:id', async (req, res) => {
 app.post('/api/drafts/:id/regenerate-ai', async (req, res) => {
   const draftId = parseInt(req.params.id);
   try {
+    const { rows: [current] } = await pool.query('SELECT topic_id, editorial_input FROM drafts WHERE id=$1', [draftId]);
+    if (!current) return res.status(404).json({ error: 'Draf tidak ditemukan.' });
     const options = req.body?.editorial_input === undefined ? {} : { editorialInput: normalizeEditorialInput(req.body.editorial_input) };
     const result = await regenerateDraft(draftId, pool, options);
     const { rows: [draft] } = await pool.query('SELECT caption,hashtags,editorial_input,editorial_mode,editorial_references,caption_body,threads_caption,angle,scope_note FROM drafts WHERE id=$1', [draftId]);
@@ -406,12 +411,25 @@ app.post('/api/designer/generate-slides', async (req, res) => {
     const sourceUrl = String(url || '').trim();
     const sourceError = validatePublicSourceUrl(sourceUrl);
     if (sourceError) return res.status(400).json({ error: `URL sumber primer wajib valid: ${sourceError}` });
-    const topic = {
+    const topicId = Number(req.body?.topic_id);
+    const topic = topicId > 0 ? await pool.query(`SELECT t.*, ts.score_total, ts.verdict AS score_verdict
+      FROM topics t LEFT JOIN LATERAL (SELECT score_total, verdict FROM topic_scores WHERE topic_id=t.id ORDER BY created_at DESC,id DESC LIMIT 1) ts ON TRUE
+      WHERE t.id=$1`, [topicId]).then(({ rows: [row] }) => row) : null;
+    if (topicId > 0 && !topic) return res.status(404).json({ error: 'Topik tidak ditemukan.' });
+    if (topicId > 0) {
+      const eligibility = validateStudioTopic({ ...topic, ...(topic.status === 'produced' ? { status: 'scored' } : {}) }, loadAgentsConfig().analis?.min_score_threshold ?? 76);
+      if (!eligibility.valid || topic.score_verdict !== 'passed') return res.status(409).json({ error: 'Pilih topik yang lolos skor Analis dan memiliki sumber primer.' });
+    }
+    const editorialInput = topicId > 0
+      ? await resolveTopicEditorialInput(topicEditorialLoader, topicId, req.body?.editorial_input)
+      : normalizeEditorialInput(req.body?.editorial_input);
+    if (editorialInput.mode === 'current') assertNewsEditorialInput(editorialInput);
+    const generationTopic = topic || {
       title: title.trim(),
       primary_source: typeof primary_source === 'string' ? primary_source.trim().slice(0, 100) : '',
       url: sourceUrl,
     };
-    const content = await buildCarouselSlides(topic, { editorialInput: normalizeEditorialInput(req.body.editorial_input) });
+    const content = await buildCarouselSlides(generationTopic, { editorialInput });
     res.json({ status: 'success', ...content });
   } catch (err) {
     console.error('[Web API] Error generating slides via AI Designer:', err);
@@ -430,6 +448,8 @@ app.post('/api/drafts/create-from-custom', async (req, res) => {
   try {
     if (req.body.editorial_mode !== undefined || req.body.editorial_input !== undefined) original = customOriginalContent(req.body);
     else if (!(format === 'single' && slides.length === 1) && (slides.length < 3 || slides.length > 9)) throw new Error('original_slide_count_invalid');
+    if (!original) throw new DraftError('Naskah custom belum memenuhi kontrak carousel berita dan caption; buat ulang melalui generator berita berbahan sumber.', 422);
+    if (original.editorial_mode === 'current') assertNewsEditorialInput(original.editorial_input);
   } catch (error) { return editorialError(res, error); }
   const client = await pool.connect();
   try {
@@ -439,8 +459,6 @@ app.post('/api/drafts/create-from-custom', async (req, res) => {
     if (topicId) {
       const { rows } = await client.query('SELECT id FROM topics WHERE id=$1', [topicId]);
       if (!rows.length) throw new DraftError('Topik tidak ditemukan.', 404);
-    } else if (loadAgentsConfig().designer?.image_generation?.enabled === true) {
-      throw new DraftError('needs_media: Pilih topik Radar yang sudah memiliki ilustrasi AI.', 409);
     } else {
       const { rows: [topic] } = await client.query(
         `INSERT INTO topics (title,summary,primary_source,url,status,source_kind) VALUES($1,$2,$3,$4,'new','custom_studio') RETURNING id`,
@@ -453,12 +471,12 @@ app.post('/api/drafts/create-from-custom', async (req, res) => {
       if (asset) pinnedSlides[0].data = { ...pinnedSlides[0].data, ...illustrationDescriptor(asset) };
     }
     // 2. Simpan draft as a review-only design preview; it is not marked as scored.
-    const defaultCaption = original?.caption || caption || [title, summary].filter(Boolean).join('\n\n');
+    const defaultCaption = original.caption;
     const defaultHashtags = original?.hashtags || (Array.isArray(hashtags) && hashtags.length > 0 ? hashtags : ['#GapuraMedia', '#BeritaNasional', '#IsuPublik', '#Indonesia']);
 
     const { rows: draftRows } = await client.query(
       `INSERT INTO drafts (topic_id, slides, content_format, caption, hashtags, disclaimer_type, status, needs_review, tokens_version, copy_model)
-        VALUES ($1, $2, $3, $4, $5, NULL, 'draft', true, 'v1.0', 'studio-ai-designer') RETURNING id`,
+        VALUES ($1, $2, $3, $4, $5, NULL, 'draft', true, 'v1.0', 'original-editorial-v1') RETURNING id`,
       [topicId, JSON.stringify(pinnedSlides), req.body?.format === 'single' && slides.length === 1 ? 'single' : 'carousel', defaultCaption, defaultHashtags]
     );
     const draftId = draftRows[0].id;
@@ -551,6 +569,10 @@ app.post('/api/drafts/:id/approve', async (req, res) => {
       if (!hasCoverImage(lockedDrafts[0].slides)) {
         await client.query('ROLLBACK');
         return res.status(409).json({ error: 'Cover (slide 1) wajib memiliki gambar sebelum disetujui.' });
+      }
+      if (lockedDrafts[0].copy_model === 'studio-ai-designer') {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'Draf lama belum memenuhi kontrak berita bersumber. Buat ulang melalui generator berita dan tinjau isi serta caption lengkap sebelum menyetujui.' });
       }
       const gate = validateDraftApproval({
         status: lockedDrafts[0].status,
@@ -973,7 +995,10 @@ app.post('/api/topics/:id/material/enrich', async (req, res) => {
     return res.json(result);
   } catch (error) {
     const reason = error.message === 'topic_not_found' ? 'Topik tidak ditemukan.' : 'Materi tidak dapat diproses; periksa URL sumber dan status akses.';
-    return res.status(error.message === 'topic_not_found' ? 404 : /material_.*invalid|topic_id_invalid/u.test(error.message) ? 409 : 500).json({ error: reason });
+    const status = error.message === 'topic_not_found' ? 404
+      : /source_material_permission_required/u.test(error.message) ? 403
+        : /material_.*invalid|topic_id_invalid/u.test(error.message) ? 409 : 500;
+    return res.status(status).json({ error: status === 403 ? 'Domain sumber belum mendapat izin pemrosesan AI.' : reason });
   } finally { activeMaterialRequests--; }
 });
 
@@ -998,7 +1023,9 @@ app.post('/api/topics/:id/auto-produce', async (req, res) => {
   const topicId = parseInt(req.params.id);
   const force = req.body?.force === true || req.query?.force === 'true';
   try {
-    const options = req.body?.editorial_input === undefined ? {} : { editorialInput: normalizeEditorialInput(req.body.editorial_input) };
+    const topic = (await pool.query('SELECT id FROM topics WHERE id=$1', [topicId])).rows[0];
+    if (!topic) return res.status(404).json({ error: 'Topik tidak ditemukan.' });
+    const options = req.body?.editorial_input === undefined ? {} : { editorialInput: assertNewsEditorialInput(req.body.editorial_input) };
     let result;
     if (force) {
       const { rows } = await pool.query('SELECT id FROM drafts WHERE topic_id=$1 ORDER BY id DESC LIMIT 1', [topicId]);
@@ -1683,7 +1710,6 @@ app.post('/api/studio/jobs', async (req, res) => {
   }
   if (!Number.isInteger(topicId) || topicId < 1) return res.status(400).json({ error: 'Pilih topik Radar yang sudah lolos Analis dan memiliki sumber primer.' });
   try {
-    const editorialInput = normalizeEditorialInput(req.body?.editorial_input);
     const { rows: topicRows } = await pool.query(
       `SELECT t.id, t.status, t.url, t.title, ts.score_total, ts.verdict AS score_verdict
        FROM topics t LEFT JOIN LATERAL (
@@ -1692,6 +1718,8 @@ app.post('/api/studio/jobs', async (req, res) => {
     );
     const eligibility = validateStudioTopic(topicRows[0], loadAgentsConfig().analis?.min_score_threshold || 76);
     if (!eligibility.valid) return res.status(409).json({ error: `Topik sumber tidak memenuhi gate: ${eligibility.reason}.` });
+    if (topicRows[0].score_verdict !== 'passed') return res.status(409).json({ error: 'Topik sumber belum lolos skor Analis.' });
+    const editorialInput = await resolveTopicEditorialInput(topicEditorialLoader, topicId, req.body?.editorial_input);
     const { rowCount: existingDraftCount } = await pool.query('SELECT 1 FROM drafts WHERE topic_id = $1 LIMIT 1', [topicId]);
     if (existingDraftCount) return res.status(409).json({ error: 'Topik sudah memiliki draf. Buka draf tersebut dari Radar Topik untuk diedit.' });
     const { rows } = await pool.query(

@@ -242,8 +242,8 @@
                 <p class="form-help-text">Periksa rujukan sendiri sebelum memasukkan fakta. Perubahan diterapkan melalui Rancang ulang dan memerlukan review baru.</p>
                 <label class="form-label-editor" for="editor-regenerate-mode">Mode naskah</label>
                 <select id="editor-regenerate-mode" class="form-input-dark">
-                  <option value="explainer">Explainer — konteks dan analisis umum</option>
-                  <option value="current">Current — fakta terkini beratribusi</option>
+                   <option value="current">Berita dari fakta sumber</option>
+                   <option value="explainer">Explainer manual (3 fakta wajib)</option>
                 </select>
                 <label class="form-label-editor" for="editor-regenerate-facts">Catatan fakta dan referensi (JSON array)</label>
                 <textarea id="editor-regenerate-facts" class="form-input-dark" rows="5" spellcheck="false" aria-describedby="editor-regenerate-help">[]</textarea>
@@ -618,14 +618,14 @@
                 <div class="form-group-editor">
                   <label class="form-label-editor" for="studio-custom-editorial-mode">Mode naskah</label>
                   <select id="studio-custom-editorial-mode" class="form-input-dark">
-                    <option value="explainer">Explainer — konteks dan analisis umum</option>
-                    <option value="current">Current — fakta terkini beratribusi</option>
+                    <option value="current">Berita dari fakta sumber</option>
+                    <option value="explainer">Explainer manual (3 fakta wajib)</option>
                   </select>
                 </div>
                 <div class="form-group-editor">
                   <label class="form-label-editor" for="studio-custom-editorial-facts">Catatan fakta dan referensi (JSON array)</label>
                   <textarea id="studio-custom-editorial-facts" class="form-input-dark" rows="5" spellcheck="false" aria-describedby="studio-custom-editorial-help">[]</textarea>
-                  <p id="studio-custom-editorial-help" class="form-help-text">Explainer memakai [] dan hanya menjelaskan mekanisme umum. Current memerlukan minimal satu catatan: {"id":"layanan","text":"Layanan dibuka kembali.","source_url":"https://example.org/rilis","source_name":"Dinas"}. Periksa catatan dan rujukan sendiri. Jangan tempel body, ringkasan artikel atau foto publisher. Judul Radar hanya membantu memilih topik.</p>
+                  <p id="studio-custom-editorial-help" class="form-help-text">Pilih topik Radar agar Gapura mengambil dan memeriksa materi artikel. Jika domain sumber belum disetujui untuk pemrosesan AI atau materi tidak cukup, masukkan sedikitnya 3 catatan fakta yang sudah dikurasi: {"id":"layanan","text":"Uraian fakta yang cukup lengkap.","source_url":"https://example.org/rilis","source_name":"Dinas"}. Ringkasan/URL saja tidak dianggap isi berita.</p>
                 </div>
 
                 <button class="btn btn-lime" id="btn-studio-generate-ai" style="width: 100%; justify-content: center; font-weight: 700;">
@@ -1703,14 +1703,14 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
               <div class="form-group-editor">
                 <label for="studio-editorial-mode" class="form-label-editor">Mode naskah</label>
                 <select id="studio-editorial-mode" class="form-input-dark form-select-dark">
-                  <option value="explainer">Explainer — konteks dan analisis umum</option>
-                  <option value="current">Current — fakta terkini beratribusi</option>
+                  <option value="current">Berita dari fakta sumber</option>
+                  <option value="explainer">Explainer manual (3 fakta wajib)</option>
                 </select>
               </div>
             </div>
             <label for="studio-editorial-facts" class="form-label-editor">Catatan fakta dan referensi (JSON array)</label>
             <textarea id="studio-editorial-facts" class="form-input-dark" rows="5" style="width:100%;" spellcheck="false" aria-describedby="studio-editorial-help">[]</textarea>
-            <p id="studio-editorial-help" class="form-help-text">Explainer memakai []: konteks dan analisis umum tanpa mengklaim kejadian terbaru. Current memerlukan catatan yang telah Anda periksa: [{"id":"layanan","text":"Layanan dibuka kembali.","source_url":"https://example.org/rilis","source_name":"Dinas"}]. ID harus unik. Kutipan opsional memakai quote berisi text dan speaker; text kutipan harus ada dalam catatan fakta. Jangan tempel body, ringkasan artikel atau foto publisher. Referensi dan fakta disimpan untuk review; headline discovery bukan bukti kejadian.</p>
+            <p id="studio-editorial-help" class="form-help-text">Untuk berita, masukkan sedikitnya tiga fakta substantif yang sudah dikurasi, masing-masing memiliki source_name dan URL rujukan. Contoh: [{"id":"layanan","text":"Dinas menjelaskan ketentuan layanan secara rinci untuk warga.","source_url":"https://example.org/rilis","source_name":"Dinas"}]. Domain sumber harus diizinkan untuk pemrosesan AI. Tidak memakai headline saja sebagai isi berita.</p>
             <div style="display: flex; gap: 12px; align-items: center;">
               <button type="button" class="btn btn-lime" id="btn-studio-submit"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#rocket"></use></svg> <span>Buat Rencana</span></button>
               <span style="font-size: 12px; color: var(--muted);" id="studio-submit-hint">Rencana bisa Anda edit / generate ulang sebelum diproduksi.</span>

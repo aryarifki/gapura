@@ -33,6 +33,7 @@ try {
     META_APP_ID: '', META_APP_SECRET: '', META_UNIFIED_CONFIG_ID: '', META_UNIFIED_REDIRECT_URI: '',
     META_PAGE_ACCESS_TOKEN: '', META_INSTAGRAM_ACCESS_TOKEN: '', META_THREADS_ACCESS_TOKEN: '',
     GAPURA_META_CONNECTION: path.join(temp, 'meta-unified.json'),
+    GAPURA_AI_MATERIAL_HOSTS: 'publisher.example.org,news.google.com',
     STORAGE_PATH: path.join(temp, 'storage'), DESIGN_SYSTEM_PATH: path.join(temp, 'design-system'),
   };
   const migrations = ['database/schema.sql', 'database/migrations/20261111_seo_verifikator.sql', 'database/migrations/20261111_prompt_studio.sql',

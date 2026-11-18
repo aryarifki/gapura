@@ -8,6 +8,7 @@ import { produceSingleTopicDraft } from '../copywriter/copywriter.js';
 import { validateStudioTopic, normalizeStudioPlan } from './validation.js';
 import { isDraftComplete } from '../copywriter/editorial.js';
 import { buildEditorialBrief, normalizeEditorialInput } from '../common/original-editorial.js';
+import { assertNewsEditorialInput } from '../copywriter/source-input.js';
 
 const { Pool } = pkg;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -107,6 +108,7 @@ export async function updatePlan(jobId, newPlan) {
   return withJobLock(jobId, async (client, job) => {
     assertPlanReview(job);
     const plan = normalizeStudioPlan(newPlan && { ...newPlan, editorial_input: newPlan.editorial_input === undefined ? job.plan?.editorial_input : newPlan.editorial_input });
+    if (plan.editorial_input?.mode === 'current' && plan.editorial_input.facts.length) assertNewsEditorialInput(plan.editorial_input);
     await getTopicSource(client, job.topic_id);
     await client.query('UPDATE prompt_jobs SET plan = $2, updated_at = NOW() WHERE id = $1', [jobId, JSON.stringify(plan)]);
     await logStep(jobId, 'planning', 'Rencana diperbarui manual oleh admin.', 'info', client);
@@ -135,6 +137,7 @@ export async function executeJob(jobId) {
         return { awaiting_plan_review: true, plan };
       }
       const plan = normalizeStudioPlan(job.plan);
+       if (plan.editorial_input?.mode === 'current' && plan.editorial_input.facts.length) assertNewsEditorialInput(plan.editorial_input);
       if (['queued', 'planning'].includes(job.status) || (job.status === 'failed' && !job.draft_id && Number(job.progress || 0) < 40)) {
         await client.query("UPDATE prompt_jobs SET status = 'plan_review', progress = 25, updated_at = NOW() WHERE id = $1", [jobId]);
         return { awaiting_plan_review: true, plan };
