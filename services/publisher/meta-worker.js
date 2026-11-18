@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import pkg from 'pg';
 import { validateDraftApproval } from '../common/editorial.js';
+import { hasCoverImage } from '../common/images.js';
 import { draftContentHash } from '../common/draft-revision.js';
 import { loadMetaConnection } from '../common/meta-connection-store.js';
 import { validatePublicSourceUrl } from '../common/sources.js';
@@ -76,7 +77,7 @@ export function captionHash(caption) {
 function gateAllows(row) {
   if (row.draft_status !== 'scheduled' || row.human_approved !== true ||
       row.approved_content_hash !== draftContentHash(row) || row.content_hash !== row.approved_content_hash || row.analyst_passed !== true ||
-      validatePublicSourceUrl(row.source_url)) return false;
+      validatePublicSourceUrl(row.source_url) || !hasCoverImage(row.slides)) return false;
   return validateDraftApproval({
     status: 'draft',
     needsReview: row.needs_review !== false,

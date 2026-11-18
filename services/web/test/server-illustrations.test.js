@@ -181,7 +181,7 @@ test('deleting a text slide does not copy its following illustration onto anothe
   assert.equal(saved[2].data.asset_id, undefined);
 });
 
-test('custom design can pin a selected topic illustration before inserting/rendering and refuses foreign or missing assets', { skip: !enabled }, async (t) => {
+test('custom design can pin a selected topic illustration before inserting/rendering and refuses foreign assets', { skip: !enabled }, async (t) => {
   const item = await topic(t);
   const service = createIllustrationService({ pool, storagePath, generate: mockGenerate });
   const { asset } = await service.generate(item.id, { request_id: randomUUID() });
@@ -198,6 +198,7 @@ test('custom design can pin a selected topic illustration before inserting/rende
   const invalid = await fetch(`${base}/api/drafts/create-from-custom`, { method: 'POST', headers, body: JSON.stringify({ ...body, topic_id: Number(other.id), slides: [{ ...slides[0], data: { asset_id: asset.id } }] }) });
   assert.equal(invalid.status, 409);
   const missing = await fetch(`${base}/api/drafts/create-from-custom`, { method: 'POST', headers, body: JSON.stringify({ ...body, topic_id: Number(other.id) }) });
-  assert.equal(missing.status, 409);
-  assert.equal((await pool.query('SELECT count(*)::int AS n FROM drafts WHERE topic_id=$1', [other.id])).rows[0].n, 0);
+  assert.equal(missing.status, 200, await missing.clone().text());
+  const { rows: [uncovered] } = await pool.query('SELECT slides FROM drafts WHERE topic_id=$1', [other.id]);
+  assert.equal(uncovered.slides[0].data.asset_id, undefined);
 });

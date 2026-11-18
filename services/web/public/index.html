@@ -324,6 +324,50 @@
                     <!-- Populated dynamically by JS -->
                   </div>
 
+                  <!-- Manual slide image: cover (slide 1) is required, body slides optional -->
+                  <div id="editor-manual-media-card" style="background: var(--card-subtle); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px; margin-bottom: 16px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px;">
+                      <span style="font-weight: 800; color: #fff; font-size: 13px;">Gambar Slide · Unggah Manual</span>
+                      <span id="editor-cover-status" class="pill-status" style="font-size: 10px; padding: 2px 8px;">Cover belum bergambar</span>
+                    </div>
+                    <p class="form-help-text" style="margin-bottom: 10px;">Cover adalah slide 1 dan wajib bergambar sebelum disetujui. Slide isi boleh tanpa gambar. Berkas diproses ulang (maks. 1600 px, JPEG) dan disimpan permanen dengan hash.</p>
+                    <div class="form-grid-2col">
+                      <div class="form-group-editor" style="margin-bottom: 8px;">
+                        <label class="form-label-editor" for="editor-media-file">Berkas gambar (JPEG/PNG/WebP, maks. 12 MB)</label>
+                        <input type="file" id="editor-media-file" class="form-input-dark" accept="image/jpeg,image/png,image/webp">
+                      </div>
+                      <div class="form-group-editor" style="margin-bottom: 8px;">
+                        <label class="form-label-editor" for="editor-media-credit">Credit gambar</label>
+                        <input type="text" id="editor-media-credit" class="form-input-dark" maxlength="200" placeholder="Contoh: Nama / Dokumentasi Gapura">
+                      </div>
+                    </div>
+                    <div class="form-grid-2col">
+                      <div class="form-group-editor" style="margin-bottom: 8px;">
+                        <label class="form-label-editor" for="editor-media-rights">Dasar hak</label>
+                        <select id="editor-media-rights" class="form-input-dark">
+                          <option value="own_work">Karya sendiri / redaksi</option>
+                          <option value="licensed_stock">Lisensi stok berbayar</option>
+                          <option value="agency_license">Lisensi agensi</option>
+                        </select>
+                      </div>
+                      <div class="form-group-editor" style="margin-bottom: 8px;">
+                        <label class="form-label-editor" for="editor-media-reference">Rujukan hak (opsional)</label>
+                        <input type="text" id="editor-media-reference" class="form-input-dark" maxlength="500" placeholder="URL lisensi / nomor invoice">
+                      </div>
+                    </div>
+                    <label class="editor-review-confirmation" for="editor-media-attested" style="margin: 4px 0 10px;">
+                      <input id="editor-media-attested" type="checkbox">
+                      <span>Saya menyatakan berhak mengunggah dan menerbitkan gambar ini sesuai dasar hak yang dipilih.</span>
+                    </label>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                      <button class="btn btn-primary" id="btn-upload-manual-media" type="button">Unggah gambar</button>
+                      <button class="btn btn-lime" id="btn-attach-manual-media" type="button" disabled>Pasang ke slide <span id="editor-media-target">1</span></button>
+                    </div>
+                    <div id="editor-media-status" role="status" style="margin-top: 8px; color: var(--muted); font-size: 12px;"></div>
+                    <div id="editor-media-selected" style="margin-top: 10px;"></div>
+                    <div id="editor-media-assets" role="region" aria-label="Aset gambar manual topik" style="margin-top: 12px;"></div>
+                  </div>
+
                   <div class="form-group-editor">
                     <label class="form-label-editor">Caption Editorial Instagram</label>
                     <textarea class="form-input-dark" id="editor-input-caption" rows="5" placeholder="Caption..."></textarea>

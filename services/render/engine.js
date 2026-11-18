@@ -17,6 +17,8 @@ const draftRenders = new Map();
 
 const JPEG_OPTIONS = Object.freeze({ quality: 92, chromaSubsampling: '4:4:4', mozjpeg: true });
 const AI_IMAGE_DISCLOSURE = 'Ilustrasi AI · Gapura Media';
+const MEDIA_IMAGE_KINDS = new Set(['ai_generated', 'editor_upload']);
+const isMediaImage = (data) => Boolean(data?.image_data) && MEDIA_IMAGE_KINDS.has(data?.image_kind);
 
 /**
  * Writes slide_<n>.jpg beside every slide_<n>.png inside one draft directory.
@@ -342,7 +344,7 @@ export class RenderEngine {
                 paddingTop: '40px',
                 paddingBottom: '32px',
               },
-              children: imageData?.image_kind === 'ai_generated'
+              children: isMediaImage(imageData)
                 ? [this.renderImage(imageData), { type: 'div', props: { style: { height: '28px', flexShrink: 0 } } }, contentNode]
                 : [contentNode],
             },
@@ -399,7 +401,8 @@ export class RenderEngine {
         style: { width: `${CONTENT_WIDTH}px`, height: '390px', objectFit: 'cover', borderRadius: '4px' },
       },
     };
-    if (data.image_kind !== 'ai_generated') return image;
+    if (!isMediaImage(data)) return image;
+    const manual = data.image_kind === 'editor_upload';
     return {
       type: 'div',
       props: {
@@ -409,8 +412,10 @@ export class RenderEngine {
           {
             type: 'div',
             props: {
-              style: { display: 'flex', position: 'absolute', bottom: '14px', left: '14px', padding: '10px 14px', backgroundColor: '#12241b', color: '#ffffff', fontFamily: 'Inter', fontWeight: 700, fontSize: '20px', lineHeight: '1.2', borderRadius: '4px' },
-              children: AI_IMAGE_DISCLOSURE,
+              style: manual
+                ? { display: 'flex', position: 'absolute', bottom: '14px', left: '14px', padding: '8px 12px', backgroundColor: '#12241b', color: '#ffffff', fontFamily: 'Inter', fontWeight: 600, fontSize: '16px', lineHeight: '1.3', borderRadius: '4px', maxWidth: '620px' }
+                : { display: 'flex', position: 'absolute', bottom: '14px', left: '14px', padding: '10px 14px', backgroundColor: '#12241b', color: '#ffffff', fontFamily: 'Inter', fontWeight: 700, fontSize: '20px', lineHeight: '1.2', borderRadius: '4px' },
+              children: manual ? `Gambar: ${data.credit}` : AI_IMAGE_DISCLOSURE,
             },
           },
         ],
@@ -1421,7 +1426,7 @@ export class RenderEngine {
 
   // Universal Fluid Layout Renderer (Full AI Adaptive Creative Direction)
   renderFluidLayout(slide, slideIndex, totalSlides) {
-    if (slide.data?.image_kind === 'ai_generated') return this.renderIllustration(slide, slideIndex, totalSlides);
+    if (isMediaImage(slide.data)) return this.renderIllustration(slide, slideIndex, totalSlides);
     const { palette, typography } = this.tokens;
     const data = slide.data || {};
     const text = slide.teks || '';
@@ -1942,7 +1947,7 @@ export class RenderEngine {
   // Render Single Slide to PNG Buffer (supports overrideTokens for live realtime preview)
   async renderSlideToBuffer(slide, slideIndex, totalSlides, overrideTokens = null) {
     validatePreview(slide, slideIndex, totalSlides, overrideTokens);
-    if (slide.data?.image_kind === 'ai_generated') {
+    if (isMediaImage(slide.data)) {
       try {
         const bytes = Buffer.from(slide.data.image_data.split(',')[1], 'base64');
         const metadata = await sharp(bytes, { failOn: 'warning', limitInputPixels: 16 * 1024 * 1024 }).metadata();

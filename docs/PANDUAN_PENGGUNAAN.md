@@ -7,8 +7,10 @@ dan R6 naskah orisinal dua mode selesai; unit/DB/API/browser/render serta DOM
 layanan aktif lulus. R6 memasang input eksplisit tanpa body/summary/foto
 penerbit, carousel 3–9 slide default enam, caption isi 1.200–1.900 karakter,
 Threads ≤500, dan tujuh kolom persistensi yang sudah dimigrasikan ke produksi.
-R7 (sampel visual dengan raster AI nyata) dan R8 (aktivasi publish) belum
-dijalankan. Timer intake/publisher tetap `disabled/inactive`, worker background
+R7 sudah selesai pada gate teknis: unggah gambar manual menjadi jalur visual
+utama, cover (slide 1) wajib bergambar sebelum approval/publish, dan enam sampel
+manual sudah dibuat untuk dinilai owner. R8 (aktivasi publish) belum dijalankan.
+Timer intake/publisher tetap `disabled/inactive`, worker background
 `GAPURA_DISABLE_WORKERS=true`, dan tidak ada publikasi nyata. Raster AI nyata
 masih tertahan quota 0; tidak ada permintaan ulang atau perpindahan provider gambar.
 
@@ -117,6 +119,13 @@ Menu **Antrian Review** adalah meja kerja utama redaktur:
    - **Isi Teks / Narasi:** Edit teks slide secara langsung.
    - **Pemilihan Layout Slide:** Pilih layout baku atau pilih `custom` untuk tata letak bebas.
    - **Parameter Layout:** Mengatur nilai angka besar, unit metrik, author kutipan, atau perbandingan kolom.
+   - **Gambar Slide · Unggah Manual:** Pilih berkas JPEG/PNG/WebP (maks. 12 MB),
+     isi credit dan dasar hak (`own_work`/`licensed_stock`/`agency_license`),
+     centang atestasi, lalu tekan **Unggah gambar**. Pilih aset pada daftar
+     topik dan tekan **Pasang ke slide**. Cover adalah slide 1 dan wajib
+     bergambar sebelum persetujuan; slide isi opsional. Gambar diproses ulang
+     menjadi JPEG maksimal 1600 px, disimpan immutable dengan hash, dan credit
+     tampil pada slide sebagai `Gambar: <credit>`.
    - **Mode editorial & catatan fakta:** Pilih `explainer` untuk penjelasan umum
      dari judul tanpa klaim aktual, atau `current` dengan catatan fakta
      teratribusi (JSON) yang disediakan redaksi. Input ini disimpan dan ikut
@@ -140,11 +149,15 @@ Menu **Antrian Review** adalah meja kerja utama redaktur:
      jangan menjalankan publikasi nyata.
 
 Jika persetujuan ditolak karena draf berubah, muat ulang dan tinjau kembali
-seluruh slide/caption. Publisher Meta dan legacy memeriksa audit approval
-manusia dan hash revisi terkini, `needs_review=false`, serta prasyarat
-jadwal/akun/aset. Meta juga memeriksa sumber dan skor Analis. Pemeriksaan ulang
-dilakukan dalam row lock sebelum panggilan publikasi akhir; hasil ambigu perlu
-rekonsiliasi manual, tanpa retry buta.
+seluruh slide/caption. Draf tanpa cover bergambar tetap dapat disimpan dan
+diedit, tetapi persetujuan ditolak (HTTP 409) sampai gambar dipasang pada slide
+1.
+
+Publisher Meta dan legacy memeriksa audit approval manusia dan hash revisi
+terkini, `needs_review=false`, serta prasyarat jadwal/akun/aset. Meta juga
+memeriksa sumber dan skor Analis.
+Pemeriksaan ulang dilakukan dalam row lock sebelum panggilan publikasi akhir;
+hasil ambigu perlu rekonsiliasi manual, tanpa retry buta.
 
 ---
 
@@ -272,7 +285,8 @@ systemctl status gapura-pipeline.timer gapura-publisher.timer --no-pager
 systemctl show hme-web.service --property=DropInPaths
 ```
 
-Aktivasi tetap menunggu R7 review owner, R8 batch/shadow dan mandat eksplisit
-untuk uji publish/otomatisasi. Tabel/kolom historis Verifikator dipertahankan;
-tidak ada schema removal, purge, atau backfill pada R5. Detail implementasi dan
-hasil gate ada di [laporan R5](plans/13_R5_REMOVE_VERIFICATOR.md).
+Aktivasi tetap menunggu review owner atas sampel R7, R8 batch/shadow dan mandat
+eksplisit untuk uji publish/otomatisasi. Tabel/kolom historis Verifikator
+dipertahankan; tidak ada schema removal, purge, atau backfill pada R5. Detail
+implementasi dan hasil gate ada di [laporan R5](plans/13_R5_REMOVE_VERIFICATOR.md)
+dan [laporan R7](plans/15_R7_MANUAL_MEDIA.md).

@@ -14,6 +14,7 @@ const detail = async (id) => {
   assert.equal(response.status, 200);
   return response.json();
 };
+const coverData = { title: 'Cover', asset_id: '2d30e364-b95d-4d49-82ed-43c548270944', asset_sha256: 'a'.repeat(64), image_kind: 'ai_generated' };
 
 test('database integration: settings test and save round-trip preserve every agent and key', { skip: !enabled }, async () => {
   const before = await fetch(`${base}/api/agents/config`, { headers }).then((r) => r.json());
@@ -44,6 +45,9 @@ test('database integration: edited drafts cancel stale schedules and cannot be a
   assert.equal(saved.slides[0].teks, 'Revised headline');
   const { rows: [schedule] } = await pool.query('SELECT status FROM scheduled_posts WHERE draft_id=$1', [draft.id]);
   assert.equal(schedule.status, 'failed');
+  const { rows: [current] } = await pool.query('SELECT slides FROM drafts WHERE id=$1', [draft.id]);
+  current.slides[0].data = { ...current.slides[0].data, ...coverData };
+  await pool.query('UPDATE drafts SET slides=$2 WHERE id=$1', [draft.id, JSON.stringify(current.slides)]);
   const fresh = await detail(draft.id);
   assert.equal((await post(`/api/drafts/${draft.id}/approve`, { mode: 'auto', expected_revision: fresh.revision })).status, 409);
   const approval = { mode: 'auto', reviewed: true, expected_revision: fresh.revision };
@@ -73,6 +77,7 @@ test('database integration: edited drafts cancel stale schedules and cannot be a
 test('database integration: stale browser approval after editing is rejected and fresh review succeeds', { skip: !enabled }, async (t) => {
   for (const mode of ['auto', 'manual']) await t.test(mode, async () => {
     const { rows: [topic] } = await pool.query("INSERT INTO topics(title,url,status) VALUES('Revision fixture','https://www.bps.go.id/revision-fixture','produced') RETURNING id");
+    // No image yet: update-full renders, and a fake asset would abort the edit.
     const slides = [{ no: 1, layout: 'cover-focus', teks: 'Reviewed headline', data: { title: 'Reviewed headline' } }];
     const { rows: [draft] } = await pool.query("INSERT INTO drafts(topic_id,slides,caption,status,needs_review,copy_model,content_format) VALUES($1,$2,'Reviewed caption','draft',false,'fixture','single') RETURNING id", [topic.id, JSON.stringify(slides)]);
     const stale = await detail(draft.id);
@@ -89,18 +94,22 @@ test('database integration: stale browser approval after editing is rejected and
     assert.equal(attempts.count, 0);
     const { rows: [schedules] } = await pool.query('SELECT count(*)::int count FROM scheduled_posts WHERE draft_id=$1', [draft.id]);
     assert.equal(schedules.count, 0);
-    const approved = await post(`/api/drafts/${draft.id}/approve`, { mode, reviewed: true, expected_revision: fresh.revision });
+    const { rows: [current] } = await pool.query('SELECT slides FROM drafts WHERE id=$1', [draft.id]);
+    current.slides[0].data = { ...current.slides[0].data, ...coverData };
+    await pool.query('UPDATE drafts SET slides=$2 WHERE id=$1', [draft.id, JSON.stringify(current.slides)]);
+    const reviewed = await detail(draft.id);
+    const approved = await post(`/api/drafts/${draft.id}/approve`, { mode, reviewed: true, expected_revision: reviewed.revision });
     assert.equal(approved.status, 200, await approved.text());
     const { rows: [audit] } = await pool.query("SELECT action,payload FROM audit_log WHERE entity='draft' AND entity_id=$1 AND action IN ('approved_auto','published_manual')", [draft.id]);
     assert.equal(audit.action, mode === 'auto' ? 'approved_auto' : 'published_manual');
-    assert.equal(audit.payload.content_hash, fresh.revision);
+    assert.equal(audit.payload.content_hash, reviewed.revision);
   });
 });
 
 test('database integration: both approval modes require explicit review and a current revision', { skip: !enabled }, async (t) => {
   for (const mode of ['auto', 'manual']) await t.test(mode, async () => {
     const { rows: [topic] } = await pool.query("INSERT INTO topics(title,url,status) VALUES('Review fixture','https://www.bps.go.id/review-fixture','produced') RETURNING id");
-    const { rows: [draft] } = await pool.query("INSERT INTO drafts(topic_id,slides,caption,status,needs_review,copy_model,content_format) VALUES($1,'[]','Review fixture','draft',false,'fixture','single') RETURNING id", [topic.id]);
+    const { rows: [draft] } = await pool.query("INSERT INTO drafts(topic_id,slides,caption,status,needs_review,copy_model,content_format) VALUES($1,$2,'Review fixture','draft',false,'fixture','single') RETURNING id", [topic.id, JSON.stringify([{ no: 1, layout: 'cover-focus', teks: 'Review fixture', data: { ...coverData } }])]);
     const fresh = await detail(draft.id);
     for (const reviewed of [undefined, false, 'true', 1]) {
       const response = await post(`/api/drafts/${draft.id}/approve`, { mode, reviewed, expected_revision: fresh.revision });
@@ -122,7 +131,7 @@ test('database integration: both approval modes require explicit review and a cu
 test('database integration: archived verification reports cannot grant or revoke human approval', { skip: !enabled }, async () => {
   const { rows: [topic] } = await pool.query("INSERT INTO topics(title,url,status,verification_status) VALUES('Archived verdict fixture','https://www.bps.go.id/archived-verdict','produced','hoax_detected') RETURNING id");
   const { rows: [report] } = await pool.query("INSERT INTO verification_reports(topic_id,status,confidence) VALUES($1,'hoax_detected',95) RETURNING *", [topic.id]);
-  const { rows: [draft] } = await pool.query("INSERT INTO drafts(topic_id,slides,caption,status,needs_review,copy_model,content_format) VALUES($1,'[]','Archive fixture','draft',true,'fixture','single') RETURNING id", [topic.id]);
+  const { rows: [draft] } = await pool.query("INSERT INTO drafts(topic_id,slides,caption,status,needs_review,copy_model,content_format) VALUES($1,$2,'Archive fixture','draft',true,'fixture','single') RETURNING id", [topic.id, JSON.stringify([{ no: 1, layout: 'cover-focus', teks: 'Archive fixture', data: { ...coverData } }])]);
   const fresh = await detail(draft.id);
   assert.equal((await post(`/api/drafts/${draft.id}/approve`, { mode: 'auto', expected_revision: fresh.revision })).status, 409);
   const approved = await post(`/api/drafts/${draft.id}/approve`, { mode: 'auto', reviewed: true, expected_revision: fresh.revision });

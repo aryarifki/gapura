@@ -13,8 +13,10 @@ dan koneksi Instagram tetap tersedia. Perubahan desain/isi berikutnya mengikuti
 sintetis [R1](docs/plans/08_R1_EDITORIAL_CONTRACT.md) tersedia offline.
 [R2](docs/plans/09_R2_ARTICLE_MATERIALS.md) menambahkan body feed, parser artikel,
 snapshot materi dan API pengayaan manual, tanpa backfill/draf baru.
-**Arah terbaru owner:** [konten orisinal dan ilustrasi AI](docs/plans/10_ORIGINAL_AI_EDITORIAL.md).
-RSS menjadi pemicu topik/judul; agen menulis naskah/angle/visual Gapura sendiri.
+**Arah terbaru owner:** [konten orisinal](docs/plans/10_ORIGINAL_AI_EDITORIAL.md)
+dengan visual Gapura sendiri. R7 menjadikan **unggah gambar manual sebagai jalur
+utama**; cover adalah slide 1 dan wajib bergambar sebelum approval/publish,
+sedangkan ilustrasi AI tetap opsi.
 Spesifikasi R3–R8 sudah diselaraskan. [R3](docs/plans/11_R3_AI_ILLUSTRATIONS.md)
 menambahkan generator ilustrasi, aset lokal dan disclosure yang teruji; uji
 Gemini nyata tertahan 429/kuota gambar Free Tier 0; tidak ada permintaan ulang
@@ -26,14 +28,17 @@ jalur aktif; koreksi niche enam desk terpasang dan seluruh gate teknis lulus.
 (`explainer`/`current`) tanpa body/summary/foto penerbit, carousel 3–9 slide
 dengan default enam, caption isi 1.200–1.900 karakter, Threads ≤500, dan
 persistensi tujuh kolom baru yang sudah dimigrasikan ke produksi setelah
-backup/restore test. Tidak ada generasi raster nyata, publikasi nyata, atau
-aktivasi otomatisasi.
+backup/restore test. [R7](docs/plans/15_R7_MANUAL_MEDIA.md) selesai pada gate
+teknis: unggah gambar manual menjadi jalur utama, cover slide 1 wajib bergambar
+sebelum approval/publish, slide isi opsional, dan enam sampel draf manual sudah
+dibuat untuk dinilai owner. Tidak ada generasi raster AI nyata, publikasi nyata,
+atau aktivasi otomatisasi; kuota gambar AI tetap 0.
 
 ---
 
 ## 📌 Ringkasan Proyek
 
-**Gapura Media Engine (GME v2.1)** adalah platform otomasi ruang redaksi modern (*newsroom automation*) untuk isu nasional Indonesia pada enam desk: **politik, sosial, hukum, lingkungan, ekonomi nasional, dan bursa saham**. Arah produknya adalah topik dan metadata discovery yang dikembangkan menjadi naskah serta ilustrasi orisinal Gapura Media. Proyeksi discovery R4 dan jalur naskah orisinal R6 sudah tersedia; sampel visual R7 dan aktivasi bertahap R8 masih menunggu keputusan owner.
+**Gapura Media Engine (GME v2.1)** adalah platform otomasi ruang redaksi modern (*newsroom automation*) untuk isu nasional Indonesia pada enam desk: **politik, sosial, hukum, lingkungan, ekonomi nasional, dan bursa saham**. Arah produknya adalah topik dan metadata discovery yang dikembangkan menjadi naskah serta visual orisinal Gapura Media. Proyeksi discovery R4, jalur naskah orisinal R6, dan unggah gambar manual R7 sudah tersedia; penerimaan visual owner dan aktivasi bertahap R8 masih menunggu keputusan owner.
 
 Platform ini menggabungkan **6 agen: Scout, Analis, Copywriter, Designer, SEO, dan Studio**, dengan pengawasan manusia (*Human-in-the-Loop*), mesin render deterministik berbasis SVG-to-PNG (*Satori + Sharp*), serta dashboard editorial berbasis web yang responsif. Scout dan SEO mengumpulkan serta menilai momentum secara deterministik; agen produksi memakai model sesuai konfigurasi provider.
 
@@ -129,7 +134,7 @@ Panduan lengkap langkah demi langkah tersedia di:
 1. Buka dashboard di browser: **`https://gapura.avenia.my.id`**.
 2. (Opsional) Buka **Radar Trending** untuk memindai berita/percakapan naik daun, lalu promosikan trend menjadi topik editorial.
 3. Masuk ke menu **Radar Topik**, gunakan filter desk dan status, lalu pilih topik yang lolos Analis.
-4. Gunakan **Buat draf review**; Designer & Copywriter menyiapkan draf tanpa meminta laporan mesin. Jika aset belum tersedia, selesaikan kendala yang ditampilkan; quota gambar saat ini masih 0.
+4. Gunakan **Buat draf review**; Designer & Copywriter menyiapkan draf tanpa meminta laporan mesin. Di editor draf, unggah gambar manual untuk cover (slide 1) dan, bila perlu, slide isi. Cover wajib bergambar sebelum disetujui; kuota gambar AI masih 0 sehingga jalur manual adalah yang utama.
 5. Periksa visual slide, gunakan tombol panah atau strip thumbnail untuk memeriksa slide 1 sampai penutup.
 6. Jika ingin sudut pandang visual baru, klik **`✨ Regenerate AI (Desain Ulang)`**.
 7. Sesuaikan teks jika diperlukan, lalu klik **`🔄 Simpan & Render Ulang Slide`**.
@@ -177,7 +182,7 @@ Dokumen evaluasi teknis, daftar permasalahan yang telah diselesaikan, dan fitur 
 - [x] R5 — penghapusan Verifikator dari jalur aktif; arsip schema dipertahankan
 - [x] R5 — gate unit/DB/API/browser/render dan koreksi niche enam desk lulus; web/render dimuat ulang, timer tetap dijeda
 - [x] R6 — naskah orisinal dua mode tanpa body/summary penerbit; carousel 3–9 default enam dan caption isi 1.200–1.900 karakter; migrasi additive terpasang di produksi
-- [ ] R7 — sampel ilustrasi AI nyata dan review visual owner (quota gambar 0 masih menghalangi)
+- [x] R7 — unggah gambar manual sebagai jalur utama; cover slide 1 wajib bergambar sebelum approval/publish, slide isi opsional; enam sampel manual dibuat, menunggu review owner (kuota gambar AI tetap 0)
 - [x] Katalog Provider & Model multi-provider (registry + fallback lintas provider + uji dari dashboard)
 - [x] P2 — [audit skor historis & validasi constraint](docs/P2_SCORE_INTEGRITY_AUDIT.md): 1.062 baris valid, 0 perubahan data; `topic_scores_component_total` tervalidasi
 - [x] P2 — scheduler native terverifikasi dan terdokumentasi: unit systemd terpasang menjadi sumber kebenaran; tanpa penambahan cron atau aktivasi workflow otomatis n8n

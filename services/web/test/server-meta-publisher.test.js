@@ -9,11 +9,12 @@ const enabled = Boolean(process.env.GAPURA_TEST_BASE);
 const pool = enabled ? new pkg.Pool({ host: process.env.HME_DB_HOST, port: process.env.HME_DB_PORT, user: process.env.HME_DB_USER, password: process.env.HME_DB_PASSWORD, database: process.env.HME_DB_NAME }) : null;
 const env = { META_PLATFORMS: 'instagram', META_PAGE_ACCESS_TOKEN: 'fixture-token', META_INSTAGRAM_ACCOUNT_ID: '1784', GAPURA_ADMIN_TOKEN: 'x'.repeat(64), APP_BASE_URL: 'https://gapura.example' };
 const logger = { warn() {} };
+const coverData = { title: 'Approved text', asset_id: '2d30e364-b95d-4d49-82ed-43c548270944', asset_sha256: 'a'.repeat(64), image_kind: 'ai_generated' };
 
 async function seed({ due = true, reviewed = true, accountId = '1784', platform = 'instagram' } = {}) {
   const { rows: [topic] } = await pool.query("INSERT INTO topics(title,url,primary_source,status) VALUES('Publisher fixture','https://www.bps.go.id/publisher-fixture','BPS','produced') RETURNING id");
   await pool.query("INSERT INTO topic_scores(topic_id,score_relevance,score_credibility,score_momentum,score_engagement,score_compliance,score_total,verdict,model) VALUES($1,30,25,20,15,10,100,'passed','fixture')", [topic.id]);
-  const { rows: [draft] } = await pool.query("INSERT INTO drafts(topic_id,slides,caption,status,needs_review,copy_model,content_format) VALUES($1,$2,'Fixture caption','scheduled',false,'fixture','single') RETURNING id", [topic.id, JSON.stringify([{ no: 1, layout: 'cover-focus', teks: 'Approved text', data: {} }])]);
+  const { rows: [draft] } = await pool.query("INSERT INTO drafts(topic_id,slides,caption,status,needs_review,copy_model,content_format) VALUES($1,$2,'Fixture caption','scheduled',false,'fixture','single') RETURNING id", [topic.id, JSON.stringify([{ no: 1, layout: 'cover-focus', teks: 'Approved text', data: { ...coverData } }])]);
   const { rows: [schedule] } = await pool.query("INSERT INTO scheduled_posts(draft_id,mode,scheduled_at,status) VALUES($1,'auto',NOW()+($2::int*interval '1 hour'),'pending') RETURNING id", [draft.id, due ? -1 : 1]);
   const { rows: [content] } = await pool.query('SELECT * FROM drafts WHERE id=$1', [draft.id]);
   if (reviewed) await pool.query("INSERT INTO audit_log(entity,entity_id,action,actor,payload) VALUES('draft',$1,'approved_auto','web_admin',$2)", [draft.id, JSON.stringify({ content_hash: draftContentHash(content) })]);
@@ -96,7 +97,7 @@ test('Meta database: an attempted or unknown publication prevents editing its ap
 test('legacy publisher database: current human approval hash is required in both claim and locked publish', { skip: !enabled }, async () => {
   const { rows: [topic] } = await pool.query("INSERT INTO topics(title,url,status) VALUES('Legacy fixture','https://example.org/legacy','produced') RETURNING id");
   for (const approved of [false, true]) {
-    const { rows: [draft] } = await pool.query("INSERT INTO drafts(topic_id,slides,caption,hashtags,status,needs_review,copy_model,content_format) VALUES($1,$2,'Legacy approved caption',$3,'scheduled',false,'fixture','single') RETURNING *", [topic.id, JSON.stringify([{ no: 1, layout: 'cover-focus', teks: 'Legacy fixture', data: {} }]), ['#GapuraMedia']]);
+    const { rows: [draft] } = await pool.query("INSERT INTO drafts(topic_id,slides,caption,hashtags,status,needs_review,copy_model,content_format) VALUES($1,$2,'Legacy approved caption',$3,'scheduled',false,'fixture','single') RETURNING *", [topic.id, JSON.stringify([{ no: 1, layout: 'cover-focus', teks: 'Legacy fixture', data: { ...coverData } }]), ['#GapuraMedia']]);
     await pool.query("INSERT INTO scheduled_posts(draft_id,mode,scheduled_at,status) VALUES($1,'auto',NOW()-interval '1 minute','pending')", [draft.id]);
     if (approved) await pool.query("INSERT INTO audit_log(entity,entity_id,action,actor,payload) VALUES('draft',$1,'approved_auto','web_admin',$2)", [draft.id, JSON.stringify({ content_hash: draftContentHash(draft) })]);
     const calls = [];

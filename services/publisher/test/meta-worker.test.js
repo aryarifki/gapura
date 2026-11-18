@@ -46,10 +46,21 @@ function writeMetaConnection(t, overrides = {}) {
   return file;
 }
 
+function coverSlide(overrides = {}) {
+  return {
+    no: 1, layout: 'cover-focus', teks: 'Halo Gapura',
+    data: {
+      title: 'Halo Gapura', asset_id: '2d30e364-b95d-4d49-82ed-43c548270944',
+      asset_sha256: 'a'.repeat(64), image_kind: 'ai_generated',
+    },
+    ...overrides,
+  };
+}
+
 function claimRow(overrides = {}) {
   const row = {
     id: 1, draft_id: 7, schedule_id: 1, platform: 'instagram', account_id: '17841471438781611', status: 'publishing',
-    attempts: 1, caption: 'Halo Gapura', slides: [{ no: 1 }, { no: 2 }], content_format: 'carousel',
+    attempts: 1, caption: 'Halo Gapura', slides: [coverSlide(), { no: 2 }], content_format: 'carousel',
     hashtags: ['#gapura'], needs_review: false, draft_status: 'scheduled', human_approved: true,
     source_url: 'https://www.bps.go.id/fixture', analyst_passed: true,
     editorial_input: null, editorial_mode: null, caption_body: null, threads_caption: null, angle: null, scope_note: null, editorial_references: null,
@@ -362,6 +373,18 @@ test('publication requires explicit human approval, a cleared review flag and ma
   }
 });
 
+test('a scheduled draft without a cover image is blocked before creating any Meta container', async () => {
+  const row = claimRow({ slides: [{ no: 1, layout: 'cover-focus', teks: 'Tanpa gambar' }, { no: 2 }] });
+  const pool = fakePool([row]);
+  const { calls, fetchImpl } = graphFetch([]);
+  const result = await createMetaPublisherWorker({ pool, config: liveConfig(), fetchImpl }).runOnce();
+  assert.equal(result.blocked, 1);
+  assert.equal(result.published, 0);
+  assert.equal(calls.length, 0);
+  assert.equal(pool.state.updates[0].status, 'blocked');
+  assert.equal(pool.state.audits.length, 0);
+});
+
 test('a revision changed after approval is blocked before creating any Meta container', async () => {
   for (const change of [
     row => { row.caption = 'Revised caption'; },
@@ -574,7 +597,7 @@ test('original metadata changes during container preparation require review of t
 test('Threads publishes the reviewed original caption verbatim without appending hashtags again', async () => {
   const reviewed = `${'x'.repeat(487)} #GapuraMedia`;
   assert.equal(reviewed.length, 500);
-  const row = claimRow({ ...originalMetadata, platform: 'threads', account_id: '99', slides: [{ no: 1 }],
+  const row = claimRow({ ...originalMetadata, platform: 'threads', account_id: '99', slides: [coverSlide()],
     caption: 'Long Instagram caption '.repeat(40), threads_caption: reviewed, hashtags: ['#GapuraMedia'] });
   const pool = fakePool([row]);
   const graph = graphFetch([{ id: 'threads-container' }, { status: 'FINISHED' }, { id: 'threads-post' }, { permalink: 'https://www.threads.net/@gapura/post/fixture' }]);
@@ -587,7 +610,7 @@ test('Threads publishes the reviewed original caption verbatim without appending
 test('original Instagram and Facebook captions already contain the reviewed hashtags', async () => {
   for (const platform of ['instagram', 'facebook']) {
     const row = claimRow({ ...originalMetadata, platform, caption: 'Penjelasan warga\n\n#GapuraMedia', hashtags: ['#GapuraMedia'],
-      account_id: platform === 'instagram' ? baseEnv.META_INSTAGRAM_ACCOUNT_ID : baseEnv.META_PAGE_ID, slides: [{ no: 1 }] });
+      account_id: platform === 'instagram' ? baseEnv.META_INSTAGRAM_ACCOUNT_ID : baseEnv.META_PAGE_ID, slides: [coverSlide()] });
     const pool = fakePool([row]);
     const graph = graphFetch(platform === 'instagram'
       ? [{ id: 'container' }, { status_code: 'FINISHED' }, { id: 'media' }, { permalink: 'https://instagram.com/p/fixture' }]
@@ -601,7 +624,7 @@ test('original Instagram and Facebook captions already contain the reviewed hash
 
 test('legacy Threads drafts retain caption-plus-hashtag fallback and its 500-character guard', async () => {
   for (const caption of ['Historical caption', 'x'.repeat(500)]) {
-    const row = claimRow({ platform: 'threads', account_id: '99', slides: [{ no: 1 }], caption });
+    const row = claimRow({ platform: 'threads', account_id: '99', slides: [coverSlide()], caption });
     const pool = fakePool([row]);
     const graph = graphFetch([{ id: 'container' }, { status: 'FINISHED' }, { id: 'post' }, {}]);
     const result = await createMetaPublisherWorker({ pool, config: threadsConfig(), fetchImpl: graph.fetchImpl }).runOnce();
@@ -634,7 +657,7 @@ test('R6 Threads requires a nonblank reviewed string of at most 500 characters i
 });
 
 test('historical metadata without an original marker cannot replace the Threads text covered by its legacy approval', async () => {
-  const row = claimRow({ platform: 'threads', account_id: '99', slides: [{ no: 1 }], threads_caption: 'Annotation outside the legacy revision hash' });
+  const row = claimRow({ platform: 'threads', account_id: '99', slides: [coverSlide()], threads_caption: 'Annotation outside the legacy revision hash' });
   const pool = fakePool([row]);
   const graph = graphFetch([{ id: 'container' }, { status: 'FINISHED' }, { id: 'post' }, {}]);
   assert.equal((await createMetaPublisherWorker({ pool, config: threadsConfig(), fetchImpl: graph.fetchImpl }).runOnce()).published, 1);
@@ -646,7 +669,7 @@ test('shadow uses the same complete R6 revision as live publication, including c
   const current = {
     ...originalMetadata, editorial_mode: 'current',
     editorial_input: { version: 1, mode: 'current', facts: [{ id: 'f1', text: 'BPS mencatat inflasi 2,1%.', source_url: 'https://www.bps.go.id/fixture', source_name: 'BPS' }] },
-    slides: [{ no: 1, teks: 'Inflasi 2,1% menurut BPS', claim_type: 'fact', fact_ids: ['f1'] }],
+    slides: [coverSlide({ teks: 'Inflasi 2,1% menurut BPS', claim_type: 'fact', fact_ids: ['f1'] })],
     editorial_references: { caption: [{ kind: 'fact', fact_ids: ['f1'] }], threads: ['f1'] },
   };
   for (const change of [null, ...originalChanges.map((change) => change.editorial_mode ? { editorial_mode: 'explainer' }

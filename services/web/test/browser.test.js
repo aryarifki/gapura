@@ -38,7 +38,9 @@ test('Chromium: newsroom opens without login, navigation, fresh draft review, Ra
   const tagline = 'Politik, Sosial, Hukum, Lingkungan & Ekonomi Nasional termasuk Bursa Saham';
   const draft = { id: '21', topic_id: '42', topic_title: topic.title, caption: topic.summary, hashtags: ['#GapuraMedia'], primary_source: 'BPS', source_url: topic.url, status: 'draft', score_total: 88, created_at: stamp, rendered_slides: [{ slide_no: 1, layout: 'cover-focus', text: topic.title, data: { title: topic.title }, image_url: '/assets/logo.png' }] };
   const assetId = '2d30e364-b95d-4d49-82ed-43c548270944';
+  const manualAssetId = '9c1f4b52-6d0e-4a63-9f0e-2b7c8d1a4e55';
   let illustration = null;
+  let manualAsset = null;
   const currentInput = { version: 1, mode: 'current', facts: [{ id: 'service', text: 'Layanan dibuka kembali.', source_url: 'https://example.org/rilis', source_name: 'Dinas' }] };
   const makeContent = (input = { mode: 'explainer', facts: [] }) => { const brief = buildEditorialBrief(topic, { editorialInput: input }); return validateOriginalContent(originalFixture(brief), brief); };
   let detailDraft = { ...draft, ...makeContent(currentInput), caption: 'Fresh detail caption for review', revision: 'fixture-reviewed-revision' };
@@ -83,6 +85,28 @@ test('Chromium: newsroom opens without login, navigation, fresh draft review, Ra
       case '/api/topics/42/illustration/generate': illustration = { id: assetId, status: 'ready', kind: 'ai_generated', disclosure: 'Ilustrasi AI · Gapura Media' }; data = { asset: illustration, is_existing: false }; break;
       case `/api/media/assets/${assetId}`:
         await route.fulfill({ status: 200, headers: { 'Content-Type': 'image/png' }, body: await fs.readFile(path.join(PUBLIC, 'assets/logo.png')) }); return;
+      case '/api/topics/42/media':
+        if (request.method() === 'POST') {
+          manualAsset = {
+            id: manualAssetId, topic_id: 42, kind: 'editor_upload', credit: body.credit,
+            rights_basis: body.rights_basis, rights_reference: body.rights_reference || null,
+            mime: 'image/jpeg', byte_size: 1024, width: 1080, height: 720, sha256: 'b'.repeat(64),
+            original_name: body.filename, created_at: stamp, url: `/api/media/manual/${manualAssetId}`,
+          };
+          status = 201;
+          data = { asset: manualAsset, descriptor: { asset_id: manualAssetId, asset_sha256: manualAsset.sha256, image_kind: 'editor_upload', credit: manualAsset.credit, rights_basis: manualAsset.rights_basis } };
+        } else data = { assets: manualAsset ? [manualAsset] : [] };
+        break;
+      case `/api/media/manual/${manualAssetId}`:
+        await route.fulfill({ status: 200, headers: { 'Content-Type': 'image/png' }, body: await fs.readFile(path.join(PUBLIC, 'assets/logo.png')) }); return;
+      case '/api/drafts/21/slide-media':
+        detailDraft = {
+          ...detailDraft, revision: 'fixture-manual-media-revision',
+          slides: [{ no: 1, layout: 'cover-focus', teks: detailDraft.rendered_slides[0].text, data: { asset_id: body.asset_id, asset_sha256: 'b'.repeat(64), image_kind: 'editor_upload', credit: manualAsset.credit, rights_basis: manualAsset.rights_basis } }],
+          rendered_slides: detailDraft.rendered_slides.map((slide, index) => index ? slide : { ...slide, image_url: '/assets/logo.png' }),
+        };
+        data = { status: 'success', draftId: 21, slide_no: body.slide_no, asset_id: manualAsset.id, layout: 'cover-focus', image_url: '/assets/logo.png', needs_review: true };
+        break;
       case '/api/drafts/21/illustration':
         detailDraft = { ...detailDraft, revision: 'fixture-illustration-revision', rendered_slides: detailDraft.rendered_slides.map((slide, i) => i ? slide : { ...slide, data: { ...slide.data, asset_id: body.asset_id, asset_sha256: 'a'.repeat(64), image_kind: 'ai_generated', disclosure_version: 1 } }) };
         data = { status: 'success', asset_id: body.asset_id, needs_review: true }; break;
@@ -147,6 +171,22 @@ test('Chromium: newsroom opens without login, navigation, fresh draft review, Ra
   assert.match(await page.locator('#editor-editorial-references').textContent(), /service: Layanan dibuka kembali.*Dinas/);
   assert.equal(await page.locator('#editor-editorial-references a').getAttribute('href'), currentInput.facts[0].source_url);
   assert.ok(requests.some((entry) => entry.method === 'GET' && entry.path === '/api/drafts/21'));
+  assert.equal(await page.locator('#editor-reviewed').isChecked(), false);
+  await page.locator('#editor-media-file').setInputFiles(path.join(PUBLIC, 'assets/logo.png'));
+  await page.locator('#editor-media-credit').fill('Dokumentasi Gapura');
+  await page.locator('#editor-media-rights').selectOption('own_work');
+  await page.locator('#editor-media-attested').check();
+  await page.locator('#btn-upload-manual-media').click();
+  await page.waitForFunction(() => document.querySelector('#toast').textContent.includes('Gambar diunggah'));
+  const uploadRequest = requests.find((entry) => entry.path === '/api/topics/42/media' && entry.method === 'POST');
+  assert.equal(uploadRequest.body.credit, 'Dokumentasi Gapura');
+  assert.equal(uploadRequest.body.rights_basis, 'own_work');
+  assert.equal(uploadRequest.body.rights_attested, true);
+  assert.match(uploadRequest.body.data_uri, /^data:image\/png;base64,/);
+  await page.locator('#btn-attach-manual-media').click();
+  await page.waitForFunction(() => document.querySelector('#toast').textContent.includes('Gambar dipasang'));
+  assert.equal(await page.locator('#editor-cover-status').textContent(), 'Cover siap');
+  assert.ok(requests.some((entry) => entry.path === '/api/drafts/21/slide-media' && entry.body.slide_no === 1 && entry.body.asset_id === manualAssetId));
   assert.equal(await page.locator('#editor-reviewed').isChecked(), false);
   await page.locator('#editor-reviewed').check();
   await page.locator('#btn-use-topic-illustration').click();

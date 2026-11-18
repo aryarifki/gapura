@@ -10,6 +10,8 @@ let currentTopicOffset = 0;
 let topicHasMore = false;
 let activeDraft = null;
 let activeSlideIndex = 0;
+let pendingManualAsset = null;
+let manualAssetCache = { topicId: null, assets: [], loaded: false, loading: false };
 let currentWorkflowActive = false;
 let cachedTopics = [];
 let studioSlides = [];
@@ -240,6 +242,15 @@ function initializeApp() {
 
 function setupNavigation() {
   bindClick('btn-use-topic-illustration', useTopicIllustrationForDraft);
+  bindClick('btn-upload-manual-media', uploadManualMedia);
+  bindClick('btn-attach-manual-media', () => { if (pendingManualAsset) attachManualMedia(pendingManualAsset.id); });
+  const manualAssets = document.getElementById('editor-media-assets');
+  if (manualAssets) {
+    manualAssets.addEventListener('click', (event) => {
+      const assetId = event.target.closest('[data-attach-asset]')?.dataset.attachAsset;
+      if (assetId) attachManualMedia(assetId);
+    });
+  }
   // Mobile Sidebar Toggle
   const toggleBtn = document.getElementById('btn-toggle-sidebar');
   const sidebar = document.getElementById('app-sidebar');
@@ -613,6 +624,11 @@ function openDraftEditor(draftId) {
 function renderDraftEditor(draft) {
   activeDraft = draft;
   activeSlideIndex = 0;
+  pendingManualAsset = null;
+  manualAssetCache = { topicId: null, assets: [], loaded: false, loading: false };
+  const mediaFile = document.getElementById('editor-media-file');
+  if (mediaFile) mediaFile.value = '';
+  manualMediaStatus('');
   const reviewed = document.getElementById('editor-reviewed');
   if (reviewed) reviewed.checked = false;
 
@@ -783,6 +799,167 @@ async function useTopicIllustrationForDraft() {
   } finally { button.disabled = false; }
 }
 
+const MANUAL_RIGHTS_LABELS = { own_work: 'Karya sendiri', licensed_stock: 'Lisensi stok', agency_license: 'Lisensi agensi' };
+const MANUAL_IMAGE_KINDS = ['ai_generated', 'editor_upload'];
+
+function readManualFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('Berkas tidak dapat dibaca.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function manualMediaStatus(message) {
+  const status = document.getElementById('editor-media-status');
+  if (status) status.textContent = message;
+}
+
+function renderManualAssetList() {
+  const container = document.getElementById('editor-media-assets');
+  if (!container) return;
+  if (!manualAssetCache.loaded && !manualAssetCache.assets.length) {
+    container.innerHTML = '<p class="form-help-text">Memuat aset gambar topik...</p>';
+    return;
+  }
+  if (!manualAssetCache.assets.length) {
+    container.innerHTML = '<p class="form-help-text">Belum ada gambar manual untuk topik ini.</p>';
+    return;
+  }
+  container.innerHTML = `
+    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+      ${manualAssetCache.assets.map((asset) => `
+        <figure style="margin: 0; width: 132px;">
+          <img src="${escapeHtml(asset.url)}" alt="Gambar manual: ${escapeHtml(asset.credit)}" loading="lazy" style="display: block; width: 132px; height: 99px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border);">
+          <figcaption style="color: var(--muted); font-size: 11px; margin-top: 4px; overflow-wrap: anywhere;">${escapeHtml(asset.credit)} · ${escapeHtml(MANUAL_RIGHTS_LABELS[asset.rights_basis] || asset.rights_basis)}</figcaption>
+          <button type="button" class="btn btn-outline" data-attach-asset="${escapeHtml(asset.id)}" style="margin-top: 4px; padding: 2px 8px; font-size: 11px;">Pasang</button>
+        </figure>`).join('')}
+    </div>`;
+}
+
+async function loadTopicManualAssets() {
+  const topicId = activeDraft?.topic_id;
+  if (!topicId || manualAssetCache.loading) return;
+  manualAssetCache.loading = true;
+  try {
+    const response = await fetch(`/api/topics/${encodeURIComponent(topicId)}/media`);
+    const packet = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(packet.error || `HTTP ${response.status}`);
+    if (manualAssetCache.topicId !== topicId) return;
+    manualAssetCache.assets = Array.isArray(packet.assets) ? packet.assets : [];
+    manualAssetCache.loaded = true;
+  } catch (error) {
+    if (manualAssetCache.topicId === topicId) {
+      manualAssetCache.loaded = true;
+      const container = document.getElementById('editor-media-assets');
+      if (container) container.innerHTML = `<p class="form-help-text">Gagal memuat aset gambar: ${escapeHtml(error.message)}</p>`;
+      return;
+    }
+  } finally {
+    if (manualAssetCache.topicId === topicId) manualAssetCache.loading = false;
+  }
+  renderManualAssetList();
+}
+
+function renderManualMediaPanel() {
+  if (!activeDraft) return;
+  const topicId = activeDraft.topic_id;
+  if (!topicId) return;
+  if (manualAssetCache.topicId !== topicId) {
+    manualAssetCache = { topicId, assets: [], loaded: false, loading: false };
+  }
+  const target = document.getElementById('editor-media-target');
+  if (target) target.textContent = String(activeSlideIndex + 1);
+  const selected = document.getElementById('editor-media-selected');
+  if (selected) {
+    selected.innerHTML = pendingManualAsset
+      ? `<div style="display: flex; gap: 10px; align-items: center; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px;">
+          <img src="${escapeHtml(pendingManualAsset.url)}" alt="Gambar terunggah" style="width: 64px; height: 48px; object-fit: cover; border-radius: 4px;">
+          <div style="font-size: 12px; color: var(--muted); overflow-wrap: anywhere;">Siap dipasang: ${escapeHtml(pendingManualAsset.credit)} · ${escapeHtml(MANUAL_RIGHTS_LABELS[pendingManualAsset.rights_basis] || pendingManualAsset.rights_basis)}</div>
+        </div>`
+      : '';
+  }
+  const attach = document.getElementById('btn-attach-manual-media');
+  if (attach) attach.disabled = !pendingManualAsset;
+  const cover = (activeDraft.slides || [])[0]?.data || {};
+  const coverReady = Boolean(cover.asset_id) && MANUAL_IMAGE_KINDS.includes(cover.image_kind);
+  const coverStatus = document.getElementById('editor-cover-status');
+  if (coverStatus) {
+    coverStatus.textContent = coverReady ? 'Cover siap' : 'Cover belum bergambar';
+    coverStatus.classList.toggle('active', coverReady);
+  }
+  if (!manualAssetCache.loaded && !manualAssetCache.loading) loadTopicManualAssets();
+  else renderManualAssetList();
+}
+
+async function uploadManualMedia() {
+  if (!activeDraft?.topic_id) return;
+  const fileInput = document.getElementById('editor-media-file');
+  const file = fileInput?.files?.[0];
+  const credit = (document.getElementById('editor-media-credit')?.value || '').trim();
+  const rightsBasis = document.getElementById('editor-media-rights')?.value || '';
+  const rightsReference = (document.getElementById('editor-media-reference')?.value || '').trim();
+  const attested = document.getElementById('editor-media-attested')?.checked === true;
+  if (!file) { showToast('Pilih berkas gambar terlebih dahulu.'); return; }
+  if (file.size > 12 * 1024 * 1024) { showToast('Gambar melebihi batas 12 MB sebelum diproses.'); return; }
+  if (!credit) { showToast('Credit gambar wajib diisi.'); return; }
+  if (!attested) { showToast('Atestasi hak wajib disetujui sebelum mengunggah.'); return; }
+  const button = document.getElementById('btn-upload-manual-media');
+  if (button) button.disabled = true;
+  manualMediaStatus('Mengunggah dan memproses gambar...');
+  try {
+    const dataUri = await readManualFileAsDataUrl(file);
+    const body = { filename: file.name, data_uri: dataUri, credit, rights_basis: rightsBasis, rights_attested: true };
+    if (rightsReference) body.rights_reference = rightsReference;
+    const response = await fetch(`/api/topics/${encodeURIComponent(activeDraft.topic_id)}/media`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const packet = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(packet.error || `HTTP ${response.status}`);
+    pendingManualAsset = packet.asset;
+    if (fileInput) fileInput.value = '';
+    manualAssetCache.assets = [packet.asset, ...manualAssetCache.assets.filter((asset) => asset.id !== packet.asset.id)];
+    renderManualMediaPanel();
+    manualMediaStatus(`Gambar ${packet.asset.width}×${packet.asset.height} siap. Tekan "Pasang ke slide ${activeSlideIndex + 1}".`);
+    showToast('Gambar diunggah. Pasang ke slide lalu tinjau ulang.');
+  } catch (error) {
+    manualMediaStatus('');
+    showToast(`Gagal mengunggah gambar: ${error.message}`);
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+async function attachManualMedia(assetId) {
+  if (!activeDraft) return;
+  const slideNo = activeSlideIndex + 1;
+  const button = document.getElementById('btn-attach-manual-media');
+  if (button) button.disabled = true;
+  manualMediaStatus(`Memasang gambar ke slide ${slideNo}...`);
+  try {
+    const response = await fetch(`/api/drafts/${activeDraft.id}/slide-media`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slide_no: slideNo, asset_id: assetId }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
+    invalidateDraftReview();
+    const fresh = await fetch(`/api/drafts/${activeDraft.id}`).then((res) => res.json());
+    activeDraft = fresh;
+    pendingManualAsset = null;
+    renderActiveSlide();
+    renderThumbnailsStrip();
+    renderOriginalReview();
+    manualMediaStatus(`Gambar terpasang di slide ${slideNo}. Tinjau ulang sebelum menyetujui.`);
+    showToast(`Gambar dipasang ke slide ${slideNo}.`);
+  } catch (error) {
+    manualMediaStatus('');
+    showToast(`Gagal memasang gambar: ${error.message}`);
+  } finally {
+    if (button) button.disabled = !pendingManualAsset;
+  }
+}
+
 function renderActiveSlide() {
   if (!activeDraft) return;
   const slides = activeDraft.rendered_slides || [];
@@ -822,6 +999,7 @@ function renderActiveSlide() {
 
   // Render dynamic custom layout parameter fields
   renderLayoutFields(layout, currentSlide.data || {});
+  renderManualMediaPanel();
 
   // Update active thumbnail
   document.querySelectorAll('.editor-thumb-box').forEach((box, idx) => {

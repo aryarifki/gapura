@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { generateIllustration, buildIllustrationPrompt, saveIllustrationRaster, readIllustrationRaster, ASSET_ID } from './illustrations.js';
+import { MEDIA_KIND, loadManualMedia, manualMediaDescriptor } from './manual-media.js';
 
 function topicId(value) {
   if (!/^[1-9]\d*$/u.test(String(value)) || !Number.isSafeInteger(Number(value))) throw new Error('topic_id_invalid');
@@ -30,8 +31,18 @@ export async function pinIllustrationSlides(slides, { client, topic_id, preserve
     const requested = slide?.data?.asset_id;
     if (prior?.asset_id && requested && requested !== prior.asset_id) throw new Error('illustration_replace_required');
     const id = requested || prior?.asset_id;
+    // Manual uploads keep their own table and provenance; legacy/AI descriptors
+    // without a kind stay on the immutable media_assets path.
+    const kind = slide?.data?.image_kind || prior?.image_kind || 'ai_generated';
     if (!id) {
-      if (slide?.data?.image_kind === 'ai_generated') throw new Error('illustration_id_invalid');
+      if (slide?.data?.image_kind) throw new Error('illustration_id_invalid');
+      continue;
+    }
+    if (kind === MEDIA_KIND) {
+      const asset = await loadManualMedia(client, id, { topic_id });
+      if (slide.data?.asset_sha256 && slide.data.asset_sha256 !== asset.sha256) throw new Error('media_revision_mismatch');
+      const { image_url, image_data, image_disclosure, ...data } = slide.data || {};
+      slide.data = { ...data, ...manualMediaDescriptor(asset) };
       continue;
     }
     const asset = await loadIllustration(client, id, { topic_id });

@@ -6,6 +6,21 @@ const ALLOWED_HOSTS = new Set([
 ]);
 const MAX_BYTES = 4 * 1024 * 1024;
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+export const MEDIA_IMAGE_KINDS = Object.freeze(['ai_generated', 'editor_upload']);
+const ASSET_ID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/iu;
+const SHA256 = /^[a-f0-9]{64}$/u;
+
+/** Cover is slide 1 and must carry an immutable image descriptor. */
+export function hasCoverImage(content) {
+  let slides = content;
+  if (typeof slides === 'string') {
+    try { slides = JSON.parse(slides); } catch { return false; }
+  }
+  if (!Array.isArray(slides) && Array.isArray(slides?.slides)) slides = slides.slides;
+  const data = Array.isArray(slides) ? slides[0]?.data : null;
+  return Boolean(data && MEDIA_IMAGE_KINDS.includes(data.image_kind)
+    && ASSET_ID.test(String(data.asset_id)) && SHA256.test(String(data.asset_sha256)));
+}
 
 export function isAllowedImageUrl(value) {
   try {
@@ -39,6 +54,17 @@ export async function imageUrlToDataUri(value, { fetchImpl = fetch, timeoutMs = 
 export async function prepareSlideImages(slides, options = {}) {
   return Promise.all((slides || []).map(async (slide) => {
     const descriptor = slide?.data || {};
+    if (descriptor.image_kind === 'editor_upload') {
+      const { ASSET_ID: MANUAL_ID, readManualMedia } = await import('../designer/manual-media.js');
+      if (typeof descriptor.asset_id !== 'string' || !MANUAL_ID.test(descriptor.asset_id)) throw new Error('media_id_invalid');
+      if (typeof options.resolveMedia !== 'function') throw new Error('media_resolver_missing');
+      const asset = await options.resolveMedia(descriptor.asset_id);
+      if (!asset) throw new Error('media_not_found');
+      if (descriptor.asset_sha256 && descriptor.asset_sha256 !== asset.sha256) throw new Error('media_revision_mismatch');
+      const bytes = await readManualMedia(asset, options);
+      const { image_url, image_data, image_disclosure, ...data } = descriptor;
+      return { ...slide, data: { ...data, asset_id: asset.id, asset_sha256: asset.sha256, image_kind: 'editor_upload', credit: asset.credit, rights_basis: asset.rights_basis, image_data: `data:${asset.mime};base64,${bytes.toString('base64')}` } };
+    }
     if (descriptor.asset_id || descriptor.image_kind === 'ai_generated') {
       const { ASSET_ID, readIllustrationRaster } = await import('../designer/illustrations.js');
       if (typeof descriptor.asset_id !== 'string' || !ASSET_ID.test(descriptor.asset_id)) throw new Error('illustration_id_invalid');

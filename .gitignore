@@ -22,6 +22,7 @@ storage/n8n/*
 Thumbs.db
 *.tmp
 *.log
+backups/
 __pycache__/
 *.pyc
 config/models.cache.json

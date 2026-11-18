@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { renderPayload } from '../common/images.js';
 import { pinIllustrationSlides, loadIllustration } from '../designer/illustration-store.js';
+import { loadManualMedia } from '../designer/manual-media.js';
 
 export class DraftError extends Error {
   constructor(message, statusCode = 400) { super(message); this.statusCode = statusCode; }
@@ -57,12 +58,17 @@ export async function editDraft(draftId, change, { pool, renderUrl, renderSecret
       let response;
       try {
         const assets = new Map();
-        for (const slide of slides) if (slide.data?.asset_id && !assets.has(slide.data.asset_id)) {
-          assets.set(slide.data.asset_id, await loadIllustration(client, slide.data.asset_id, { topic_id: draft.topic_id }));
+        const media = new Map();
+        for (const slide of slides) {
+          const id = slide.data?.asset_id;
+          if (!id) continue;
+          if (slide.data.image_kind === 'editor_upload') {
+            if (!media.has(id)) media.set(id, await loadManualMedia(client, id, { topic_id: draft.topic_id }));
+          } else if (!assets.has(id)) assets.set(id, await loadIllustration(client, id, { topic_id: draft.topic_id }));
         }
         response = await fetchImpl(`${renderUrl}/render`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Render-Secret': renderSecret },
-          body: JSON.stringify({ draft_id: Number(draftId), slides: await renderPayload(slides, { storagePath, resolveAsset: (id) => assets.get(id) }) }),
+          body: JSON.stringify({ draft_id: Number(draftId), slides: await renderPayload(slides, { storagePath, resolveAsset: (id) => assets.get(id), resolveMedia: (id) => media.get(id) }) }),
           signal: AbortSignal.timeout(30000),
         });
       } catch { throw new DraftError('Renderer tidak dapat dihubungi. Draf sebelumnya dipertahankan.', 502); }

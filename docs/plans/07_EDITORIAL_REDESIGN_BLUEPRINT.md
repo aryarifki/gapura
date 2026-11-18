@@ -1,7 +1,7 @@
 # Blueprint pembaruan editorial dan desain Gapura Media
 
-Versi 2.5 · 18 November 2026 · Status: R0–R6 tersedia sesuai batas masing-masing;
-R3 generasi nyata tertahan quota 0; R5 dan R6 gate teknis lulus; R7–R8 belum
+Versi 2.5 · 18 November 2026 · Status: R0–R7 tersedia sesuai batas masing-masing;
+R3 generasi nyata tertahan quota 0; R5, R6, dan R7 gate teknis lulus; R8 belum
 diterapkan/diterima.
 
 Dokumen ini menjadi acuan perubahan konten berikutnya. [Keputusan konten orisinal
@@ -57,10 +57,12 @@ Keputusan yang digunakan untuk membuat rencana konkret:
   yang disebut carousel. Default enam slide, normal 5–8, rentang konfigurasi 3–9.
   Format single hanya boleh menjadi pilihan eksplisit owner untuk produk lain;
   jalur berita reguler tidak boleh turun ke single secara diam-diam.
-- Setidaknya satu ilustrasi AI orisinal pada cover. Agen memakai brief visual
-  konseptual, bukan foto penerbit atau rekonstruksi realistis yang terkesan
-  dokumentasi kejadian. Renderer menampilkan `Ilustrasi AI · Gapura Media`.
-  Visual isi ditambah bila membantu, bukan sekadar mengisi slide.
+- Cover (slide 1) wajib bergambar. Jalur utama adalah unggahan manual redaksi
+  dengan credit dan dasar hak; ilustrasi AI tetap opsi. Brief visual konseptual,
+  bukan foto penerbit atau rekonstruksi realistis yang terkesan dokumentasi
+  kejadian. Renderer menampilkan `Gambar: <credit>` untuk unggahan manual dan
+  `Ilustrasi AI · Gapura Media` untuk raster AI. Visual isi ditambah bila
+  membantu, bukan sekadar mengisi slide.
 - Registry/RSS dipakai untuk topik/judul dan provenance. Body, ringkasan dan foto
   penerbit tidak masuk payload penulisan/desain default. Agen menulis angle,
   struktur, penjelasan dan caption sendiri; tidak sekadar mengganti sinonim.
@@ -226,7 +228,7 @@ flowchart TD
     F -- Belum --> G[Perjelas angle / bahan redaktur]
     F -- Ya --> H[Rencana penjelasan 3–9 slide]
     H --> I[Copywriter: naskah dan caption orisinal]
-    I --> J[Designer: ilustrasi AI dan layout]
+    I --> J[Designer: gambar manual/AI dan layout]
     J --> K[Render PNG / JPEG dan pratinjau]
     K --> L[Review manusia atas revisi konten]
     L -- Revisi --> I
@@ -273,6 +275,11 @@ kebenaran atau orisinalitas semantik. Rincian acceptance ada di
 
 ## 6. Ilustrasi AI harus bertahan sampai render
 
+Jalur visual utama R7 adalah unggah manual redaksi dengan tabel
+`manual_media_assets`, credit/dasar hak, dan gate cover slide 1; lihat
+[laporan R7](15_R7_MANUAL_MEDIA.md). Bagian ini mengatur opsi ilustrasi AI yang
+tetap tersedia.
+
 Designer menyusun brief ilustrasi editorial konseptual/stilisasi yang relevan
 dengan isu. Adapter provider menghasilkan bytes raster nyata, disimpan lokal
 sebelum render. Chat model tidak mengarang URL/bytes sebagai bukti sukses.
@@ -293,8 +300,9 @@ Asset ID dipilih sebelum layout, lalu dipakai konsisten pada simpan editor,
 render, fallback dan regenerasi. Regenerasi teks mempertahankan aset terpilih;
 regenerasi visual eksplisit membuat revisi baru dan membatalkan approval.
 Generator gagal, bytes invalid, model/key tidak tersedia atau gambar tidak
-relevan menghasilkan error/`needs_media` yang terlihat. Tidak kembali mengambil
-foto sumber atau menganggap cover kosong siap unggah.
+relevan menghasilkan error yang terlihat. Cover kosong tetap dapat diedit dan
+diisi manual, tetapi tidak dapat disetujui sampai bergambar. Tidak kembali
+mengambil foto sumber.
 
 Validasi bytes, MIME raster, dimensi, checksum, batas ukuran dan timeout tetap
 wajib. Jika provider mengembalikan URL, gunakan kebijakan host provider, DNS
@@ -309,7 +317,7 @@ Default enam slide dengan urutan menyesuaikan mode dan bahan:
 
 | Slide | Tujuan | Contoh komponen |
 | --- | --- | --- |
-| 1 | Menarik perhatian dengan inti isu | Ilustrasi AI relevan, headline orisinal, identitas Gapura dan disclosure |
+| 1 | Menarik perhatian dengan inti isu | Gambar manual/AI relevan, headline orisinal, identitas Gapura dan credit/disclosure |
 | 2 | Menjelaskan inti isu | Definisi/pertanyaan pembaca; aktor/lokasi/tanggal kejadian hanya bila ada bahan aktual |
 | 3 | Memberi konteks | Latar kebijakan/perkara/data yang penting |
 | 4 | Mengembangkan penjelasan | Mekanisme atau perbandingan; statement/kronologi hanya bila didukung bahan |
@@ -476,12 +484,13 @@ Semua perubahan kode dimulai dari tes merah yang mereproduksi masalah.
 | R4 — Sources dan Analis | Topik/judul dan metadata saja bagi Analis/cluster, kurasi enam desk | **Selesai**, lihat [R4](12_R4_SOURCES_DESKS.md); allowlist sembilan field, 12 feed baru, 34 sumber (29 desk eksplisit/5 auto), migrasi/backup terverifikasi. Tidak backfill desk/cluster topik lama; input naskah legacy belum diganti |
 | R5 — Lepas Verifikator | Seluruh runtime/API/UI/config dan consumer report dilepas; archive schema dipertahankan | **Selesai, gate teknis lulus**, lihat [R5](13_R5_REMOVE_VERIFICATOR.md). Produksi/review tanpa report; human audit hash dan locked recheck wajib; koreksi niche dan seed enam query nasional terpasang tanpa mengubah data lama |
 | R6 — Penulisan dan desain | Naskah orisinal dua mode (umum/aktual), tanpa body/summary penerbit; carousel 3–9 default enam dan caption isi 1.200–1.900 | **Selesai, gate teknis lulus**, lihat [R6](14_R6_ORIGINAL_EDITORIAL.md). Verbatim/fallback salin dihapus; corpus enam desk, caption/Threads, hash/publisher dan migrasi additive lulus. Tidak ada raster nyata, sampel visual owner atau publish |
-| R7 — Review visual owner | Satu carousel per desk dengan ilustrasi AI dan variasi cover/layout | Owner menyetujui orisinalitas/style/isi/disclosure; perbaiki sebelum batch. Quota gambar 0 harus diselesaikan lebih dulu |
+| R7 — Gambar manual dan review visual | Unggah manual menjadi jalur utama; cover = slide 1 wajib bergambar sebelum approval/publish, slide isi opsional; ilustrasi AI tetap opsi | **Gate teknis lulus**, lihat [R7](15_R7_MANUAL_MEDIA.md). Enam sampel manual dibuat dan masih `draft`; owner menilai komposisi/credit/kesesuaian. Kuota gambar AI 0 tidak lagi menghalangi jalur manual |
 | R8 — Aktivasi bertahap | 20 draf berurutan, shadow, satu publish uji yang disetujui | Tidak ada drop ilustrasi, foto sumber, single/boilerplate; approval/hash/idempotency lulus |
 
-Jangan mengaktifkan kembali timer hanya karena test unit hijau. Keputusan style
-dan kedalaman isi harus lulus review owner pada R7. Sampel awal memakai materi
-yang diizinkan, tidak membutuhkan publikasi live.
+Jangan mengaktifkan kembali timer hanya karena test unit hijau. Keputusan style,
+komposisi cover dan kedalaman isi harus lulus review owner pada R7. Sampel awal
+memakai materi yang diizinkan dan grafis abstrak `own_work`, tidak membutuhkan
+publikasi live.
 
 Urutan aktivasi yang dipakai semua runbook: R7 sampel disetujui → R8 batch dan
 shadow dijalankan manual → satu publish uji mendapat persetujuan tersendiri →
@@ -529,12 +538,14 @@ reset tidak otomatis memberikan mandat untuk menyalakan timer.
 
 ### Visual
 
-- Golden render 1080×1350 untuk ilustrasi portrait/landscape, long headline,
-  kutipan, kronologi, data dan teks pada body; cover memakai ilustrasi generatif.
+- Golden render 1080×1350 untuk gambar portrait/landscape, long headline,
+  kutipan, kronologi, data dan teks pada body; cover memakai gambar manual atau
+  ilustrasi AI yang relevan.
 - Tidak ada teks meluber, logo tertutup, contrast rendah atau font terlalu kecil.
-- Ilustrasi terkait isu, bytes lokal benar-benar muncul, provenance/provider
-  tercatat dan label `Ilustrasi AI · Gapura Media` tetap terbaca pada fallback,
-  regenerasi, export dan JPEG. Gagal generator tidak beralih ke foto penerbit.
+- Gambar terkait isu, bytes lokal benar-benar muncul, provenance/provider
+  tercatat dan credit/disclosure (`Gambar: <credit>` atau
+  `Ilustrasi AI · Gapura Media`) tetap terbaca pada fallback, regenerasi, export
+  dan JPEG. Gagal generator tidak beralih ke foto penerbit.
 - Chart/stat/timeline kosong tidak pernah menampilkan fakta demo.
 
 ### Penghapusan verifier dan review
@@ -560,7 +571,8 @@ reset tidak otomatis memberikan mandat untuk menyalakan timer.
 ### Batch penerimaan
 
 Batch 20 draf berturut-turut harus memenuhi kontrak: 100% carousel bermakna,
-100% cover dengan ilustrasi AI relevan dan disclosure, 0 body/foto penerbit di
+100% cover bergambar (manual atau AI) dengan credit/disclosure sesuai jenis,
+0 body/foto penerbit di
 payload generasi default, 0 label teknis pada judul/caption, 0 quote/angka atau
 detail kejadian buatan, 0 posting tanpa review. Target berlaku pada hasil yang
 memenuhi bahan sesuai mode; kegagalan generator/bahan tetap terlihat.
@@ -593,11 +605,12 @@ owner, bukan klaim penilaian yang sudah dilakukan.
   scraping berbayar, integrasi Threads baru, multi-user/RBAC, kalender drag-drop,
   penghapusan posting remote, atau aktivasi autopost massal.
 
-Keputusan terbuka melalui R7: proporsi desk, style ilustrasi AI, batas panjang
-headline, tata letak disclosure, biaya/latensi generator dan kebutuhan caption
-Facebook/Threads. Visual belum tersedia tetap dapat diedit sebagai `needs_media`,
-bukan otomatis siap unggah. Pilihan style diuji pada sampel; keputusan memakai
-ilustrasi AI dan naskah orisinal sudah ditetapkan owner.
+Keputusan terbuka melalui R7: proporsi desk, sumber hak foto editorial, komposisi
+cover manual, style ilustrasi AI bila kuota aktif, batas panjang headline, tata
+letak credit/disclosure, biaya/latensi generator dan kebutuhan caption
+Facebook/Threads. Draf tanpa gambar tetap dapat diedit dan disimpan, tetapi cover
+(slide 1) wajib bergambar sebelum approval/publish; ilustrasi AI tetap opsi, bukan
+prasyarat.
 
 ## 14. Langkah konkret berikutnya
 
@@ -611,8 +624,11 @@ R4 discovery/Analis/cluster dan R5 penghapusan Verifikator sudah selesai.
 R6 naskah orisinal dua mode juga selesai dan sudah dimigrasikan ke produksi;
 gate unit/DB/API/render/browser lulus, dengan bukti di
 [laporan R6](14_R6_ORIGINAL_EDITORIAL.md). Jalur naskah legacy sudah tidak
-dipakai untuk produksi baru. Tidak ada permintaan gambar nyata tambahan
-atau provider swap; quota 0 tetap penghalang sampel R7.
+dipakai untuk produksi baru. R7 menjadikan unggah gambar manual sebagai jalur
+utama dan mewajibkan cover slide 1 bergambar sebelum approval/publish; enam
+sampel manual sudah dibuat dan menunggu penilaian owner
+([laporan R7](15_R7_MANUAL_MEDIA.md)). Kuota gambar AI tetap 0, tetapi tidak lagi
+menghalangi sampel manual; jalur AI tetap opsi.
 
 Otomatisasi produksi/publish tetap dijeda sampai owner menyetujui sampel. Lihat
 [laporan reset](../EDITORIAL_WORKSPACE_RESET_20261116.md) untuk backup, keadaan

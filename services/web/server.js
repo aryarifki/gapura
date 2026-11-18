@@ -16,7 +16,7 @@ import { exec } from 'child_process';
 import { isIP } from 'node:net';
 import { createOriginGuard, mergeAgentConfig, redactAgentConfig } from './access.js';
 import { isValidSignedStorageRequest } from '../common/storage-signature.js';
-import { renderPayload } from '../common/images.js';
+import { renderPayload, hasCoverImage } from '../common/images.js';
 import { validatePublicSourceUrl, parsePublicSourceUrl } from '../common/sources.js';
 import { buildEditorialBrief, normalizeEditorialInput, validateOriginalContent } from '../common/original-editorial.js';
 import { draftContentHash } from '../common/draft-revision.js';
@@ -43,6 +43,12 @@ import { createArticleReader } from '../scout/article-reader.js';
 import { createTopicMaterialService } from '../scout/enrichment.js';
 import { createIllustrationService, pinIllustrationSlides, loadIllustration, selectedIllustration, illustrationDescriptor } from '../designer/illustration-store.js';
 import { illustrationConfiguration, ASSET_ID } from '../designer/illustrations.js';
+import {
+  ASSET_ID as MANUAL_ASSET_ID, MEDIA_KIND, RIGHTS_BASES,
+  deleteManualMediaRaster, loadManualMedia, manualMediaDescriptor, parseManualUpload,
+  readManualMedia, saveManualMediaRaster,
+} from '../designer/manual-media.js';
+import { randomUUID } from 'node:crypto';
 import { createTopicClusterHandler } from './clusters.js';
 import { normalizeDesk } from '../common/discovery.js';
 
@@ -51,10 +57,13 @@ const __dirname = path.dirname(__filename);
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
-const app = express();
-app.use(express.json());
 const accessGuardOptions = { publicOrigin: process.env.GAPURA_PUBLIC_ORIGIN || '' };
+const app = express();
 app.use('/api', createOriginGuard(accessGuardOptions));
+// Manual uploads embed one bounded base64 raster, so this route parses its own
+// JSON before the global 100kb parser would reject an otherwise valid body.
+app.post('/api/topics/:id/media', express.json({ limit: '20mb' }), uploadManualMedia);
+app.use(express.json());
 app.use('/api', (req, res, next) => {
   if (Object.values(req.query).some((value) => typeof value !== 'string')) return res.status(400).json({ error: 'Parameter query harus berupa teks tunggal.' });
   return next();
@@ -442,7 +451,6 @@ app.post('/api/drafts/create-from-custom', async (req, res) => {
     if (!pinnedSlides[0].data.asset_id) {
       const asset = await selectedIllustration(client, topicId);
       if (asset) pinnedSlides[0].data = { ...pinnedSlides[0].data, ...illustrationDescriptor(asset) };
-      else if (loadAgentsConfig().designer?.image_generation?.enabled === true) throw new DraftError('needs_media: Ilustrasi topik belum siap.', 409);
     }
     // 2. Simpan draft as a review-only design preview; it is not marked as scored.
     const defaultCaption = original?.caption || caption || [title, summary].filter(Boolean).join('\n\n');
@@ -467,7 +475,7 @@ app.post('/api/drafts/create-from-custom', async (req, res) => {
       },
       body: JSON.stringify({
         draft_id: draftId,
-        slides: await renderPayload(pinnedSlides, { storagePath: STORAGE_PATH, resolveAsset: (id) => loadIllustration(client, id, { topic_id: topicId }) }),
+        slides: await renderPayload(pinnedSlides, { storagePath: STORAGE_PATH, resolveAsset: (id) => loadIllustration(client, id, { topic_id: topicId }), resolveMedia: (id) => loadManualMedia(client, id, { topic_id: topicId }) }),
       }),
     });
 
@@ -538,6 +546,11 @@ app.post('/api/drafts/:id/approve', async (req, res) => {
       if (req.body.reviewed !== true) {
         await client.query('ROLLBACK');
         return res.status(409).json({ error: 'Konfirmasi review konten wajib diisi sebelum menyetujui.' });
+      }
+      // Cover is slide 1: a draft without an image there cannot be approved or published.
+      if (!hasCoverImage(lockedDrafts[0].slides)) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'Cover (slide 1) wajib memiliki gambar sebelum disetujui.' });
       }
       const gate = validateDraftApproval({
         status: lockedDrafts[0].status,
@@ -799,6 +812,144 @@ app.get('/api/media/assets/:assetId', async (req, res) => {
     const { asset, bytes } = await illustrations.raster(req.params.assetId);
     return res.set('X-Content-Type-Options', 'nosniff').type(asset.mime).send(bytes);
   } catch (error) { return res.status(error.message === 'illustration_not_found' ? 404 : 409).json({ error: 'Raster ilustrasi belum tersedia atau tidak cocok dengan catatan aset.' }); }
+});
+
+const manualUploadRequests = new Map();
+
+function publicManualAsset(asset) {
+  return {
+    id: asset.id, topic_id: asset.topic_id, kind: asset.kind, credit: asset.credit,
+    rights_basis: asset.rights_basis, rights_reference: asset.rights_reference,
+    mime: asset.mime, byte_size: asset.byte_size, width: asset.width, height: asset.height,
+    sha256: asset.sha256, original_name: asset.original_name, created_at: asset.created_at,
+    url: `/api/media/manual/${asset.id}`,
+  };
+}
+
+// Editor-supplied raster upload. Nothing is written until the provenance fields
+// pass, and a failed insert removes the just-written immutable file.
+async function uploadManualMedia(req, res) {
+  try {
+    if (!/^[1-9]\d*$/u.test(String(req.params.id)) || !Number.isSafeInteger(Number(req.params.id))) {
+      return res.status(400).json({ error: 'ID harus berupa bilangan bulat positif.' });
+    }
+    const fields = ['filename', 'data_uri', 'credit', 'rights_basis', 'rights_reference', 'rights_attested'];
+    const body = req.body;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return res.status(400).json({ error: 'Body unggahan tidak valid.' });
+    if (Object.keys(body).some((key) => !fields.includes(key))) return res.status(400).json({ error: `Hanya field ${fields.join(', ')} yang diterima.` });
+    if (typeof body.credit !== 'string' || !body.credit.trim() || body.credit.length > 200) return res.status(400).json({ error: 'Credit wajib diisi (maksimal 200 karakter).' });
+    if (typeof body.rights_basis !== 'string' || !RIGHTS_BASES.includes(body.rights_basis)) {
+      return res.status(400).json({ error: 'Jenis hak (rights_basis) tidak dikenal; pilih own_work, licensed_stock, atau agency_license.' });
+    }
+    if (body.rights_attested !== true) return res.status(400).json({ error: 'Atestasi hak wajib disetujui sebelum mengunggah gambar.' });
+    if (body.rights_reference !== undefined && body.rights_reference !== null
+      && (typeof body.rights_reference !== 'string' || body.rights_reference.length > 500)) {
+      return res.status(400).json({ error: 'Referensi hak maksimal 500 karakter.' });
+    }
+    if (body.filename !== undefined && (typeof body.filename !== 'string' || body.filename.length > 255)) {
+      return res.status(400).json({ error: 'Nama file maksimal 255 karakter.' });
+    }
+    let parsed;
+    try { parsed = parseManualUpload(body.data_uri); } catch (error) {
+      return res.status(400).json({
+        error: error.message === 'media_too_large'
+          ? 'Gambar melebihi batas 12 MB sebelum diproses.'
+          : 'data_uri gambar tidak valid; gunakan JPEG, PNG, atau WebP base64.',
+      });
+    }
+    const now = Date.now();
+    for (const [key, entry] of manualUploadRequests) if (entry.expiresAt <= now) manualUploadRequests.delete(key);
+    const peer = req.socket.remoteAddress || 'unknown';
+    const forwarded = req.get('cf-connecting-ip') || '';
+    const address = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(peer) && isIP(forwarded) ? forwarded : peer;
+    const limit = manualUploadRequests.get(address) || { count: 0, expiresAt: now + 10 * 60 * 1000 };
+    if (limit.count >= 10 || (!manualUploadRequests.has(address) && manualUploadRequests.size >= 1000)) {
+      return res.status(429).json({ error: 'Batas unggah media tercapai. Coba lagi setelah beberapa menit.' });
+    }
+    limit.count++;
+    manualUploadRequests.set(address, limit);
+
+    const topicId = Number(req.params.id);
+    const { rows: [topic] } = await pool.query('SELECT id FROM topics WHERE id=$1', [topicId]);
+    if (!topic) return res.status(404).json({ error: 'Topik tidak ditemukan.' });
+
+    const id = randomUUID();
+    let saved;
+    try { saved = await saveManualMediaRaster(id, parsed.bytes, { storagePath: STORAGE_PATH }); } catch (error) {
+      return res.status(400).json({
+        error: error.message === 'media_dimensions_invalid'
+          ? 'Gambar minimal 320x240 piksel setelah diproses.'
+          : error.message === 'media_too_large'
+            ? 'Gambar hasil proses melebihi batas 4 MB.'
+            : 'Gambar tidak dapat diproses; unggah ulang sebagai JPEG, PNG, atau WebP.',
+      });
+    }
+    const reference = typeof body.rights_reference === 'string' && body.rights_reference.trim() ? body.rights_reference.trim() : null;
+    const originalName = typeof body.filename === 'string' && body.filename.trim() ? body.filename.trim() : null;
+    try {
+      const { rows: [asset] } = await pool.query(
+        `INSERT INTO manual_media_assets (id, topic_id, rights_basis, credit, rights_reference, local_path, mime, byte_size, width, height, sha256, original_name)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+        [id, topicId, body.rights_basis, body.credit.trim(), reference, saved.local_path, saved.mime, saved.byte_size, saved.width, saved.height, saved.sha256, originalName],
+      );
+      await writeAudit('topic', topicId, 'manual_media_uploaded', 'web_admin', { asset_id: id, sha256: saved.sha256 });
+      return res.status(201).json({ asset: publicManualAsset(asset), descriptor: manualMediaDescriptor(asset) });
+    } catch (error) {
+      await deleteManualMediaRaster(id, { storagePath: STORAGE_PATH });
+      return res.status(500).json({ error: 'Media manual tidak dapat disimpan.' });
+    }
+  } catch {
+    return res.status(500).json({ error: 'Media manual tidak dapat diproses.' });
+  }
+}
+
+app.get('/api/topics/:id/media', async (req, res) => {
+  try {
+    const { rows: [topic] } = await pool.query('SELECT id FROM topics WHERE id=$1', [req.params.id]);
+    if (!topic) return res.status(404).json({ error: 'Topik tidak ditemukan.' });
+    const { rows } = await pool.query('SELECT * FROM manual_media_assets WHERE topic_id=$1 ORDER BY created_at DESC, id DESC LIMIT 100', [req.params.id]);
+    return res.json({ assets: rows.map(publicManualAsset) });
+  } catch { return res.status(500).json({ error: 'Media manual tidak dapat dibaca.' }); }
+});
+
+app.get('/api/media/manual/:assetId', async (req, res) => {
+  if (!MANUAL_ASSET_ID.test(String(req.params.assetId))) return res.status(400).json({ error: 'ID aset harus UUID.' });
+  try {
+    const asset = await loadManualMedia(pool, req.params.assetId);
+    const bytes = await readManualMedia(asset, { storagePath: STORAGE_PATH });
+    return res.set('X-Content-Type-Options', 'nosniff').type(asset.mime).send(bytes);
+  } catch { return res.status(404).json({ error: 'Raster media manual belum tersedia atau tidak cocok dengan catatan aset.' }); }
+});
+
+app.post('/api/drafts/:id/slide-media', async (req, res) => {
+  const body = req.body;
+  const fields = ['slide_no', 'asset_id'];
+  if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some((key) => !fields.includes(key))) {
+    return res.status(400).json({ error: `Hanya field ${fields.join(', ')} yang diterima.` });
+  }
+  if (!Number.isInteger(body.slide_no) || body.slide_no < 1 || body.slide_no > 9) return res.status(400).json({ error: 'Nomor slide tidak valid.' });
+  if (typeof body.asset_id !== 'string' || !MANUAL_ASSET_ID.test(body.asset_id)) return res.status(400).json({ error: 'asset_id UUID wajib diisi.' });
+  const draftId = Number(req.params.id);
+  try {
+    const result = await editDraft(draftId, async (draft, client) => {
+      const slide = draft.slides[body.slide_no - 1];
+      if (!slide) throw new DraftError('Slide tidak ditemukan.');
+      const asset = await loadManualMedia(client, body.asset_id, { topic_id: draft.topic_id });
+      const { image_url, image_data, image_kind, asset_id, asset_sha256, credit, rights_basis, ...data } = slide.data || {};
+      slide.data = { ...data, ...manualMediaDescriptor(asset) };
+      if (body.slide_no > 1) slide.layout = 'illustration';
+      return { slides: draft.slides };
+    }, { ...draftDependencies, replaceIllustration: true });
+    return res.json({
+      status: 'success', draftId, slide_no: body.slide_no, asset_id: result.slides[body.slide_no - 1].data.asset_id,
+      layout: result.slides[body.slide_no - 1].layout, image_url: `/storage/drafts/${draftId}/slide_${body.slide_no}.png?t=${Date.now()}`, needs_review: true,
+    });
+  } catch (error) {
+    const missing = /^media_(not_found|id_invalid|path_invalid|checksum_mismatch|asset_invalid)/u.test(error.message);
+    return res.status(error.statusCode || (missing ? 409 : 500)).json({
+      error: missing ? 'Media manual tidak tersedia untuk topik draf ini.' : error.message,
+    });
+  }
 });
 
 app.post('/api/topics/:id/material/enrich', async (req, res) => {

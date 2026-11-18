@@ -6,6 +6,9 @@ const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const MAX_IMAGE_CHARS = Math.ceil(MAX_IMAGE_BYTES / 3) * 4;
 const MAX_REQUEST_IMAGE_BYTES = 7 * 1024 * 1024;
 const FORBIDDEN_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+const IMAGE_KINDS = new Set(['ai_generated', 'editor_upload']);
+const RIGHTS_BASES = new Set(['own_work', 'licensed_stock', 'agency_license']);
+const ASSET_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function invalid(message) {
   throw Object.assign(new Error(`Invalid payload: ${message}`), { status: 400 });
@@ -127,14 +130,21 @@ export function validateSlide(slide, budget = { nodes: 0, text: 0, imageBytes: 0
   if (data.image_url !== undefined && data.image_url !== null && data.image_url !== '') {
     invalid('slide.data.image_url must be hydrated to image_data by the trusted caller');
   }
-  if (Object.hasOwn(data, 'image_kind') && data.image_kind !== 'ai_generated') invalid('slide.data.image_kind must be ai_generated when present');
-  if (data.image_kind === 'ai_generated') {
-    if (typeof data.asset_id !== 'string' || data.asset_id.length !== 36 || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(data.asset_id)) {
-      invalid('slide.data.asset_id must be a UUID for an ai_generated image');
+  if (Object.hasOwn(data, 'image_kind') && !IMAGE_KINDS.has(data.image_kind)) invalid('slide.data.image_kind must be ai_generated or editor_upload when present');
+  if (data.image_kind) {
+    if (typeof data.asset_id !== 'string' || !ASSET_ID.test(data.asset_id)) {
+      invalid(`slide.data.asset_id must be a UUID for an ${data.image_kind} image`);
     }
-    if (data.image_data === undefined) invalid('slide.data.image_data is required for an ai_generated image');
+    if (data.asset_sha256 !== undefined && (typeof data.asset_sha256 !== 'string' || !/^[a-f0-9]{64}$/i.test(data.asset_sha256))) {
+      invalid('slide.data.asset_sha256 must be a SHA-256 digest when present');
+    }
+    if (data.image_data === undefined) invalid(`slide.data.image_data is required for an ${data.image_kind} image`);
+    if (data.image_kind === 'editor_upload') {
+      if (!hasText(data.credit) || data.credit.length > 200) invalid('slide.data.credit is required for an editor_upload image');
+      if (!RIGHTS_BASES.has(data.rights_basis)) invalid('slide.data.rights_basis must be a known rights basis for an editor_upload image');
+    }
   }
-  textFields(data, ['title', 'headline', 'subtitle', 'subtext', 'unit', 'label', 'category', 'author', 'quote', 'callout', 'regulasi', 'note', 'cta', 'disclaimer', 'status', 'verdict', 'claim', 'explanation', 'finding', 'fakta', 'misconception', 'miskonsepsi', 'source_note', 'image_url']);
+  textFields(data, ['title', 'headline', 'subtitle', 'subtext', 'unit', 'label', 'category', 'author', 'quote', 'callout', 'regulasi', 'note', 'cta', 'disclaimer', 'status', 'verdict', 'claim', 'explanation', 'finding', 'fakta', 'misconception', 'miskonsepsi', 'source_note', 'image_url', 'credit']);
   for (const key of ['value', 'stat', 'credibility']) if (data[key] !== undefined && data[key] !== null) scalar(data[key], `slide.data.${key}`);
   if (!(slide.teks || data.title || data.headline || '').trim()) invalid('slide requires non-empty teks, title or headline');
 

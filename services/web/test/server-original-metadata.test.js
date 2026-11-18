@@ -199,9 +199,11 @@ test('historical caption edits leave R6 columns nullable and keep their legacy r
   assert.equal(draftContentHash(result), draftContentHash({ slides: result.slides, caption: result.caption, hashtags: result.hashtags, content_format: result.content_format }));
 });
 
-async function seed(t, extra = metadata) {
+const coverData = { asset_id: '2d30e364-b95d-4d49-82ed-43c548270944', asset_sha256: 'a'.repeat(64), image_kind: 'ai_generated' };
+
+async function seed(t, extra = metadata, { cover = true } = {}) {
   const { rows: [topic] } = await pool.query("INSERT INTO topics(title,url,primary_source,status) VALUES('Original fixture','https://www.bps.go.id/original-fixture','BPS','produced') RETURNING id");
-  const slides = [{ no: 1, layout: 'cover-focus', teks: 'Penjelasan warga', data: { title: 'Penjelasan warga' } },
+  const slides = [{ no: 1, layout: 'cover-focus', teks: 'Penjelasan warga', data: cover ? { ...coverData, title: 'Penjelasan warga' } : { title: 'Penjelasan warga' } },
     { no: 2, layout: 'big-statement', teks: 'Mekanisme keputusan dapat dilihat dari proses dan tanggung jawab pelaksana.', data: {} },
     { no: 3, layout: 'big-statement', teks: 'Pertanyaan warga membantu mengenali batas informasi yang tersedia.', data: {} }];
   const { rows: [draft] } = await pool.query(`INSERT INTO drafts(topic_id,slides,caption,hashtags,copy_model,status,needs_review,content_format,editorial_input,editorial_mode,caption_body,threads_caption,angle,scope_note,editorial_references)
@@ -240,7 +242,7 @@ test('original mode, curated input and every metadata mutation reject stale brow
 });
 
 test('original caption and slide edits preserve mode and input, synchronize body and invalidate queued approval', { skip: !enabled }, async (t) => {
-  const draft = await seed(t);
+  const draft = await seed(t, metadata, { cover: false });
   await pool.query("UPDATE drafts SET status='scheduled',needs_review=false WHERE id=$1", [draft.id]);
   await pool.query("INSERT INTO scheduled_posts(draft_id,mode,scheduled_at,status) VALUES($1,'auto',NOW()+interval '1 day','pending')", [draft.id]);
   const caption = 'Warga membahas #topik di paragraf pertama.\n\n#GapuraMedia';
