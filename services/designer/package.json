@@ -1,0 +1,11 @@
+{
+  "name": "hme-designer-service",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Editorial layout and media helpers for Gapura Media",
+  "type": "module",
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "js-yaml": "^4.1.0"
+  }
+}

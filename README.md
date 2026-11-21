@@ -41,6 +41,15 @@ Firecrawl sudah terautentikasi dan key disimpan operator di secret store server 
 
 ## 📌 Ringkasan Proyek
 
+### Self-hosting dari checkout bersih
+
+Repository berisi source aplikasi, default editorial configuration, design
+system/fonts, schema dan migrasi; tidak berisi database produksi, draf,
+unggahan, kredensial, atau koneksi akun Meta. Panduan build instalasi baru ada di
+[`docs/SELF_HOSTING.md`](docs/SELF_HOSTING.md): `bash scripts/bootstrap.sh`,
+buat database PostgreSQL baru, lalu jalankan migrasi dengan opt-in eksplisit.
+Intake dan publisher tidak diaktifkan selama bootstrap.
+
 **Gapura Media Engine (GME v2.1)** adalah platform otomasi ruang redaksi modern (*newsroom automation*) untuk isu nasional Indonesia pada enam desk: **politik, sosial, hukum, lingkungan, ekonomi nasional, dan bursa saham**. Arah produknya adalah topik dan metadata discovery yang dikembangkan menjadi naskah serta visual orisinal Gapura Media. Proyeksi discovery R4, jalur naskah orisinal R6, dan unggah gambar manual R7 sudah tersedia; penerimaan visual owner dan aktivasi bertahap R8 masih menunggu keputusan owner.
 
 Platform ini menggabungkan **6 agen: Scout, Analis, Copywriter, Designer, SEO, dan Studio**, dengan pengawasan manusia (*Human-in-the-Loop*), mesin render deterministik berbasis SVG-to-PNG (*Satori + Sharp*), serta dashboard editorial berbasis web yang responsif. Scout dan SEO mengumpulkan serta menilai momentum secara deterministik; agen produksi memakai model sesuai konfigurasi provider.

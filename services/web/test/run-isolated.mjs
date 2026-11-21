@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import http from 'node:http';
+import os from 'node:os';
 import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -12,7 +13,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../.
 const name = `gapura_test_${process.pid}`;
 const password = randomBytes(24).toString('hex');
 const token = randomBytes(32).toString('hex');
-const temp = await fs.mkdtemp('/tmp/opencode/gapura-test-');
+const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'gapura-test-'));
 let child;
 let fixture;
 let exitCode = 1;

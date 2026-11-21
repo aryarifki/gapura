@@ -14,7 +14,9 @@ set -euo pipefail
 
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${BASE_DIR}"
-exec 9>"${GAPURA_PIPELINE_LOCK:-/tmp/opencode/gapura-pipeline.lock}"
+PIPELINE_LOCK="${GAPURA_PIPELINE_LOCK:-/tmp/opencode/gapura-pipeline.lock}"
+mkdir -p "$(dirname "$PIPELINE_LOCK")"
+exec 9>"$PIPELINE_LOCK"
 if ! flock -n 9; then
   echo '[Gapura] Siklus lain masih berjalan; scan bertumpuk dilewati.'
   exit 0

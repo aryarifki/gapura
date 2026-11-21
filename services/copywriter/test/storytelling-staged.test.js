@@ -3,13 +3,15 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { setImmediate } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
+import { editorialPythonExecutable } from '../../common/editorial-python.js';
 import { buildStagedStory, EDITORIAL_STAGE_SCHEMAS, parseEditorialJson } from '../storytelling.js';
 import { validateOriginalContent } from '../../common/original-editorial.js';
 import { article, brief, caption, carousel, context, documents, passages, response, stages, synthesis, threads } from './storytelling-staged-fixtures.js';
 
 const [S1, S2, S3A, S3B, S3C, S4] = Object.keys(EDITORIAL_STAGE_SCHEMAS);
 const gatePath = fileURLToPath(new URL('../story-gate.py', import.meta.url));
-const gate = (stage, value, input = context) => JSON.parse(execFileSync('/etc/gapura/editorial-venv/bin/python', [gatePath], {
+const PYTHON = editorialPythonExecutable();
+const gate = (stage, value, input = context) => JSON.parse(execFileSync(PYTHON, [gatePath], {
   input: JSON.stringify({ op: 'validate', stage, value, context: input }), encoding: 'utf8',
 }));
 const payload = (prompt) => JSON.parse(prompt.split('PAYLOAD_JSON: ').at(-1));
@@ -149,7 +151,7 @@ test('article fact repair updates lead refs independently of explicit metadata r
   lead.text = lead.text.replace('Penumpang tetap bisa', 'Pada 10 Oktober 2026, penumpang tetap bisa');
   lead.fact_ids = 'f11,f21,f31';
   assert.equal(gate(S2, rows).error, 'article_lead_date_unreferenced');
-  const repaired = JSON.parse(execFileSync('/etc/gapura/editorial-venv/bin/python', [gatePath], {
+  const repaired = JSON.parse(execFileSync(PYTHON, [gatePath], {
     input: JSON.stringify({ op: 'fact_repair', stage: S2, value: rows, context }), encoding: 'utf8',
   }));
   assert.equal(repaired.ok, true);
@@ -405,7 +407,7 @@ test('adapter micro-repair adds missing references without changing copy', () =>
     row.text += ' Tersedia 3 titik pemberhentian.';
     row.fact_ids = 'f11,f12';
     assert.match(gate(stage, rows).error, /number_unreferenced/u);
-    const result = JSON.parse(execFileSync('/etc/gapura/editorial-venv/bin/python', [gatePath], {
+    const result = JSON.parse(execFileSync(PYTHON, [gatePath], {
       input: JSON.stringify({ op: 'fact_repair', stage, value: rows, context }), encoding: 'utf8',
     }));
     assert.equal(result.ok, true);

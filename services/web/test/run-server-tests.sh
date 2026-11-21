@@ -4,14 +4,15 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 PORT=3317
 TEST_TOKEN="$(openssl rand -hex 32)"
+TEST_DIR="$(mktemp -d "${TMPDIR:-/tmp}/gapura-server-test.XXXXXX")"
 GAPURA_DISABLE_WORKERS=true \
 GAPURA_ADMIN_TOKEN="$TEST_TOKEN" \
 META_APP_ID='' META_APP_SECRET='' META_UNIFIED_CONFIG_ID='' GAPURA_META_CONNECTION='/tmp/opencode/gapura-access-no-meta-connection.json' \
 PORT="$PORT" \
 NODE_ENV=test \
-node "$ROOT/services/web/server.js" > /tmp/gapura-web-test.log 2>&1 &
+  node "$ROOT/services/web/server.js" > "$TEST_DIR/web.log" 2>&1 &
 SERVER_PID=$!
-cleanup() { kill "$SERVER_PID" 2>/dev/null || true; wait "$SERVER_PID" 2>/dev/null || true; }
+cleanup() { kill "$SERVER_PID" 2>/dev/null || true; wait "$SERVER_PID" 2>/dev/null || true; rm -rf "$TEST_DIR"; }
 trap cleanup EXIT
 
 for _ in $(seq 1 40); do

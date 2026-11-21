@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-const DEFAULT_PYTHON = '/etc/gapura/editorial-venv/bin/python';
+import { editorialPythonExecutable } from './editorial-python.js';
 const MAX_JSON_BYTES = 512 * 1024;
 
 function clean(value) {
@@ -37,7 +37,7 @@ function rootCandidate(value) {
  * installed Python json-repair package to repair that same root, never a
  * separately extracted first object. Staged editorial responses bypass this
  * helper and go unchanged to their Python validation gate. */
-export async function normalizeJsonResponse(value, { pythonPath = process.env.EDITORIAL_PYTHON || process.env.GAPURA_JSON_REPAIR_PYTHON || DEFAULT_PYTHON, timeoutMs = 5000 } = {}) {
+export async function normalizeJsonResponse(value, { pythonPath = editorialPythonExecutable(), timeoutMs = 5000 } = {}) {
   const source = rootCandidate(value);
   if (Buffer.byteLength(source, 'utf8') > MAX_JSON_BYTES) return clean(value);
   try { return JSON.stringify(JSON.parse(source)); }

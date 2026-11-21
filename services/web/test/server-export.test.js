@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import pkg from 'pg';
 
@@ -17,7 +18,7 @@ test.before(() => {
   assert.equal(process.env.GAPURA_DISABLE_WORKERS, 'true');
   assert.match(process.env.HME_DB_NAME, /^gapura_test_/u);
   assert.ok(['127.0.0.1', 'localhost', '[::1]'].includes(new URL(base).hostname));
-  assert.ok(process.env.GAPURA_TEST_STORAGE.startsWith('/tmp/opencode/'));
+  assert.ok(process.env.GAPURA_TEST_STORAGE.startsWith(os.tmpdir()));
 });
 test.after(async () => { if (pool) await pool.end(); });
 

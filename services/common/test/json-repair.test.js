@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeJsonResponse, jsonRootCandidate } from '../json-repair.js';
+import { editorialPythonExecutable } from '../editorial-python.js';
 
 test('preserves an entire valid root array, not its first object', async () => {
   const raw = '[{"kind":"one"},{"kind":"two"}]';
@@ -14,7 +15,7 @@ test('preserves object roots and does not turn arbitrary prose into invented JSO
 });
 
 test('repairs malformed legacy JSON arrays with the installed Python repair gate when available', async (context) => {
-  const pythonPath = '/etc/gapura/editorial-venv/bin/python';
+  const pythonPath = editorialPythonExecutable();
   try { await import('node:fs/promises').then(({ access }) => access(pythonPath)); }
   catch { context.skip('the editorial Python environment is not installed'); return; }
   const repaired = await normalizeJsonResponse('[{kind: "first",}, {kind: "second",}]');

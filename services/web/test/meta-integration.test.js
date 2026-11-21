@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import express from 'express';
 import { createMetaIntegration } from '../meta-integration.js';
@@ -10,7 +11,7 @@ import { loadMetaConnection } from '../../common/meta-connection-store.js';
 const config = { appId: '1123019133826199', configId: '1848852586267233', appSecret: 'private-app-secret', publicOrigin: 'https://gapura.example', expectedInstagramId: '1784', connectionFile: '', graphVersion: 'v27.0' };
 
 async function fixture(t, { override = {}, responses = [] } = {}) {
-  const temp = await fs.mkdtemp('/tmp/opencode/gapura-meta-oauth-');
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'gapura-meta-oauth-'));
   const calls = [];
   const logs = [];
   let now = 1000;
