@@ -26,11 +26,41 @@ carousel 3–9 slide default enam, caption isi 1.200–1.900 karakter, Threads
 mandiri ≤500, serta persistensi/hash/publisher yang memeriksa ulang metadata
 dalam row lock. Migrasi additive diterapkan ke produksi setelah backup/restore
 test; web/render dimuat ulang. Raster AI nyata, sampel visual owner dan publish
-live tetap belum ada. Perbaikan kualitas pra-R8 menghubungkan generasi ke materi
-artikel R2 dengan izin domain fail-closed, menolak caption/slide berita yang
-kurang bahan atau berupa filler, dan merapikan tipografi/posisi konten body.
-Domain produksi belum diizinkan; detail gate dan tes di
-[laporan pra-R8](plans/16_PRE_R8_EDITORIAL_QUALITY.md).
+live tetap belum ada. Tahap pra-R8 awal menghubungkan generasi ke materi artikel
+R2 dengan gerbang per-domain; kebijakan tersebut kini diganti oleh riset web
+publik lintas domain. Penolakan bahan kurang serta validasi filler tetap berlaku.
+Implementasi terbaru menggunakan Firecrawl Search API, sosial, dan forum publik,
+menghasilkan artikel penuh untuk review redaktur, serta memasukkan referensi ke
+hash revisi. Gate unit **606 test: 605 lulus, 1 skipped**; API **105/105**, render
+**111/111**, browser Chromium **1/1**, syntax dan diff checks lulus. Backup
+`/root/gapura/backups/hme_pre_longform_20261119.dump` (0600, SHA-256
+`e38c43c75c1d94e23a6680f813c2d0d3f32a309beadaf1f1dfbec3b7a02889fc`) berhasil
+di-restore; kedua migrasi additive diterapkan dua kali pada salinan sebelum
+dipasang ke produksi. Migrasi produksi selesai 19 November, web direstart dan
+health `ok`; keenam draf tetap review-only, tanpa artikel, jadwal, target publikasi,
+atau job Studio baru. Firecrawl key telah dipasang di secret store server `0600`
+dan Search terautentikasi (`HTTP 200`). Pemindaian sumber `public_web` menemukan
+satu kandidat baru; kandidat tersebut ditolak Analis dengan skor 48/100 dan tidak
+dibuatkan draf. Riset terbaru memakai tiga kueri dan pilihan ID petikan dengan
+fallback kalimat verbatim. Halaman hasil pencarian serta cuplikannya tidak boleh
+dianggap sebagai artikel yang sudah diambil. Enam petikan dari dua halaman sumber
+berhasil dicocokkan dalam uji live. Generasi KUR pada petikan tersebut lulus
+validator dengan artikel 1.321 karakter, caption 1.252 karakter, enam slide, dan
+enam referensi fakta. Hasil lokal tidak ditulis sebagai draf produksi; review
+editorial tetap diperlukan. Metode dan gate dicatat pada
+[laporan keandalan riset](plans/17_PUBLIC_RESEARCH_RELIABILITY.md).
+Web dimuat ulang setelah gate terakhir pada 19 November pukul 18:39:35 WIB dan
+health `ok`. Radar masih `stale` karena uji riset lokal tidak memperbarui scan
+terakhir yang tersimpan atau menjalankan timer.
+Dashboard tidak menyediakan penulisan key Firecrawl. Pipeline/publisher timers
+tetap inactive; R8 belum dimulai.
+
+Pembaruan sampel R7 setelah uji riset: atas mandat owner, enam draf baru lintas
+desk **150–155** sudah tersimpan lengkap untuk review. Total draf sekarang 12,
+termasuk sampel lama yang dipertahankan. Keputusan operator siap untuk review,
+sedangkan keputusan owner/redaktur masih `pending`; R7 belum ditutup. Kegagalan
+generasi awal, revisi editorial, 47 petikan cocok, 36 raster dan review visual
+tercatat pada [laporan enam desk](plans/18_R7_SIX_DESK_REVIEW.md).
 
 Enam agen aktif adalah **Scout, Analis, Copywriter, Designer, SEO, dan Studio**.
 Persetujuan manusia harus eksplisit atas revisi terkini, dicatat bersama hash
@@ -55,7 +85,7 @@ manusia.
 | **Slide Editor & Dynamic Layout** | ✅ **Selesai & Aktif** | Edit teks slide, ubah tata letak (cover, stat-grid, quote, dual-perspective, regulasi, takeaway), live preview, dan tombol simpan & render ulang seketika. |
 | **Studio Desain & Custom Draf** | ✅ **Selesai & Aktif** | Pembuatan postingan mandiri dari form Studio Desain dengan live preview dan export langsung ke Antrian Review. |
 | **Kustomisasi 6 Agen & Skills.md** | ✅ **R5 selesai** | Scout, Analis, Copywriter, Designer, SEO dan Studio; config/tab/skill Verifikator dilepas. Gate teknis lulus. |
-| **Katalog Provider & Model** | ✅ **Selesai & Aktif** | Registry Gemini/OpenAI-compatible/Anthropic, katalog model live, fallback lintas provider, dan key terpisah dari konfigurasi publik. MASB dan Xingchi tercatat dengan status kegagalan chat yang teramati. |
+| **Katalog Provider & Model** | ✅ **Selesai & Aktif** | Registry Gemini/OpenAI-compatible/Anthropic, katalog model live, fallback lintas provider, dan key terpisah dari konfigurasi publik. Gemini pool dengan fallback Groq/OpenRouter digunakan untuk inference; Xingchi tetap tidak aktif. |
 | **Manajemen Sumber Discovery Enam Desk** | ✅ **R4 dan koreksi R5 selesai** | Desk eksplisit atau inferensi judul. Default kategori UI/API `umum`; kategori yang tidak dikirim saat PUT dipertahankan. Filter/badge desk dan dropdown enam desk tersedia; seed menambah enam query nasional pada 12 sumber Trending lama. |
 | **Bypass Cache CDN (Cloudflare)** | ✅ **Selesai & Aktif** | Middleware HTTP `no-store, no-cache`, query string bust unik `?t=...`, dan asset versioning `v=3.5.0` mencegah browser/CDN menyajikan file usang. |
 | **Audit Log & Activity Tracker** | ✅ **Selesai & Aktif** | Pencatatan setiap aksi editorial (create, edit_slide, approve, reject, regenerated_ai) ke tabel `audit_log` PostgreSQL. |
@@ -70,9 +100,9 @@ manusia.
 | **R4 — Discovery enam desk** | ✅ **Selesai** | Proyeksi metadata Analis/cluster dan kurasi sumber enam desk terpasang. Tidak mengubah seluruh input penulisan legacy, tidak backfill desk/cluster topik arsip. [Hasil R4](plans/12_R4_SOURCES_DESKS.md). |
 | **R5 — Lepas Verifikator** | ✅ **Selesai; gate teknis lulus** | Tidak ada Verifikator pada API/UI/config, produksi, Studio, Telegram atau publisher aktif; report/confidence bukan gate. Review manusia, audit hash, invalidasi approval dan locked recheck tetap wajib. Tabel/kolom/enum arsip dipertahankan. [Laporan R5](plans/13_R5_REMOVE_VERIFICATOR.md). |
 | **R6 — Naskah/desain orisinal dua mode** | ✅ **Selesai; gate teknis lulus** | `explainer` vs `current` dengan fakta teratribusi eksplisit, tanpa body/summary/foto penerbit pada payload generasi; carousel 3–9 default enam, caption isi 1.200–1.900 karakter, Threads ≤500. Tujuh kolom baru dan migrasi additive terpasang di produksi setelah backup/restore test. [Laporan R6](plans/14_R6_ORIGINAL_EDITORIAL.md). |
-| **R7 — Gambar manual dan cover wajib** | ✅ **Selesai; gate teknis lulus** | Unggah manual menjadi jalur utama; cover = slide 1 wajib bergambar sebelum approval/publish, slide isi opsional. Tabel `manual_media_assets` immutable, descriptor credit/hak, gate approval/publisher, UI unggah/pasang, dan renderer `Gambar: <credit>` teruji. Enam sampel draf 144–149 masih `draft`/`needs_review`, menunggu penilaian owner. [Laporan R7](plans/15_R7_MANUAL_MEDIA.md). |
-| **Perbaikan kualitas pra-R8** | ✅ **Gate teknis lulus; belum deploy** | Isi artikel, gate bahan/izin AI, caption substansial, filler, tipografi dan posisi body diperbaiki. Allowlist produksi tetap kosong sampai izin tertulis domain ditetapkan. [Laporan](plans/16_PRE_R8_EDITORIAL_QUALITY.md). |
-| **R8 — Aktivasi dan publish uji** | ⏳ **Belum dijalankan** | Menunggu review owner atas sampel R7 dan keputusan izin domain AI. Sesudah itu: batch 20 draf, shadow, lalu satu publish uji dengan persetujuan terpisah. Timer/worker tetap dijeda. |
+| **R7 — Gambar manual dan cover wajib** | 🟡 **Gate teknis lulus; keputusan owner/redaktur pending** | Enam sampel pipeline terbaru lintas desk, draf 150–155, sudah memiliki artikel, minimal tiga fakta, referensi, caption, enam slide dan cover orisinal. Revisi operator dan pemeriksaan visual tercatat. Semua `draft/needs_review`; sampel lama 144–149 dipertahankan. [Paket dan keputusan](plans/18_R7_SIX_DESK_REVIEW.md). |
+| **Riset web publik & artikel panjang** | ✅ **Gate teknis dan uji live lulus** | Migrasi dan Firecrawl key tersedia. Tiga kueri, pemilihan petikan Gemini, dan fallback kalimat sumber mempertahankan minimum tiga fakta. Cuplikan pencarian harus diambil dari halaman asal. Artikel selalu menunggu review manusia. [Bukti terkini](plans/17_PUBLIC_RESEARCH_RELIABILITY.md). |
+| **R8 — Aktivasi dan publish uji** | ⏳ **Belum dijalankan** | Memerlukan review redaktur dan persetujuan publish terpisah. Pipeline/publisher timers tetap disabled/inactive. |
 | **Telegram Approval Bot** | ⏳ **Belum Dikonfigurasi** | Engine dan kode notifikasi Telegram telah siap, namun menunggu input token Bot Telegram (`TELEGRAM_BOT_TOKEN`) dan Chat ID admin dari owner agar bot dapat aktif di polling. |
 | **Kalender Konten Interaktif** | ⏳ **Belum Dikerjakan** | Jadwal tersimpan di PostgreSQL; kalender visual dengan drag-and-drop belum tersedia. |
 | **Multi-User Role** | ⏳ **Belum Dikerjakan** | Dashboard dibuka langsung tanpa login/token admin atas permintaan owner. Validasi Origin dan redaksi API key tetap aktif; akun pengguna dan pembagian role belum tersedia. |

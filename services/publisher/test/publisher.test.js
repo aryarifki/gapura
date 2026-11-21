@@ -51,7 +51,7 @@ function database(overrides = {}) {
             content_format: state.draft.content_format, needs_review: state.draft.needs_review,
             draft_status: state.draft.status,
             ...(/d\.hashtags\b/.test(q) ? { hashtags: structuredClone(state.draft.hashtags) } : {}),
-            ...Object.fromEntries(['editorial_input', 'editorial_mode', 'caption_body', 'threads_caption', 'angle', 'scope_note', 'editorial_references']
+            ...Object.fromEntries(['editorial_input', 'editorial_mode', 'caption_body', 'threads_caption', 'angle', 'scope_note', 'editorial_references', 'article_body', 'article_references', 'article_facts']
               .filter((field) => new RegExp(`d\\.${field}\\b`).test(q))
               .map((field) => [field, structuredClone(state.draft[field])])),
             ...(/AS human_approved/i.test(q) ? { human_approved: approvals.length > 0 } : {}),

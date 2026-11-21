@@ -22,6 +22,7 @@ import { mapLimit } from '../common/concurrency.js';
 import { fetchSourceFeed as fetchFeed, fetchXAccount, fetchXQuery, normalizeArticleUrl, safeDate } from '../scout/sources.js';
 import { createMaterial } from '../scout/material.js';
 import { persistTopicMaterial } from '../scout/material-store.js';
+import { discoverWebTrends } from '../scout/public-web.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -116,7 +117,7 @@ function matchedKeywords(text, keywords) {
 /**
  * Skor viralitas 0-100: sinyal platform + bobot sumber + kebaruan + relevansi kata kunci.
  */
-function computeVirality({ platform, engagement = {}, publishedAt, firstSeenAt, sourceWeight = 10, keywords = [], text = '' }) {
+export function computeVirality({ platform, engagement = {}, publishedAt, firstSeenAt, sourceWeight = 10, keywords = [], text = '' }) {
   let platformScore = 0;
   if (platform === 'x') {
     const raw =
@@ -129,12 +130,16 @@ function computeVirality({ platform, engagement = {}, publishedAt, firstSeenAt, 
   } else if (platform === 'google_trends') {
     const traffic = engagement.approx_traffic || 0;
     platformScore = Math.min(70, Math.round(Math.log10(traffic + 1) * 20));
+  } else if (platform === 'public_web') {
+    const posts = Number(engagement.post_count) || 0;
+    platformScore = posts ? Math.min(70, Math.round(Math.log10(posts + 1) * 20)) : 40;
   } else {
     platformScore = 32; // momentum berita: baseline
   }
 
   const weightScore = Math.min(20, Math.round((Number(sourceWeight) || 10) * 0.8));
-  const age = Math.max(publishedAt ? hoursAgo(publishedAt) : 48, firstSeenAt ? hoursAgo(firstSeenAt) : 0);
+  const age = publishedAt ? Math.max(hoursAgo(publishedAt), firstSeenAt ? hoursAgo(firstSeenAt) : 0)
+    : firstSeenAt ? hoursAgo(firstSeenAt) : platform === 'public_web' ? 0 : 48;
   const recencyScore = age <= 3 ? 12 : age <= 12 ? 8 : age <= 24 ? 4 : 0;
   const matched = matchedKeywords(text, keywords);
   const keywordScore = matched.length ? Math.min(10, matched.length * 3) : 0;
@@ -255,7 +260,7 @@ async function fetchGoogleTrends(source) {
   });
 }
 
-async function fetchSourceItems(source) {
+async function fetchSourceItems(source, { discoverTrends = discoverWebTrends } = {}) {
   switch (source.kind) {
     case 'x_account': {
       const errors = [];
@@ -285,6 +290,13 @@ async function fetchSourceItems(source) {
       return fetchGoogleTrends(source);
     case 'news_query':
       return fetchGoogleNewsProxy(source);
+    case 'public_web':
+      return (await discoverTrends({ query: source.value || 'Indonesia topik populer ramai dibicarakan' })).map((item) => ({
+        provider: item.provider, platform: item.platform, author: item.source,
+        title: item.title, snippet: item.summary, url: item.url,
+        published_at: item.published_at, engagement: item.engagement || {},
+        raw_title: item.title, content: item.summary, content_kind: 'feed_summary',
+      }));
     default:
       throw new Error(`Jenis sumber tidak dikenal: ${source.kind}`);
   }
@@ -315,7 +327,7 @@ async function saveTrendItem(client, source, item, keywords) {
     platform: item.platform,
     engagement: item.engagement,
     publishedAt,
-    firstSeenAt: existing[0]?.first_seen_at || existing[0]?.fetched_at,
+    firstSeenAt: existing[0]?.first_seen_at || existing[0]?.fetched_at || (!publishedAt ? new Date() : null),
     sourceWeight: source.weight,
     keywords,
     text: `${title} ${item.snippet || ''}`,
@@ -362,7 +374,7 @@ async function saveTrendItem(client, source, item, keywords) {
 /**
  * Jalankan pemindaian SEO untuk seluruh sumber aktif (atau satu sumber).
  */
-export async function runSeoScan({ sourceId = null, force = sourceId !== null, client } = {}) {
+export async function runSeoScan({ sourceId = null, force = sourceId !== null, client, discoverTrends = discoverWebTrends } = {}) {
   const db = client || (await pool.connect());
   const shouldRelease = !client;
   const startedAt = new Date();
@@ -379,7 +391,7 @@ export async function runSeoScan({ sourceId = null, force = sourceId !== null, c
     const { rows: sources } = await db.query(`SELECT * FROM trend_sources ${where} ORDER BY weight DESC, id ASC`, params);
 
     const fetched = await mapLimit(sources, 4, async (source) => {
-      try { return { source, items: await fetchSourceItems(source), error: null }; }
+      try { return { source, items: await fetchSourceItems(source, { discoverTrends }), error: null }; }
       catch (error) { return { source, items: [], error }; }
     });
     for (const { source, items, error } of fetched) {
@@ -393,7 +405,16 @@ export async function runSeoScan({ sourceId = null, force = sourceId !== null, c
           diagnostic.seen++;
           const saved = await saveTrendItem(db, source, item, keywords);
           if (!saved) diagnostic.invalid++;
-          if (saved?.inserted) { summary.items_new += 1; diagnostic.inserted++; }
+           if (saved?.inserted) {
+             summary.items_new += 1; diagnostic.inserted++;
+             const minimum = Number(loadAgentsConfig().seo?.min_virality_score ?? 55);
+             if (source.kind === 'public_web' && saved.score >= minimum) {
+               try { await promoteTrendToTopic(saved.id, db); } catch (promotionError) {
+                 diagnostic.error = `auto_promote: ${String(promotionError.message).slice(0, 300)}`;
+                 diagnostic.status = 'partial';
+               }
+             }
+           }
         }
       } catch (err) {
         const message = err.message.slice(0, 500);

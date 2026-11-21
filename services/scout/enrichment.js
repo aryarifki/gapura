@@ -3,16 +3,12 @@ import { persistTopicMaterial, loadLatestTopicMaterial } from './material-store.
 import { materialSufficiency } from '../common/editorial-contract.js';
 import { validatePublicSourceUrl } from '../common/sources.js';
 
-function permittedHosts(value = process.env.GAPURA_AI_MATERIAL_HOSTS || '') {
-  return new Set(String(value).split(/[\s,;]+/u).map((host) => host.trim().toLowerCase().replace(/\.$/u, '')).filter(Boolean));
-}
-
 const ARTICLE_SELECTORS = new Map([
   ['www.antaranews.com', ['.wrap__article-detail-content.post-content']],
   ['antaranews.com', ['.wrap__article-detail-content.post-content']],
 ]);
 
-export function createTopicMaterialService({ pool, reader, allowedHosts = permittedHosts() } = {}) {
+export function createTopicMaterialService({ pool, reader } = {}) {
   async function enrich(topicId, { refresh = false } = {}) {
     if (!/^[1-9]\d*$/u.test(String(topicId)) || !Number.isSafeInteger(Number(topicId))) throw new Error('topic_id_invalid');
     const client = await pool.connect();
@@ -24,9 +20,6 @@ export function createTopicMaterialService({ pool, reader, allowedHosts = permit
       const previous = await loadLatestTopicMaterial(client, topicId);
       if (!refresh && previous?.material?.extraction?.status === 'full') return previous;
       if (validatePublicSourceUrl(topic.url)) throw new Error('source_material_url_invalid');
-      let topicHost;
-      try { topicHost = new URL(topic.url).hostname.toLowerCase().replace(/\.$/u, ''); } catch { throw new Error('source_material_url_invalid'); }
-      if (!allowedHosts.has(topicHost)) throw new Error('source_material_permission_required');
       const ingested = topic.source_material;
       if (!refresh && !previous && ingested?.extraction && ['full', 'partial'].includes(ingested.extraction.status)
         && materialSufficiency(ingested).sufficient) {
@@ -54,7 +47,6 @@ export function createTopicMaterialService({ pool, reader, allowedHosts = permit
       // replace an aggregator article identity with the publisher's homepage.
       const target = previous?.material?.article_url || topic.source_material?.article_url || topic.url;
       const targetHost = new URL(target).hostname.toLowerCase().replace(/\.$/u, '');
-      if (!allowedHosts.has(targetHost)) throw new Error('source_material_permission_required');
       const articleSelectors = ARTICLE_SELECTORS.get(targetHost) || [];
       const document = await reader.read({ url: target, publisher: topic.primary_source || '', publisherUrl: topic.publisher_url || '', articleSelectors, refresh });
       const material = createMaterial(source, { document });

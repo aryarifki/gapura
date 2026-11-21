@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "policy": "Prioritization, not a publisher allowlist. Unknown public sources may complement trusted reporting. Tier quality is not truth: institutional and political statements require attribution and independent verification of their underlying claims.",
+  "tierScores": { "1": 100, "2": 80, "3": 60, "4": 35 },
+  "penalties": { "regionalNationalScope": 24, "syndication": 28, "mirror": 38, "socialNonprimary": 35 },
+  "officialSuffixes": ["go.id"],
+  "officialFamilies": [
+    { "id": "idx.co.id", "domains": ["idx.co.id"], "name": "Bursa Efek Indonesia" },
+    { "id": "ksei.co.id", "domains": ["ksei.co.id"], "name": "KSEI" },
+    { "id": "kpei.co.id", "domains": ["kpei.co.id"], "name": "KPEI" },
+    { "id": "msci.com", "domains": ["msci.com"], "name": "MSCI" }
+  ],
+  "nationalFamilies": [
+    { "id": "antaranews.com", "domains": ["antaranews.com"], "name": "ANTARA" },
+    { "id": "kompas.com", "domains": ["kompas.com", "kompas.id"], "name": "Kompas" },
+    { "id": "tempo.co", "domains": ["tempo.co"], "name": "Tempo" },
+    { "id": "detik.com", "domains": ["detik.com"], "name": "detik" },
+    { "id": "cnnindonesia.com", "domains": ["cnnindonesia.com"], "name": "CNN Indonesia" },
+    { "id": "cnbcindonesia.com", "domains": ["cnbcindonesia.com"], "name": "CNBC Indonesia" },
+    { "id": "bisnis.com", "domains": ["bisnis.com"], "name": "Bisnis Indonesia" },
+    { "id": "kontan.co.id", "domains": ["kontan.co.id"], "name": "Kontan" },
+    { "id": "katadata.co.id", "domains": ["katadata.co.id"], "name": "Katadata" },
+    { "id": "tirto.id", "domains": ["tirto.id"], "name": "Tirto" },
+    { "id": "okezone.com", "domains": ["okezone.com"], "name": "Okezone" },
+    { "id": "liputan6.com", "domains": ["liputan6.com"], "name": "Liputan6" },
+    { "id": "republika.co.id", "domains": ["republika.co.id"], "name": "Republika" },
+    { "id": "mediaindonesia.com", "domains": ["mediaindonesia.com"], "name": "Media Indonesia" },
+    { "id": "bbc.com", "domains": ["bbc.com", "bbc.co.uk"], "name": "BBC" },
+    { "id": "reuters.com", "domains": ["reuters.com"], "name": "Reuters" },
+    { "id": "apnews.com", "domains": ["apnews.com"], "name": "Associated Press" }
+  ],
+  "specialistFamilies": [
+    { "id": "hukumonline.com", "domains": ["hukumonline.com"], "desks": ["hukum"], "name": "Hukumonline" },
+    { "id": "icjr.or.id", "domains": ["icjr.or.id"], "desks": ["hukum", "politik"], "name": "ICJR" },
+    { "id": "ylbhi.or.id", "domains": ["ylbhi.or.id"], "desks": ["hukum", "politik", "sosial"], "name": "YLBHI" },
+    { "id": "mongabay.co.id", "domains": ["mongabay.co.id", "mongabay.com"], "desks": ["lingkungan"], "name": "Mongabay" },
+    { "id": "walhi.or.id", "domains": ["walhi.or.id"], "desks": ["lingkungan"], "name": "WALHI" },
+    { "id": "betahita.id", "domains": ["betahita.id"], "desks": ["lingkungan"], "name": "Betahita" },
+    { "id": "infobanknews.com", "domains": ["infobanknews.com"], "desks": ["ekonomi", "bursa"], "name": "Infobank" },
+    { "id": "theconversation.com", "domains": ["theconversation.com"], "desks": ["politik", "sosial", "hukum", "lingkungan", "ekonomi"], "name": "The Conversation" }
+  ],
+  "specialistDeskBonus": 12,
+  "socialDomains": ["facebook.com", "instagram.com", "x.com", "twitter.com", "tiktok.com", "youtube.com", "youtu.be", "bsky.app", "reddit.com", "threads.net", "threads.com"],
+  "mirrorDomains": ["tradingview.com", "babeindonesia.com", "beritaja.com"],
+  "regionalPatterns": ["(?:^|[./_-])(?:detikjabar|detikjateng|detikjatim|detiksumbagsel|detiksumut|detiksulsel|detikbali|detikjogja|jabar|jateng|jatim|sumbar|sumut|sumbagsel|sulsel|sulut|kaltim|kalbar|kalimantan|lampung|palembang|makassar|jogja|aceh|bali)(?:[./_-]|$)"]
+}

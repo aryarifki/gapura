@@ -42,7 +42,7 @@ const CLAIM_NEXT = `
   FROM candidate c, drafts d
   WHERE sp.id = c.id AND d.id = sp.draft_id AND sp.status = 'pending'
   RETURNING sp.*, d.caption, d.slides, d.hashtags, d.content_format, d.needs_review,
-    d.editorial_input, d.editorial_mode, d.caption_body, d.threads_caption, d.angle, d.scope_note, d.editorial_references,
+    d.editorial_input, d.editorial_mode, d.caption_body, d.threads_caption, d.angle, d.scope_note, d.editorial_references, d.article_body, d.article_references, d.article_facts, d.article_metadata,
     d.status AS draft_status, ${APPROVAL_EVIDENCE}`;
 
 function escapeHtml(value) {
@@ -198,7 +198,7 @@ export function createPublisher({ pool, fetchImpl = globalThis.fetch, config = {
             transactionOpen = true;
             const { rows: current } = await client.query(
               `SELECT sp.*, d.status AS draft_status, d.needs_review, d.caption, d.slides, d.hashtags, d.content_format,
-                  d.editorial_input, d.editorial_mode, d.caption_body, d.threads_caption, d.angle, d.scope_note, d.editorial_references,
+                  d.editorial_input, d.editorial_mode, d.caption_body, d.threads_caption, d.angle, d.scope_note, d.editorial_references, d.article_body, d.article_references, d.article_facts, d.article_metadata,
                   ${APPROVAL_EVIDENCE}
                FROM scheduled_posts sp JOIN drafts d ON d.id = sp.draft_id
                WHERE sp.id = $1 FOR UPDATE OF sp, d`, [post.id],

@@ -456,7 +456,7 @@ test('explicit explainer input remains available for non-news editorial fixtures
   assert.equal(insert.values[6], true);
   assert.equal(insert.values[5], null);
   assert.deepEqual(JSON.parse(insert.values[13]), {
-    caption: originalFixture().caption_blocks.map(({ kind, fact_ids }) => ({ kind, fact_ids })), threads: [],
+    caption: originalFixture().caption_blocks.map(({ kind, fact_ids }) => ({ kind, fact_ids })), threads: [], article: [],
   });
   const audit = JSON.parse(db.sql.find(({ text }) => /INSERT INTO audit_log/.test(text)).values[2]);
   assert.deepEqual(audit.editorial_input, JSON.parse(insert.values[7]));

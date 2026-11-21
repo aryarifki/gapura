@@ -9,7 +9,7 @@ import path from 'path';
 import yaml from 'js-yaml';
 import satori from 'satori';
 import sharp from 'sharp';
-import { validateDraftId, validateSlides, validatePreview, validateLayoutData } from './validation.js';
+import { EDITORIAL_LAYOUTS, validateDraftId, validateSlides, validatePreview, validateLayoutData } from './validation.js';
 
 // ponytail: this queue coordinates one process; multiple workers still need the
 // database draft lock held by the web boundary.
@@ -72,6 +72,16 @@ export async function ensureJpegDerivatives(draftsRoot) {
 // ------------------------------------------------------------------------------
 const CONTENT_WIDTH = 936; // 1080 - (2 x margin 72)
 const CHAR_RATIO = { display: 0.63, body: 0.52 };
+// The editorial family has its own shared art direction; legacy token palettes
+// and layout behavior stay available to existing drafts.
+const EDITORIAL = Object.freeze({
+  navy: '#102B45', teal: '#167D86', mint: '#66D9CA', amber: '#EDB96C',
+  paper: '#F5F3ED', mist: '#EDF4F4', muted: '#546A7B', light: '#C8D9E1',
+  line: '#CEDADC', darkLine: '#345064',
+});
+
+const editorialNode = (style, children = []) => ({ type: 'div', props: { style: { display: 'flex', flexShrink: 0, ...style }, children } });
+const editorialText = (text, style = {}) => editorialNode({ fontFamily: 'Inter', lineHeight: '1.4', ...style }, String(text ?? ''));
 
 function estimateLineCount(text, fontSize, widthPx, ratio = CHAR_RATIO.display) {
   const clean = String(text || '').replace(/\s+/g, ' ').trim();
@@ -390,37 +400,199 @@ export class RenderEngine {
 
   // Disclosure is part of the image itself, independent of source visibility or
   // client credit text. Fixed contrast keeps it readable under token overrides.
-  renderImage(data) {
+  renderImage(data, { width = CONTENT_WIDTH, height = 390, cover = false } = {}) {
     if (!data?.image_data) return null;
     const image = {
       type: 'img',
       props: {
         src: data.image_data,
-        width: CONTENT_WIDTH,
-        height: 390,
-        style: { width: `${CONTENT_WIDTH}px`, height: '390px', objectFit: 'cover', borderRadius: '4px' },
+        width,
+        height,
+        style: { width: `${width}px`, height: `${height}px`, objectFit: 'cover', borderRadius: cover ? '0px' : '4px' },
       },
     };
-    if (!isMediaImage(data)) return image;
+    if (!isMediaImage(data) && !cover) return image;
     const manual = data.image_kind === 'editor_upload';
     return {
       type: 'div',
       props: {
-        style: { display: 'flex', position: 'relative', width: `${CONTENT_WIDTH}px`, height: '390px', flexShrink: 0, borderRadius: '4px', overflow: 'hidden' },
+        style: { display: 'flex', position: 'relative', width: `${width}px`, height: `${height}px`, flexShrink: 0, borderRadius: cover ? '0px' : '4px', overflow: 'hidden' },
         children: [
           image,
-          {
+          ...(cover ? [editorialNode({
+            position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+            backgroundImage: 'linear-gradient(180deg, rgba(16,43,69,0.8) 0%, rgba(16,43,69,0.08) 30%, rgba(16,43,69,0.4) 62%, #102B45 100%)',
+          })] : []),
+          ...(isMediaImage(data) ? [{
             type: 'div',
             props: {
-              style: manual
+              style: cover
+                ? { display: 'flex', position: 'absolute', top: '146px', right: '72px', padding: '10px 14px', backgroundColor: EDITORIAL.navy, color: '#ffffff', fontFamily: 'Inter', fontWeight: 700, fontSize: '18px', lineHeight: '1.3', maxWidth: '700px' }
+                : manual
                 ? { display: 'flex', position: 'absolute', bottom: '14px', left: '14px', padding: '8px 12px', backgroundColor: '#12241b', color: '#ffffff', fontFamily: 'Inter', fontWeight: 600, fontSize: '16px', lineHeight: '1.3', borderRadius: '4px', maxWidth: '620px' }
                 : { display: 'flex', position: 'absolute', bottom: '14px', left: '14px', padding: '10px 14px', backgroundColor: '#12241b', color: '#ffffff', fontFamily: 'Inter', fontWeight: 700, fontSize: '20px', lineHeight: '1.2', borderRadius: '4px' },
               children: manual ? `Gambar: ${data.credit}` : AI_IMAGE_DISCLOSURE,
             },
-          },
+          }] : []),
         ],
       },
     };
+  }
+
+  // Editorial layouts use a top-aligned reading rhythm and the same source
+  // footer on every page, including the cover. Image credit stays on the image.
+  wrapEditorial(content, slide, slideIndex, totalSlides, { dark = false, background = EDITORIAL.paper, photo = null } = {}) {
+    const ink = dark ? '#FFFFFF' : EDITORIAL.navy;
+    const accent = dark ? EDITORIAL.mint : EDITORIAL.teal;
+    const line = dark ? EDITORIAL.darkLine : EDITORIAL.line;
+    const source = slide.source || '';
+    return editorialNode({
+      position: 'relative', width: '1080px', height: '1350px', padding: '72px',
+      flexDirection: 'column', backgroundColor: dark ? EDITORIAL.navy : background,
+      color: ink, fontFamily: 'Inter', overflow: 'hidden',
+    }, [
+      ...(photo ? [editorialNode({ position: 'absolute', top: 0, left: 0 }, [photo])] : []),
+      editorialNode({ position: 'relative', width: '100%', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${line}`, paddingBottom: '24px' }, [
+        editorialNode({ alignItems: 'center', gap: '10px' }, [
+          editorialNode({ width: '8px', height: '26px', backgroundColor: accent }),
+          editorialText('GAPURA', { fontFamily: 'Archivo Black', fontSize: '24px', letterSpacing: '1px', lineHeight: '1' }),
+          editorialText('MEDIA', { fontWeight: 700, color: accent, fontSize: '17px', letterSpacing: '4px' }),
+        ]),
+        editorialText(`${String(slideIndex).padStart(2, '0')} / ${String(totalSlides).padStart(2, '0')}`, { fontWeight: 700, fontSize: '16px', letterSpacing: '2px', color: dark ? EDITORIAL.light : EDITORIAL.muted }),
+      ]),
+      editorialNode({ position: 'relative', flex: 1, minHeight: 0, width: '100%', flexDirection: 'column', justifyContent: 'flex-start', paddingTop: '56px', paddingBottom: '40px' }, [content]),
+      editorialNode({ position: 'relative', width: '100%', alignItems: 'center', gap: '24px', paddingTop: '20px', borderTop: `1px solid ${line}` }, [
+        editorialText(source, { flex: 1, flexShrink: 1, maxWidth: '700px', fontSize: `${fitFontSize(source, { max: 16, min: 10, width: 700, ratio: CHAR_RATIO.body, maxLines: 3, step: 1 })}px`, lineHeight: '1.4', color: dark ? EDITORIAL.light : EDITORIAL.muted }),
+        editorialText(this.tokens.brand.handle || '@gapuramedia', { fontSize: '15px', fontWeight: 700, color: accent, marginLeft: 'auto' }),
+      ]),
+    ]);
+  }
+
+  renderEditorial(slide, slideIndex, totalSlides) {
+    const { layout, data } = slide;
+    const cover = layout === 'editorial-cover';
+    const quote = layout === 'editorial-quote';
+    const close = layout === 'editorial-close';
+    const dark = cover || quote || close;
+    const accent = dark ? EDITORIAL.mint : EDITORIAL.teal;
+    const secondary = dark ? EDITORIAL.light : EDITORIAL.muted;
+    const photo = cover && data.image_data ? this.renderImage(data, { width: 1080, height: 720, cover: true }) : null;
+    const headlineMax = cover ? 96 : layout === 'editorial-lead' ? 88 : quote || close ? 44 : 68;
+    const headlineSize = fitFontSize(data.title, { max: headlineMax, min: 34, maxLines: cover ? 4 : 3 });
+    const children = data.kicker ? [
+      editorialNode({ alignItems: 'center', gap: '14px' }, [
+        editorialNode({ width: '38px', height: '5px', backgroundColor: EDITORIAL.amber }),
+        editorialText(data.kicker, { fontSize: '19px', fontWeight: 700, letterSpacing: '2px', textTransform: 'uppercase', color: accent }),
+      ]),
+    ] : [];
+    children.push(editorialText(data.title, {
+      fontFamily: 'Archivo Black', fontSize: `${headlineSize}px`,
+      lineHeight: '1.12', letterSpacing: '-1.5px', marginTop: '28px',
+    }));
+    const supporting = slide.teks && slide.teks !== data.title && slide.teks !== data.quote && slide.teks !== data.question ? slide.teks : '';
+    const body = (size = 36, width = CONTENT_WIDTH) => supporting ? editorialText(supporting, {
+      fontSize: `${fitFontSize(supporting, { max: size, min: 24, width, ratio: CHAR_RATIO.body, maxLines: 5, step: 1 })}px`,
+      lineHeight: '1.5', color: secondary, marginTop: '28px', maxWidth: `${width}px`,
+    }) : null;
+
+    switch (layout) {
+      case 'editorial-cover':
+        children.push(body(34, 860), editorialNode({ alignItems: 'center', gap: '18px', marginTop: '42px' }, [
+          editorialText('Geser →', { fontSize: '22px', fontWeight: 700, color: EDITORIAL.amber }),
+          editorialNode({ width: '90px', height: '2px', backgroundColor: EDITORIAL.darkLine }),
+        ]));
+        break;
+
+      case 'editorial-lead':
+        children.push(editorialNode({ width: '120px', height: '8px', backgroundColor: EDITORIAL.teal, marginTop: '44px' }), body(42, 870));
+        if (data.paragraphs?.length) {
+          children.push(editorialNode({ flexDirection: 'column', gap: '22px', marginTop: '30px' }, data.paragraphs.map((paragraph) =>
+            editorialText(paragraph.text, {
+              fontSize: `${fitFontSize(paragraph.text, { max: 30, min: 21, width: CONTENT_WIDTH, ratio: CHAR_RATIO.body, maxLines: 4, step: 1 })}px`,
+              lineHeight: '1.45', color: secondary, maxWidth: `${CONTENT_WIDTH}px`,
+            }))));
+        }
+        break;
+
+      case 'editorial-breakdown':
+        children.push(body(30), editorialNode({ flexDirection: 'column', marginTop: '38px' }, data.items.map((item, index) =>
+          editorialNode({ alignItems: 'flex-start', gap: '28px', padding: '28px 0', borderTop: `1px solid ${EDITORIAL.line}` }, [
+            editorialText(String(index + 1).padStart(2, '0'), { width: '64px', fontFamily: 'Archivo Black', fontSize: '38px', lineHeight: '1.2', color: EDITORIAL.teal }),
+            editorialNode({ flex: 1, flexDirection: 'column', gap: '10px' }, [
+              editorialText(item.label, { fontSize: '23px', fontWeight: 700, color: EDITORIAL.teal }),
+              editorialText(item.value, { fontSize: `${fitFontSize(item.value, { max: 34, min: 24, width: 840, ratio: CHAR_RATIO.body, maxLines: 3, step: 1 })}px`, lineHeight: '1.35' }),
+            ]),
+          ]))));
+        break;
+
+      case 'editorial-timeline':
+        children.push(body(30), editorialNode({ flexDirection: 'column', marginTop: '40px' }, data.events.map((event, index) =>
+          editorialNode({ position: 'relative', gap: '28px', paddingBottom: index === data.events.length - 1 ? 0 : '30px' }, [
+            editorialNode({ position: 'relative', width: '22px', alignSelf: 'stretch', justifyContent: 'center' }, [
+              ...(index < data.events.length - 1 ? [editorialNode({ position: 'absolute', width: '2px', top: '14px', bottom: '-16px', backgroundColor: EDITORIAL.line })] : []),
+              editorialNode({ width: '18px', height: '18px', borderRadius: '9px', marginTop: '9px', backgroundColor: index === 0 ? EDITORIAL.teal : EDITORIAL.amber }),
+            ]),
+            editorialNode({ flex: 1, flexDirection: 'column', gap: '8px' }, [
+              editorialText(event.date, { fontSize: '22px', fontWeight: 700, color: EDITORIAL.teal }),
+              editorialText(event.text, { fontSize: `${fitFontSize(event.text, { max: 34, min: 24, width: 886, ratio: CHAR_RATIO.body, maxLines: 3, step: 1 })}px`, lineHeight: '1.35' }),
+            ]),
+          ]))));
+        break;
+
+      case 'editorial-quote':
+        children.push(
+          editorialText('“', { fontFamily: 'Archivo Black', fontSize: '132px', lineHeight: '0.8', color: EDITORIAL.mint, marginTop: '42px' }),
+          editorialText(data.quote, { fontSize: `${fitFontSize(data.quote, { max: 64, min: 30, ratio: CHAR_RATIO.body, maxLines: 6, step: 1 })}px`, fontWeight: 700, lineHeight: '1.25', marginTop: '10px' }),
+          editorialNode({ flexDirection: 'column', borderLeft: `5px solid ${EDITORIAL.amber}`, paddingLeft: '24px', marginTop: '36px', gap: '8px' }, [
+            editorialText(data.author, { fontWeight: 700, fontSize: '28px' }),
+            editorialText(data.role_label, { fontSize: '23px', color: EDITORIAL.light }),
+          ]), body(28),
+        );
+        break;
+
+      case 'editorial-impact': {
+        const value = data.value ?? data.stat;
+        // A number is emphasized only when explicitly supplied, never inferred
+        // from the prose or from the slide's position in the carousel.
+        const numeric = (typeof value === 'number' && Number.isFinite(value)) || (typeof value === 'string' && /\d/u.test(value));
+        if (value !== undefined && value !== null && String(value).trim()) {
+          children.push(editorialText(value, {
+            fontFamily: numeric ? 'Archivo Black' : 'Inter', fontWeight: numeric ? 400 : 700,
+            fontSize: `${fitFontSize(String(value), { max: numeric ? 156 : 44, min: 30, maxLines: 2 })}px`,
+            color: EDITORIAL.teal, lineHeight: '1.15', letterSpacing: numeric ? '-3px' : 0, marginTop: '44px',
+          }));
+          if (data.unit || data.label) children.push(editorialText(data.unit || data.label, { fontSize: '24px', fontWeight: 700, color: EDITORIAL.teal, marginTop: '16px' }));
+        }
+        children.push(body(numeric || data.items?.length ? 34 : 44, 870));
+        if (data.items?.length) children.push(editorialNode({ flexDirection: 'column', gap: '28px', marginTop: '40px' }, data.items.map((item) =>
+          editorialNode({ flexDirection: 'column', gap: '12px', borderLeft: `5px solid ${EDITORIAL.teal}`, paddingLeft: '28px' }, [
+            editorialText(item.label, { fontSize: '23px', fontWeight: 700, color: EDITORIAL.teal }),
+            editorialText(item.value, { fontSize: `${fitFontSize(String(item.value), { max: /\d/u.test(String(item.value)) ? 52 : 34, min: 24, width: 875, ratio: CHAR_RATIO.body, maxLines: 3, step: 1 })}px`, fontWeight: 700, lineHeight: '1.3' }),
+          ]))));
+        if (data.callout) children.push(editorialText(data.callout, { fontSize: '26px', color: EDITORIAL.teal, fontWeight: 700, marginTop: '32px' }));
+        break;
+      }
+
+      case 'editorial-close':
+        children.push(
+          editorialText(data.question, { fontFamily: 'Archivo Black', fontSize: `${fitFontSize(data.question, { max: 78, min: 34, maxLines: 5 })}px`, lineHeight: '1.15', letterSpacing: '-1px', color: EDITORIAL.mint, marginTop: '48px' }),
+          body(34),
+          editorialNode({ gap: '20px', alignItems: 'center', paddingTop: '30px', borderTop: `1px solid ${EDITORIAL.darkLine}`, marginTop: '56px' }, [
+            { type: 'svg', props: { width: 28, height: 34, viewBox: '0 0 28 34', children: { type: 'path', props: { d: 'M4 2H24V31L14 24L4 31Z', fill: 'none', stroke: EDITORIAL.amber, strokeWidth: 2.5 } } } },
+            editorialText(data.cta?.trim() || 'Simpan untuk dibaca lagi', { flex: 1, fontSize: '24px', fontWeight: 700, color: EDITORIAL.amber }),
+          ]),
+        );
+        break;
+    }
+    // Reserve the headline, supporting copy and swipe cue before allocating
+    // photo space. A longer short headline must never push the source off-page.
+    const supportingSize = fitFontSize(supporting, { max: 34, min: 24, width: 860, ratio: CHAR_RATIO.body, maxLines: 5, step: 1 });
+    const coverCopyHeight = 128 + estimateLineCount(data.title, headlineSize, CONTENT_WIDTH) * headlineSize * 1.12
+      + (supporting ? 28 + estimateLineCount(supporting, supportingSize, 860, CHAR_RATIO.body) * supportingSize * 1.5 : 0);
+    const coverOffset = cover ? Math.max(0, Math.min(photo ? 430 : 100, 990 - coverCopyHeight)) : 0;
+    return this.wrapEditorial(editorialNode({ flexDirection: 'column', width: '100%', paddingTop: `${coverOffset}px` }, children.filter(Boolean)), slide, slideIndex, totalSlides, {
+      dark, photo, background: layout === 'editorial-lead' || layout === 'editorial-timeline' ? EDITORIAL.mist : EDITORIAL.paper,
+    });
   }
 
   renderIllustration(slide, slideIndex, totalSlides) {
@@ -591,6 +763,8 @@ export class RenderEngine {
     const layout = slide.layout || 'cover-stat';
     const { palette } = this.tokens;
     validateLayoutData(layout, slide.data ?? {});
+
+    if (EDITORIAL_LAYOUTS.includes(layout)) return this.renderEditorial(slide, slideIndex, totalSlides);
 
     // Slide pertama — atau layout apa pun yang menyebut "cover" — selalu cover murni.
     if (slideIndex === 1 || /cover/i.test(layout)) {

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { normalizeModelList, normalizeModelsUrl } from './providers.js';
 import { redactProviderError } from './llm.js';
+import { configuredGeminiKeys } from './llm-pool.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const DEFAULT_TIMEOUT_MS = 20000;
@@ -33,6 +34,7 @@ function isLocalHost(hostname) {
 }
 
 export function resolveProviderKey(entry, { env = process.env, secrets = {} } = {}) {
+  if (entry?.kind === 'gemini') return configuredGeminiKeys({ env, secrets })[0] || '';
   const managed = entry?.api_key_env ? secrets?.[entry.api_key_env] : '';
   if (typeof managed === 'string' && managed.trim()) return managed.trim();
   const fromEnv = entry?.api_key_env ? env?.[entry.api_key_env] : '';

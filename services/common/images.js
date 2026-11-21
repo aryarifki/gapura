@@ -22,6 +22,18 @@ export function hasCoverImage(content) {
     && ASSET_ID.test(String(data.asset_id)) && SHA256.test(String(data.asset_sha256)));
 }
 
+export function hasEditorialCover(content) {
+  if (hasCoverImage(content)) return true;
+  let slides = content;
+  if (typeof slides === 'string') { try { slides = JSON.parse(slides); } catch { return false; } }
+  if (!Array.isArray(slides)) slides = slides?.slides;
+  const cover = slides?.[0];
+  return Boolean(cover?.layout === 'editorial-cover' && cover.role === 'cover'
+    && cover.data?.cover_mode === 'typography' && !cover.data.asset_id && !cover.data.image_data
+    && typeof cover.data.title === 'string' && cover.data.title.trim()
+    && typeof cover.data.kicker === 'string' && cover.data.kicker.trim());
+}
+
 export function isAllowedImageUrl(value) {
   try {
     const url = new URL(String(value || ''));

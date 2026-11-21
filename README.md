@@ -33,12 +33,9 @@ teknis: unggah gambar manual menjadi jalur utama, cover slide 1 wajib bergambar
 sebelum approval/publish, slide isi opsional, dan enam sampel draf manual sudah
 dibuat untuk dinilai owner. Tidak ada generasi raster AI nyata, publikasi nyata,
 atau aktivasi otomatisasi; kuota gambar AI tetap 0.
-Perbaikan kualitas pra-R8 ada di
-[laporan](docs/plans/16_PRE_R8_EDITORIAL_QUALITY.md): generasi berita dari materi
-R2 kini terhubung dan gagal tertutup bila bahan/domain tidak memadai/diizinkan;
-domain AI allowlist masih kosong sampai redaksi memiliki izin tertulis. Renderer
-body dipusatkan, ukuran font diturunkan, serta CTA/filler default dibuang. R8,
-publish live, dan aktivasi timer tetap menunggu review owner dan mandat terpisah.
+Topik populer dipilih dari Google Trends, web/berita (Firecrawl Search), jejaring sosial, dan forum publik. Riset memakai tiga kueri terarah tanpa allowlist penerbit. Gemini memilih ID petikan yang sudah dipasangkan aplikasi dengan teks dan URL sumber. Bila pilihan AI belum mencapai tiga fakta, aplikasi mengambil kalimat sumber yang relevan dan berbeda; bila bahan tetap kurang, generasi berhenti. Cuplikan mesin pencari harus diambil ulang dari halaman asal sebelum boleh mendukung artikel. Artikel, caption, dan carousel selalu menunggu review redaktur.
+
+Firecrawl sudah terautentikasi dan key disimpan operator di secret store server `0600`; dashboard publik tidak menerima key. Migrasi artikel terpasang sejak 19 November 2026 setelah backup/restore teruji. Uji riset awal dilakukan di memori. Atas mandat owner berikutnya, enam sampel pipeline terbaru lintas desk disimpan sebagai **draf 150–155**, lengkap artikel, fakta/rujukan, caption, carousel, dan cover; semuanya `needs_review` tanpa publikasi. [Paket review dan lembar keputusan R7](docs/plans/18_R7_SIX_DESK_REVIEW.md) menunggu keputusan owner/redaktur. Timer pipeline/publisher tetap nonaktif. Detail metode ada di [laporan perbaikan riset](docs/plans/17_PUBLIC_RESEARCH_RELIABILITY.md). Backup pra-migrasi: `backups/hme_pre_longform_20261119.dump` (SHA-256 `e38c43c75c1d94e23a6680f813c2d0d3f32a309beadaf1f1dfbec3b7a02889fc`).
 
 ---
 
@@ -109,7 +106,7 @@ flowchart TD
     - Disclaimer hukum/investasi bersifat opsional dan sesuai konteks hukum/bursa, bukan boilerplate untuk semua desk.
 
 12. **Katalog Provider & Model Multi-Provider**
-    - Registry provider (`services/common/providers.js`) mendukung Gemini, OpenAI-compatible, dan Anthropic: MASB, 9router, OpenRouter, NVIDIA, agent router, endpoint custom, serta provider resmi.
+    - Registry provider (`services/common/providers.js`) mendukung Gemini, OpenAI-compatible, dan Anthropic: Groq, OpenRouter, NVIDIA, endpoint custom, serta provider resmi.
     - Model diambil live dari `/models` tiap provider, di-cache di `config/models.cache.json`, dan dapat diuji dari dashboard tanpa menyimpan perubahan.
     - Rantai fallback global lintas provider (Gemini-first) dengan klasifikasi error `retryable`, sehingga halaman blokir/gateway rusak tidak mematikan seluruh rantai.
     - API key per provider disimpan terpisah di `/etc/gapura/provider-keys.json` (`0600`), tidak pernah dikembalikan ke browser.

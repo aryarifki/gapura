@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, readdir } from 'node:fs/promises';
+import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import pkg from 'pg';
 import { persistTopicMaterial, loadLatestTopicMaterial } from '../../scout/material-store.js';
@@ -255,4 +255,26 @@ test('material API: enrichment budgets are separated by trusted loopback client 
     const limited = await fetch(`${base}/api/topics/9007199254740991/material/enrich`, { method: 'POST', headers: { ...headers, 'CF-Connecting-IP': address }, body: '{}' });
     assert.equal(limited.status, 429, address);
   }
+});
+
+test('Firecrawl credentials cannot be written through the unauthenticated dashboard API', { skip: !enabled }, async () => {
+  const response = await fetch(`${base}/api/seo/search-key`, {
+    method: 'POST', headers, body: JSON.stringify({ api_key: `fc-${'a'.repeat(32)}` }),
+  });
+  assert.equal(response.status, 404);
+  const provider = await fetch(`${base}/api/providers/firecrawl_test`, {
+    method: 'POST', headers, body: JSON.stringify({ label: 'Firecrawl Search', kind: 'openai', base_url: 'https://api.firecrawl.dev', api_key_env: 'FIRECRAWL_API_KEY', enabled: false }),
+  });
+  assert.equal(provider.status, 403);
+  const configPath = process.env.PROVIDERS_CONFIG_PATH;
+  const original = await readFile(configPath);
+  const config = JSON.parse(original);
+  config.providers.firecrawl_test = { label: 'Firecrawl Search', kind: 'openai', base_url: 'https://api.firecrawl.dev', api_key_env: 'FIRECRAWL_API_KEY', enabled: false };
+  await writeFile(configPath, JSON.stringify(config));
+  try {
+    const providerKey = await fetch(`${base}/api/providers/firecrawl_test/key`, {
+      method: 'POST', headers, body: JSON.stringify({ api_key: `fc-${'b'.repeat(32)}` }),
+    });
+    assert.equal(providerKey.status, 403);
+  } finally { await writeFile(configPath, original); }
 });

@@ -10,7 +10,9 @@ export class DraftError extends Error {
 export function validateSlides(input) {
   if (!Array.isArray(input) || input.length < 1 || input.length > 9) throw new DraftError('Draf harus memiliki 1-9 slide.');
   return input.map((value, index) => {
-    if (!value || typeof value !== 'object' || typeof value.teks !== 'string' || !value.teks.trim() || value.teks.length > 3000) throw new DraftError('Teks setiap slide wajib diisi (maksimal 3000 karakter).');
+    if (!value || typeof value !== 'object' || typeof value.teks !== 'string'
+        || (!value.teks.trim() && !(String(value.layout).startsWith('editorial-') && value.data?.title))
+        || value.teks.length > 3000) throw new DraftError('Teks setiap slide wajib diisi (maksimal 3000 karakter).');
     if (!/^[a-z0-9-]{1,50}$/i.test(value.layout || '')) throw new DraftError('Layout slide tidak valid.');
     const data = value.data && typeof value.data === 'object' && !Array.isArray(value.data) ? { ...value.data } : {};
     delete data.image_data;
@@ -45,7 +47,7 @@ export async function editDraft(draftId, change, { pool, renderUrl, renderSecret
     catch (error) { throw new DraftError(error.message, 409); }
     const caption = next.caption ?? draft.caption;
     const hashtags = next.hashtags ?? draft.hashtags;
-    const metadata = Object.fromEntries(['editorial_input', 'editorial_mode', 'caption_body', 'threads_caption', 'angle', 'scope_note', 'editorial_references'].map((field) => [field, draft[field]]));
+    const metadata = Object.fromEntries(['editorial_input', 'editorial_mode', 'caption_body', 'threads_caption', 'angle', 'scope_note', 'editorial_references', 'article_body', 'article_references', 'article_metadata'].map((field) => [field, draft[field]]));
     // Generation metadata is read-only here. Keep the editor's exact caption as
     // its new body; hashtag boundaries cannot be inferred from arbitrary prose.
     if (original && caption !== draft.caption) {

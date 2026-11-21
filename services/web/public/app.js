@@ -122,6 +122,53 @@ function renderOriginalReview() {
     map.textContent = `Rujukan caption: ${(references.caption || []).map((block, index) => `paragraf ${index + 1} (${block.kind}): ${block.fact_ids?.join(', ') || 'konteks umum'}`).join('; ')}. Threads: ${references.threads?.join(', ') || 'konteks umum'}.`;
     container.append(map);
   }
+  const articleReview = document.getElementById('editor-article-review');
+  const articleBody = document.getElementById('editor-article-body');
+  if (articleReview && articleBody) {
+    const story = activeDraft.article_metadata;
+    articleBody.replaceChildren();
+    const metadata = document.getElementById('editor-article-metadata');
+    if (metadata) metadata.replaceChildren();
+    if (story?.editorial_version === 2) {
+      if (metadata) {
+        const add = (label, value) => { const row = document.createElement('p'); const strong = document.createElement('strong'); strong.textContent = `${label}: `; row.append(strong, document.createTextNode(value || '')); metadata.append(row); };
+        add('SEO title', story.seo_title);
+        add('Meta description', story.meta_description);
+        if (story.takeaways?.length) add('Takeaways', story.takeaways.map((item) => item.text).join(' · '));
+        if (story.entities?.length) add('Istilah/nama pertama', story.entities.map((item) => `${item.name} — ${item.expansion}`).join(' · '));
+        if (story.pipeline?.status) add('Checkpoint', story.pipeline.status);
+        if (story.legal_context?.status) add('Rujukan O-Crawler', story.legal_context.status);
+        if (story.threads_posts?.length) for (const post of story.threads_posts) add(`Threads ${post.no}`, post.text);
+      }
+      const headline = document.createElement('h3'); headline.textContent = story.headline; articleBody.append(headline);
+      const lead = document.createElement('p'); lead.textContent = story.lead?.text || ''; articleBody.append(lead);
+      for (const section of story.sections || []) {
+        const heading = document.createElement('h4'); heading.textContent = section.heading; articleBody.append(heading);
+        for (const paragraph of section.paragraphs || []) { const p = document.createElement('p'); p.textContent = paragraph.text; articleBody.append(p); }
+      }
+    } else {
+      if (metadata) metadata.textContent = 'Metadata SEO dan struktur artikel v2 belum tersedia pada draf lama.';
+      articleBody.textContent = activeDraft.article_body || 'Artikel lengkap belum tersedia untuk draf lama.';
+    }
+    articleReview.style.display = activeDraft.article_body ? '' : 'none';
+    const bibliography = document.getElementById('editor-article-references');
+    if (bibliography) {
+      bibliography.replaceChildren();
+      const articleIds = new Set(activeDraft.article_references || activeDraft.editorial_references?.article || []);
+      const seenSources = new Set();
+      for (const fact of facts.filter((item) => articleIds.has(item.id))) {
+        let sourceUrl;
+        try { const url = new URL(fact.source_url); if (url.protocol !== 'https:' || url.username || url.password) continue; url.hash = ''; sourceUrl = url.toString(); } catch { continue; }
+        if (seenSources.has(sourceUrl)) continue;
+        seenSources.add(sourceUrl);
+        const row = document.createElement('p');
+        const link = document.createElement('a');
+        link.href = sourceUrl; link.target = '_blank'; link.rel = 'noopener noreferrer';
+        link.textContent = `${fact.source_name} · ${fact.source_url}`;
+        row.append(link); bibliography.append(row);
+      }
+    }
+  }
   document.getElementById('editor-regenerate-mode').value = mode || 'current';
   document.getElementById('editor-regenerate-facts').value = JSON.stringify(facts, null, 2);
 }
@@ -736,7 +783,7 @@ async function regenerateActiveDraftAI() {
   showToast(`⚡ AI Designer sedang merancang ulang draf #${activeDraft.id}...`);
 
   try {
-    const editorial_input = readEditorialInput('editor-regenerate-mode', 'editor-regenerate-facts');
+    const editorial_input = readEditorialInput('editor-regenerate-mode', 'editor-regenerate-facts', { allowEmptyCurrent: true });
     const res = await fetch(`/api/drafts/${activeDraft.id}/regenerate-ai`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -884,7 +931,7 @@ function renderManualMediaPanel() {
   const attach = document.getElementById('btn-attach-manual-media');
   if (attach) attach.disabled = !pendingManualAsset;
   const cover = (activeDraft.slides || [])[0]?.data || {};
-  const coverReady = Boolean(cover.asset_id) && MANUAL_IMAGE_KINDS.includes(cover.image_kind);
+  const coverReady = (Boolean(cover.asset_id) && MANUAL_IMAGE_KINDS.includes(cover.image_kind)) || cover.cover_mode === 'typography';
   const coverStatus = document.getElementById('editor-cover-status');
   if (coverStatus) {
     coverStatus.textContent = coverReady ? 'Cover siap' : 'Cover belum bergambar';
@@ -1015,7 +1062,13 @@ function renderLayoutFields(layout, data) {
 
   let html = '';
 
-  if (layout === 'cover-stat') {
+  if (layout.startsWith('editorial-')) {
+    html = `<div class="form-group-editor"><label class="form-label-editor">Headline slide</label><input type="text" id="lf-story-title" class="form-input-dark" maxlength="120" value="${escapeHtml(data.title || '')}"></div>
+      <div class="form-group-editor"><label class="form-label-editor">Kicker / label fungsi</label><input type="text" id="lf-story-kicker" class="form-input-dark" maxlength="40" value="${escapeHtml(data.kicker || '')}"></div>`;
+    if (layout === 'editorial-close') html += `<div class="form-group-editor"><label class="form-label-editor">Pertanyaan pembaca</label><input id="lf-story-question" class="form-input-dark" value="${escapeHtml(data.question || '')}"></div><div class="form-group-editor"><label class="form-label-editor">Ajakan singkat</label><input id="lf-story-cta" class="form-input-dark" value="${escapeHtml(data.cta || '')}"></div>`;
+    if (layout === 'editorial-breakdown' || layout === 'editorial-timeline') html += `<div class="form-group-editor"><label class="form-label-editor">${layout === 'editorial-breakdown' ? 'Kartu rincian' : 'Peristiwa dan tanggal'} (JSON)</label><textarea id="lf-story-collection" class="form-input-dark" rows="6">${escapeHtml(JSON.stringify(layout === 'editorial-breakdown' ? data.items || [] : data.events || [], null, 2))}</textarea></div>`;
+    if (layout === 'editorial-quote') html += ['quote', 'author', 'role_label'].map((key) => `<div class="form-group-editor"><label class="form-label-editor">${escapeHtml(key === 'quote' ? 'Kutipan terverifikasi' : key === 'author' ? 'Nama narasumber' : 'Jabatan / kapasitas')}</label><input id="lf-story-${key}" class="form-input-dark" value="${escapeHtml(data[key] || '')}"></div>`).join('');
+  } else if (layout === 'cover-stat') {
     html = `
       <div style="font-size: 11px; font-weight: 700; color: var(--lime); margin-bottom: 10px; text-transform: uppercase;">
         ⚙️ Parameter Layout: Cover Stat
@@ -1210,6 +1263,19 @@ function renderLayoutFields(layout, data) {
 
 function getCompiledLayoutData(layout, existingData = {}) {
   const data = { ...existingData };
+  if (layout.startsWith('editorial-')) {
+    for (const key of ['title', 'kicker', 'question', 'cta', 'quote', 'author', 'role_label']) {
+      const input = document.getElementById(`lf-story-${key}`);
+      if (input) data[key] = input.value;
+    }
+    const collection = document.getElementById('lf-story-collection');
+    if (collection) {
+      const parsed = JSON.parse(collection.value);
+      if (!Array.isArray(parsed)) throw new Error('Rincian layout harus berupa JSON array.');
+      data[layout === 'editorial-breakdown' ? 'items' : 'events'] = parsed;
+    }
+    return data;
+  }
 
   // Generic AI Layout Parameters
   if (document.getElementById('lf-generic-title')) {
@@ -1895,7 +1961,7 @@ async function generateStudioCarouselAI() {
 
   try {
     let editorial_input = readEditorialInput('studio-custom-editorial-mode', 'studio-custom-editorial-facts', { allowEmptyCurrent: selectedTopicId > 0 });
-    if (selectedTopicId && editorial_input.mode === 'explainer' && editorial_input.facts.length === 0) editorial_input = undefined;
+    if (selectedTopicId && editorial_input?.mode === 'explainer' && editorial_input.facts.length === 0) editorial_input = undefined;
     const res = await fetch('/api/designer/generate-slides', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1950,7 +2016,7 @@ async function saveStudioToDrafts() {
 
   try {
     let editorial_input = readEditorialInput('studio-custom-editorial-mode', 'studio-custom-editorial-facts', { allowEmptyCurrent: selectedTopicId > 0 });
-    if (selectedTopicId && editorial_input.mode === 'explainer' && editorial_input.facts.length === 0) editorial_input = undefined;
+    if (selectedTopicId && editorial_input?.mode === 'explainer' && editorial_input.facts.length === 0) editorial_input = undefined;
     const currentInput = JSON.stringify({ title, source, sourceUrl, editorial_input: editorial_input || null, topicId: selectedTopicId || '' });
     if (currentInput !== studioGeneratedInput) throw new Error('Topik, mode, atau catatan berubah. Buat ulang naskah sebelum menyimpan.');
     const res = await fetch('/api/drafts/create-from-custom', {
@@ -3242,6 +3308,7 @@ const TREND_PLATFORM_META = {
   x: { label: 'X / Twitter', cls: 'x' },
   google_trends: { label: 'Google Trends', cls: 'trends' },
   news: { label: 'Momentum Berita', cls: 'news' },
+  public_web: { label: 'Web Publik', cls: 'news' },
 };
 
 const TREND_SOURCE_KIND_META = {
@@ -3249,6 +3316,7 @@ const TREND_SOURCE_KIND_META = {
   x_query: { label: 'Query X', cls: 'x' },
   google_trends: { label: 'Google Trends', cls: 'trends' },
   news_query: { label: 'Query Berita', cls: 'news' },
+  public_web: { label: 'Web Publik + Sosial', cls: 'news' },
 };
 
 async function refreshSeoBadges() {
@@ -3299,7 +3367,7 @@ async function loadTrendHealth() {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const health = await response.json();
     banner.classList.toggle('is-stale', health.stale);
-    const provider = health.x_api_configured ? 'X API' : health.rsshub_configured ? 'RSSHub → Google News' : 'Google News fallback';
+    const provider = `${health.firecrawl_api_configured ? 'Firecrawl Search aktif' : 'Firecrawl Search perlu API key'} · Google Trends + sosial/forum publik`;
     message.textContent = health.stale
       ? `Data trending stale · provider ${provider} · ${health.successful_sources}/${health.active_sources} sumber berhasil`
       : `Provider ${provider} · ${health.successful_sources}/${health.active_sources} sumber berhasil`;
@@ -3685,7 +3753,7 @@ async function submitStudioPrompt() {
   btn.innerHTML = '<span>⏳</span> <span>Mengirim prompt…</span>';
   try {
     let editorial_input = readEditorialInput('studio-editorial-mode', 'studio-editorial-facts', { allowEmptyCurrent: true });
-    if (editorial_input.mode === 'explainer' && editorial_input.facts.length === 0) editorial_input = undefined;
+    if (editorial_input?.mode === 'explainer' && editorial_input.facts.length === 0) editorial_input = undefined;
     const res = await fetch('/api/studio/jobs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

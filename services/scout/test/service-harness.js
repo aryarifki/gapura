@@ -39,6 +39,10 @@ export async function loadService(relativePath, { client, config = {}, llm, fetc
         loadAgentsConfig: () => config,
         callAgentLLM: llm || (async () => { throw new Error('No test LLM configured'); }),
       });
+      if (resolved.endsWith('/common/secret-store.js')) return synthetic(resolved, {
+        loadProviderSecrets: () => ({}),
+        saveProviderSecret: () => { throw new Error('Provider secrets are not available to isolated tests.'); },
+      });
       if (specifier.startsWith('.')) return load(resolved);
       const imported = await import(isBuiltin(specifier) ? specifier : pathToFileURL(createRequire(parent.identifier).resolve(specifier)).href);
       return synthetic(specifier, Object.fromEntries(Object.keys(imported).map((key) => [key, imported[key]])));

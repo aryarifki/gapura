@@ -16,7 +16,7 @@ test('Scout and SEO accurately describe deterministic runtime and the role of th
   for (const agent of ['scout', 'seo']) {
     const document = await readFile(new URL(`config/skills/${agent}.skills.md`, root), 'utf8');
     assert.match(document, /deterministik/i, agent);
-    assert.match(document, /tidak.*(?:LLM|model)/i, agent);
+    assert.match(document, /SEO.*AI.*memilih|tidak mengambil data dari LLM\/model|Scout.*tidak memanggil LLM/i, agent);
   }
 });
 test('generator contracts require original six-slide carousels, explicit evidence and human-reviewed captions', async () => {

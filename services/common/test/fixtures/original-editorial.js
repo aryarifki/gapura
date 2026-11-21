@@ -37,14 +37,28 @@ export function originalFixture(brief = {}) {
     })),
     caption_blocks: caption.map((text) => ({ kind: 'context', text, fact_ids: [] })),
     threads_body: 'Memahami isu publik dimulai dengan membedakan tujuan kebijakan, cara pelaksanaan, dan dampak yang masih perlu diamati. Perhatikan kewenangan, akses informasi, serta kebutuhan warga. Pembahasan ini menjelaskan mekanisme umum; rincian kejadian aktual memerlukan catatan dan rujukan yang tersedia.',
+    article_body: caption.join('\n\n'), article_fact_ids: [],
+    article_blocks: caption.map((text) => ({ text: `${text} ${'Penjelasan ini membahas konteks umum, pertanyaan pembaca, mekanisme dan dampak yang mungkin terjadi, tanpa menyatakan rincian peristiwa aktual yang tidak tersedia dalam bahan. '.repeat(2)}`, fact_ids: [] })),
     threads_fact_ids: [], hashtags: ['#GapuraMedia', '#IsuPublik'],
   };
   if (brief.mode === 'current' && brief.facts?.[0]) {
     const facts = brief.facts.slice(0, 3);
-    facts.forEach((fact, index) => {
-      raw.slides[index + 1] = { ...raw.slides[index + 1], teks: `${fact.text} Rincian ini memberi konteks bagi pembaca untuk memahami perkembangan berita secara lebih utuh sesuai informasi yang tersedia.`, claim_type: 'fact', fact_ids: [fact.id] };
-    });
+    const slideContext = [
+      'Poin utama untuk dibaca adalah konteks keterangan sumber tersebut.',
+      'Pembaca juga perlu mempertimbangkan cakupan informasi yang dilaporkan.',
+      'Kesimpulan tetap harus membedakan keterangan sumber dari informasi yang belum tersedia.',
+    ];
+    for (let index = 0; index < facts.length; index++) {
+      const fact = facts[index % facts.length];
+      raw.slides[index + 1] = { ...raw.slides[index + 1], teks: `${fact.text} ${slideContext[index % slideContext.length]}`, claim_type: 'fact', fact_ids: [fact.id] };
+    }
     raw.caption_blocks = facts.map((fact) => ({ kind: 'fact', text: fact.text, fact_ids: [fact.id] })).concat(raw.caption_blocks);
+    raw.article_blocks = Array.from({ length: Math.max(3, facts.length) }, (_, index) => {
+      const fact = facts[index % facts.length];
+      return { text: `${fact.text} ${['Gambaran sumber ini memberi pijakan untuk memahami pokok informasi, konteks yang tersedia, serta dampak yang dapat dijelaskan tanpa melewati batas keterangan terkait.', 'Urutan keterangan membantu pembaca memisahkan pernyataan sumber dari kesimpulan yang masih memerlukan bahan tambahan, sambil melihat konteks isu secara menyeluruh.', 'Pembaca perlu mempertimbangkan cakupan sumber, konteks perubahan dan hal yang belum dijelaskan sebelum menarik kesimpulan yang melampaui informasi yang tersedia.'][index % 3]} ${'Pertimbangan tersebut menunjukkan pentingnya membaca setiap bagian bersama uraian sumber, mengenali ruang lingkupnya, serta mempertimbangkan dampak bagi masyarakat tanpa menambah rincian yang belum dikonfirmasi. '.repeat(2)}`,
+      fact_ids: [fact.id],
+      };
+    });
   }
   return raw;
 }

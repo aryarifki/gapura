@@ -68,16 +68,14 @@
       "enabled": true,
       "max_tokens": 8192
     },
-    "masb": {
-      "label": "MASB Agent Router",
+    "groq": {
+      "label": "Groq Cloud",
       "kind": "openai",
-      "base_url": "https://ai.masb.web.id/v1",
-      "api_key_env": "MASB_API_KEY",
+      "base_url": "https://api.groq.com/openai/v1",
+      "api_key_env": "GROQ_API_KEY",
       "enabled": true,
-      "max_tokens": 8192,
-      "headers": {
-        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-      }
+      "default_model": "qwen/qwen3.8-27b",
+      "max_tokens": 8192
     },
     "xingchi": {
       "label": "Xingchi API (grup nonaktif)",
@@ -127,15 +125,8 @@
   },
   "routing": {
     "fallback_chain": [
-      "gemini/gemini-3.5-flash-lite",
-      "gemini/gemini-2.5-flash",
-      "gemini/gemini-3.5-flash",
-      "gemini/gemini-2.5-flash-lite",
-      "masb/qwen3.8-27b",
-      "masb/deepseek-v4.1-flash",
-      "masb/kimi-k3.1-pro",
-      "masb/glm-5.3-flash",
-      "masb/Atria-Dawn"
+      "groq/qwen/qwen3.8-27b",
+      "openrouter/google/gemini-2.5-flash"
     ]
   }
 }

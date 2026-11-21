@@ -11,10 +11,12 @@ mock.module('pg', { defaultExport: { Pool: class {} } });
 mock.module('../../common/llm.js', { namedExports: {
   loadAgentsConfig: () => config,
   loadAgentSkills: () => '',
-  callAgentLLM: async (agent, prompt) => {
-    calls.push({ agent, prompt });
-    if (responses[agent] instanceof Error) throw responses[agent];
-    if (responses[agent] !== undefined) return typeof responses[agent] === 'string' ? responses[agent] : JSON.stringify(responses[agent]);
+  callAgentLLM: async (agent, prompt, policy, jsonMode, options) => {
+    calls.push({ agent, prompt, policy, jsonMode, options });
+    const configured = responses[agent];
+    const response = Array.isArray(configured) ? configured.shift() : configured;
+    if (response instanceof Error) throw response;
+    if (response !== undefined) return typeof response === 'string' ? response : JSON.stringify(response);
     if (agent === 'copywriter') return JSON.stringify(originalFixture(JSON.parse(prompt.split('ORIGINAL_EDITORIAL_JSON: ')[1])));
     const script = JSON.parse(prompt.split('NASKAH_GAPURA_JSON: ')[1].split('\nKembalikan')[0]);
     return JSON.stringify({ slides: script.slides.map(({ no, layout }) => ({ no, layout })) });
@@ -64,8 +66,9 @@ test('copywriter authors the full six-slide story before designer sees only its 
   assert.equal(brief.discovery.source_url, topic.url);
   assert.deepEqual(brief.facts, []);
   const script = JSON.parse(calls[1].prompt.split('NASKAH_GAPURA_JSON: ')[1].split('\nKembalikan')[0]);
-  assert.equal(script.slides[1].teks, content.slides[1].teks);
-  assert.doesNotMatch(JSON.stringify(script), /source_url|source_name|summary|content_html|image_url/);
+  assert.deepEqual(script.slides.map(({ no, layout }) => ({ no, layout })), content.slides.map(({ no, layout }) => ({ no, layout })));
+  assert.doesNotMatch(JSON.stringify(script), /source_url|source_name|summary|content_html|image_url|Inflasi Oktober mencapai/);
+  assert.ok(content.article_body.length >= 1200);
 });
 
 test('topic article material is projected into attributed current-news facts', async () => {
@@ -99,10 +102,14 @@ test('empty summaries and a legacy single preference still generate a complete o
 });
 
 test('editorial input comes only from the explicit curated facts contract and sanitized directions', async () => {
-  const editorialInput = { mode: 'current', facts: [{ id: 'f1', text: 'BPS mencatat inflasi tahunan sebesar 2,1%.', source_url: 'https://www.bps.go.id/rilis/inflasi', source_name: 'BPS' }] };
+  const editorialInput = { mode: 'current', facts: [
+    { id: 'f1', text: 'BPS mencatat inflasi tahunan sebesar 2,1%.', source_url: 'https://www.bps.go.id/rilis/inflasi', source_name: 'BPS' },
+    { id: 'f2', text: 'Perubahan harga konsumen memengaruhi pengeluaran keluarga di berbagai wilayah.', source_url: 'https://www.bps.go.id/rilis/inflasi', source_name: 'BPS' },
+    { id: 'f3', text: 'Rincian dalam laporan tersebut menggunakan cakupan periode pencatatan yang dijelaskan oleh lembaga.', source_url: 'https://www.bps.go.id/rilis/inflasi', source_name: 'BPS' },
+  ] };
   const editorialBrief = { prompt: 'Jelaskan arti ukuran inflasi', summary: topic.summary, plan: { title: 'Membaca inflasi', angle: 'Makna untuk warga', sections: ['Definisi', 'Batas kesimpulan'], caption_tone: 'jelas', source_material: topic.source_material } };
   responses.copywriter = originalFixture(buildEditorialBrief(topic, { editorialInput, editorialBrief }));
-  responses.copywriter.slides[1] = { ...responses.copywriter.slides[1], claim_type: 'fact', fact_ids: ['f1'], teks: 'Inflasi tahunan sebesar 2,1% dicatat BPS sebagai ukuran perubahan harga.' };
+  responses.copywriter.slides[1] = { ...responses.copywriter.slides[1], claim_type: 'fact', fact_ids: ['f1'], teks: 'Inflasi tahunan sebesar 2,1% dicatat BPS sebagai ukuran perubahan harga pada periode laporan.' };
   responses.copywriter.caption_blocks[0] = { ...responses.copywriter.caption_blocks[0], kind: 'fact', fact_ids: ['f1'], text: `Inflasi tahunan sebesar 2,1% dicatat BPS. ${responses.copywriter.caption_blocks[0].text}` };
   const content = await buildCarouselSlides(topic, { editorialInput, editorialBrief });
   assert.equal(content.editorial_mode, 'current');
@@ -113,7 +120,8 @@ test('editorial input comes only from the explicit curated facts contract and sa
   assert.equal(brief.directions.prompt, editorialBrief.prompt);
   assert.equal(brief.directions.angle, editorialBrief.plan.angle);
   assert.doesNotMatch(JSON.stringify(brief), forbidden);
-  assert.doesNotMatch(calls[1].prompt, /BPS mencatat inflasi tahunan sebesar 2,1%/);
+  assert.doesNotMatch(calls[1].prompt, /https:\/\/www\.bps\.go\.id|source_name|source_url/u);
+  assert.ok(content.article_body.length >= 1200);
 });
 
 test('provider and malformed response failures remain visible without a draft source-copy fallback', async () => {
@@ -121,9 +129,41 @@ test('provider and malformed response failures remain visible without a draft so
     calls.length = 0;
     responses.copywriter = response;
     await assert.rejects(buildCarouselSlides(topic), /original_generation_failed/);
-    assert.deepEqual(calls.map(({ agent }) => agent), ['copywriter']);
+    assert.deepEqual(calls.map(({ agent }) => agent), Array.from({ length: response instanceof Error ? 1 : 3 }, () => 'copywriter'));
     assert.doesNotMatch(calls[0].prompt, forbidden);
   }
+});
+
+test('one validator-only correction retry can repair a short caption without changing its evidence brief', async () => {
+  const editorialInput = { version: 1, mode: 'current', facts: [
+    { id: 'f1', text: 'Lembaga mencatat layanan warga beralih ke lokasi sementara selama renovasi gedung berlangsung.', source_url: 'https://example.org/layanan', source_name: 'Lembaga' },
+    { id: 'f2', text: 'Petugas mengumumkan jadwal layanan baru melalui kanal informasi resmi milik lembaga.', source_url: 'https://example.org/layanan', source_name: 'Lembaga' },
+    { id: 'f3', text: 'Warga dapat menyampaikan pertanyaan melalui kantor layanan selama jam operasional.', source_url: 'https://example.org/layanan', source_name: 'Lembaga' },
+  ] };
+  const brief = buildEditorialBrief(topic, { editorialInput });
+  const invalid = originalFixture(brief);
+  invalid.caption_blocks = [{ kind: 'fact', text: editorialInput.facts[0].text, fact_ids: ['f1'] }];
+  responses.copywriter = [invalid, originalFixture(brief)];
+  const content = await buildCarouselSlides(topic, { editorialInput });
+  assert.equal(content.editorial_input.facts.length, 3);
+  assert.equal(calls.filter(({ agent }) => agent === 'copywriter').length, 2);
+  assert.match(calls[1].prompt, /VALIDATION_RETRY: Respons sebelumnya belum lolos validasi/);
+  assert.ok(content.needs_review);
+});
+
+test('caption length correction retains the existing article and slides and validates the repaired blocks', async () => {
+  const invalid = originalFixture();
+  invalid.caption_blocks = [{ kind: 'context', text: 'Kebijakan publik dapat memengaruhi akses layanan bagi warga.', fact_ids: [] }];
+  const repaired = originalFixture();
+  const attemptedSlideMutation = { ...repaired, slides: [] };
+  responses.copywriter = [invalid, attemptedSlideMutation];
+  const content = await buildCarouselSlides(topic);
+  assert.deepEqual(content.slides.map(({ teks }) => teks), invalid.slides.map(({ teks }) => teks));
+  assert.equal(content.article_body, validateOriginalContent(originalFixture(), buildEditorialBrief(topic)).article_body);
+  assert.equal(calls.filter(({ agent }) => agent === 'copywriter').length, 2);
+  assert.match(calls[1].prompt, /Perbaiki hanya caption/u);
+  assert.equal(calls[1].options.includeAgentPolicy, false);
+  assert.ok(content.caption_body.length >= 1200 && content.caption_body.length <= 1900);
 });
 
 test('short, oversized and fabricated generated captions are rejected rather than clipped or replaced', async () => {

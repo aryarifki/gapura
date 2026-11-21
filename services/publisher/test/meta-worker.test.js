@@ -64,6 +64,7 @@ function claimRow(overrides = {}) {
     hashtags: ['#gapura'], needs_review: false, draft_status: 'scheduled', human_approved: true,
     source_url: 'https://www.bps.go.id/fixture', analyst_passed: true,
     editorial_input: null, editorial_mode: null, caption_body: null, threads_caption: null, angle: null, scope_note: null, editorial_references: null,
+    article_body: null, article_references: null, article_facts: null,
     ...overrides,
   };
   return { ...row, approved_content_hash: draftContentHash(row), content_hash: draftContentHash(row), ...overrides };
@@ -87,7 +88,7 @@ function assertReviewEvidence(q) {
   assert.match(q, /ORDER BY scores\.created_at DESC NULLS LAST, scores\.id DESC LIMIT 1/);
   assert.match(q, /SELECT topic\.url FROM topics topic WHERE topic\.id = d\.topic_id/);
   assert.match(q, /d\.hashtags/);
-  for (const field of ['editorial_input', 'editorial_mode', 'caption_body', 'threads_caption', 'angle', 'scope_note', 'editorial_references']) assert.match(q, new RegExp(`d\\.${field}\\b`));
+  for (const field of ['editorial_input', 'editorial_mode', 'caption_body', 'threads_caption', 'angle', 'scope_note', 'editorial_references', 'article_body', 'article_references', 'article_facts']) assert.match(q, new RegExp(`d\\.${field}\\b`));
 }
 
 function fakePool(rows, { inserted = 1, failPublishedOnce = false, saveContainerCount = 1 } = {}) {

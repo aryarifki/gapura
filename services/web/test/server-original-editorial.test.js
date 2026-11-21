@@ -55,7 +55,7 @@ test('custom generation returns a complete original explainer or current carouse
 
 test('Studio stores normalized seed input in plan and requires reviewed full plans before production', { skip: !enabled }, async (t) => {
   const topic = await seed(t);
-  await pool.query('UPDATE topics SET summary=NULL WHERE id=$1', [topic.id]);
+   await pool.query('UPDATE topics SET summary=NULL WHERE id=$1', [topic.id]);
   const response = await post('/api/studio/jobs', { prompt: 'Jelaskan mekanisme akses layanan publik', topic_id: Number(topic.id), editorial_input: currentInput });
   assert.equal(response.status, 200, await response.clone().text());
   const { job } = await response.json();
@@ -73,6 +73,9 @@ test('Studio stores normalized seed input in plan and requires reviewed full pla
   assert.equal(reviewed.plan.format, 'carousel');
   assert.equal(reviewed.plan.slide_count_hint, 6);
   assert.deepEqual(reviewed.plan.editorial_input, currentInput);
+  const regenerated = await post(`/api/studio/jobs/${job.id}/regenerate-plan`, { editorial_input: currentInput, instruction: 'Perjelas konteks akses warga' });
+  assert.equal(regenerated.status, 200, await regenerated.clone().text());
+  assert.deepEqual((await regenerated.json()).plan.editorial_input, currentInput);
   const invalid = await post(`/api/studio/jobs/${job.id}/plan`, { plan: { ...reviewed.plan, editorial_input: { mode: 'current', facts: [] } } });
   assert.equal(invalid.status, 422, await invalid.clone().text());
 });
@@ -131,12 +134,18 @@ test('unmarked custom news never defaults to a one/two slide draft', { skip: !en
   }
 });
 
-test('headline-only source generation fails closed and never creates a short-caption draft', { skip: !enabled }, async (t) => {
+test('headline-only generation researches public references and produces an article-bearing review draft', { skip: !enabled }, async (t) => {
   const topic = await seed(t);
   const response = await post(`/api/topics/${topic.id}/auto-produce`, {});
-  assert.equal(response.status, 422, await response.clone().text());
-  assert.match((await response.json()).error, /domain sumber|tiga fakta/i);
-  assert.equal((await pool.query('SELECT count(*)::int AS n FROM drafts WHERE topic_id=$1', [topic.id])).rows[0].n, 0);
+  assert.equal(response.status, 200, await response.clone().text());
+  const { draft_id } = await response.json();
+  const { rows: [draft] } = await pool.query('SELECT status,needs_review,article_body,article_references,article_facts FROM drafts WHERE id=$1', [draft_id]);
+  assert.equal(draft.status, 'draft');
+  assert.equal(draft.needs_review, true);
+  assert.ok(draft.article_body.length >= 1200);
+  assert.ok(draft.article_references.length >= 3);
+  assert.ok(draft.article_facts.length >= 3);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM scheduled_posts WHERE draft_id=$1', [draft_id])).rows[0].n, 0);
 });
 
 test('legacy Studio short-copy drafts cannot be approved even with a current cover and revision hash', { skip: !enabled }, async (t) => {

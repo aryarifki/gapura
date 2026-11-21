@@ -74,7 +74,7 @@ test('executes an agent-settings test against temporary config and an injected p
     },
   });
   assert.equal(response, '{"ok":true}');
-  assert.match(request.url, /test-model:generateContent/);
+  assert.match(request.url, /test-model:streamGenerateContent\?alt=sse$/u);
   assert.equal(request.options.headers['x-goog-api-key'], 'temporary-secret');
   assert.equal(request.options.signal.aborted, false);
 });

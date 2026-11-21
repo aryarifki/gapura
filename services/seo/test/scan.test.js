@@ -7,6 +7,48 @@ const source = { id: 1, kind: 'news_query', value: 'IHSG', label: 'News', catego
 function feed(items) {
   return `<rss><channel>${items.map((item) => `<item><title>${item.title}</title><link>${item.url}</link><pubDate>${item.date || now}</pubDate><source url="https://www.kontan.co.id">Kontan</source></item>`).join('')}</channel></rss>`;
 }
+
+test('fresh public-web trend selection reaches Analis using an explicit search signal, without fabricated engagement counts', async () => {
+  const { computeVirality } = await loadService('seo/seo.js');
+  const result = computeVirality({ platform: 'public_web', engagement: {}, publishedAt: null, firstSeenAt: new Date().toISOString(), sourceWeight: 18, keywords: ['pekerja'], text: 'Topik pekerja trending' });
+  assert.ok(result.score >= 45, JSON.stringify(result));
+  assert.equal(result.breakdown.platform, 40);
+  assert.ok(result.breakdown.age_hours < 1);
+});
+
+test('AI-selected public-web trend creates one review-gated Analyzer topic without making a draft', async () => {
+  const nowDate = new Date();
+  const source = { id: 31, kind: 'public_web', value: 'Indonesia', label: 'Web publik', category: 'trending', weight: 18, is_active: true, poll_interval_mins: 60 };
+  const trendRow = {
+    id: 91, platform: 'public_web', provider: 'ai_trend_discovery', author: 'Bluesky Trends',
+    title: 'Aturan jam kerja dan upah menjadi topik pekerja', snippet: 'Pekerja membahas aturan baru tentang jam kerja dan upah.',
+    url: 'https://bsky.app/profile/workers.example/post/1', publisher_url: null,
+    engagement: { post_count: 2400 }, virality_score: 80, published_at: nowDate, source_material: null,
+  };
+  const db = recordingDb((sql) => {
+    if (sql.includes('SELECT * FROM trend_sources')) return { rows: [source] };
+    if (sql.includes('SELECT published_at, first_seen_at')) return { rows: [] };
+    if (sql.includes('INSERT INTO trend_items')) return { rows: [{ id: 91, inserted: true }] };
+    if (sql.includes('SELECT * FROM trend_items')) return { rows: [trendRow] };
+    if (sql.includes('INSERT INTO topics')) return { rows: [{ id: 41 }] };
+    if (sql.includes('INSERT INTO topic_materials')) return { rows: [{ id: 1, content_hash: 'a'.repeat(64), inserted: true }] };
+    return { rows: [], rowCount: 1 };
+  });
+  const { runSeoScan } = await loadService('seo/seo.js', {
+    client: db,
+    config: { scout: {}, seo: { min_virality_score: 55 }, copywriter: {} },
+    llm: async (agent) => agent === 'seo' ? JSON.stringify({ topics: [{ signal_id: 1, title: trendRow.title, summary: trendRow.snippet }] }) : '{}',
+  });
+  const result = await runSeoScan({ client: db, discoverTrends: async () => [trendRow] });
+  assert.equal(result.items_new, 1, JSON.stringify(result));
+  const promotion = db.calls.find(({ sql }) => sql.includes('INSERT INTO topics'));
+  assert.ok(promotion, 'passing discovered public trend is promoted to Analyzer, not Copywriter directly');
+  assert.ok(db.calls.some(({ sql }) => sql.includes('UPDATE trend_items SET promoted_topic_id')));
+  assert.equal(db.calls.some(({ sql }) => sql.includes('INSERT INTO drafts')), false);
+  const savedTrend = db.calls.find(({ sql }) => sql.includes('INSERT INTO trend_items'));
+  assert.equal(savedTrend.params[1], 'public_web');
+  assert.deepEqual(JSON.parse(savedTrend.params[8]), { post_count: 2400 });
+});
 function database(sources = [source]) {
   return recordingDb((sql, params) => {
     if (sql.includes('SELECT * FROM trend_sources')) {

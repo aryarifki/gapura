@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import pkg from 'pg';
 import { validateDraftApproval } from '../common/editorial.js';
-import { hasCoverImage } from '../common/images.js';
+import { hasEditorialCover } from '../common/images.js';
 import { draftContentHash } from '../common/draft-revision.js';
 import { loadMetaConnection } from '../common/meta-connection-store.js';
 import { validatePublicSourceUrl } from '../common/sources.js';
@@ -77,7 +77,7 @@ export function captionHash(caption) {
 function gateAllows(row) {
   if (row.draft_status !== 'scheduled' || row.human_approved !== true ||
       row.approved_content_hash !== draftContentHash(row) || row.content_hash !== row.approved_content_hash || row.analyst_passed !== true ||
-      validatePublicSourceUrl(row.source_url) || !hasCoverImage(row.slides)) return false;
+      validatePublicSourceUrl(row.source_url) || !hasEditorialCover(row.slides)) return false;
   return validateDraftApproval({
     status: 'draft',
     needsReview: row.needs_review !== false,
@@ -128,7 +128,7 @@ const CLAIM_NEXT = `
   FROM candidate c, drafts d
   WHERE t.id = c.id AND d.id = t.draft_id AND t.status = 'pending'
   RETURNING t.*, d.caption, d.hashtags, d.slides, d.content_format, d.needs_review,
-    d.editorial_input, d.editorial_mode, d.caption_body, d.threads_caption, d.angle, d.scope_note, d.editorial_references,
+    d.editorial_input, d.editorial_mode, d.caption_body, d.threads_caption, d.angle, d.scope_note, d.editorial_references, d.article_body, d.article_references, d.article_facts, d.article_metadata,
     d.status AS draft_status, ${DRAFT_EVIDENCE}`;
 
 export function createMetaPublisherWorker({ pool, config, fetchImpl = globalThis.fetch, logger = console }) {
@@ -233,6 +233,9 @@ export function createMetaPublisherWorker({ pool, config, fetchImpl = globalThis
           }
           const original = row.editorial_input != null || row.editorial_mode != null;
           const reviewedThreads = original && row.platform === 'threads';
+          if (reviewedThreads && row.article_metadata?.threads_posts?.length > 1) {
+            throw Object.assign(new Error('Utas Threads harus dikirim utuh melalui adapter seri; publikasi post pertama saja diblokir.'), { blocked: true });
+          }
           if (reviewedThreads && (typeof row.threads_caption !== 'string' || !row.threads_caption.trim() || row.threads_caption.length > 500)) {
             throw Object.assign(new Error('Caption Threads R6 wajib berupa teks yang sudah direview, tidak kosong, dan maksimal 500 karakter.'), { blocked: true });
           }
@@ -264,7 +267,7 @@ export function createMetaPublisherWorker({ pool, config, fetchImpl = globalThis
             transactionOpen = true;
             const { rows: [current] } = await client.query(
               `SELECT t.*, d.caption, d.hashtags, d.slides, d.content_format, d.needs_review,
-                  d.editorial_input, d.editorial_mode, d.caption_body, d.threads_caption, d.angle, d.scope_note, d.editorial_references,
+                  d.editorial_input, d.editorial_mode, d.caption_body, d.threads_caption, d.angle, d.scope_note, d.editorial_references, d.article_body, d.article_references, d.article_facts, d.article_metadata,
                   d.status AS draft_status, ${DRAFT_EVIDENCE}
                FROM publication_targets t JOIN drafts d ON d.id = t.draft_id
                WHERE t.id = $1 AND t.status = 'publishing' AND ${DUE_SCHEDULE}

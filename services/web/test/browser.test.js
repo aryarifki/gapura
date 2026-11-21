@@ -70,12 +70,12 @@ test('Chromium: newsroom opens without login, navigation, fresh draft review, Ra
         detailDraft = { ...detailDraft, ...makeContent(body.editorial_input), revision: 'fixture-regenerated-revision' };
         data = { status: 'success', ...detailDraft, needs_review: true }; break;
       case '/api/drafts/21/add-slide': status = 422; data = { error: 'Slide editorial belum valid; periksa data dan rujukan.' }; break;
-      case '/api/designer/generate-slides': data = { status: 'success', ...makeContent(body.editorial_input) }; break;
+      case '/api/designer/generate-slides': data = { status: 'success', ...makeContent(body.editorial_input || currentInput) }; break;
       case '/api/drafts/create-from-custom':
         detailDraft = { ...detailDraft, ...body, revision: 'fixture-custom-revision', rendered_slides: body.slides.map((slide) => ({ slide_no: slide.no, layout: slide.layout, text: slide.teks, data: slide.data, image_url: '/assets/logo.png' })) };
         data = { status: 'success', draft_id: 21 }; break;
       case '/api/studio/jobs':
-        if (request.method() === 'POST') jobs = [{ id: 9, prompt: body.prompt, topic_id: 42, status: 'queued', plan: { editorial_input: body.editorial_input }, created_at: stamp }];
+        if (request.method() === 'POST') jobs = [{ id: 9, prompt: body.prompt, topic_id: 42, status: 'queued', plan: { editorial_input: body.editorial_input || currentInput }, created_at: stamp }];
         data = request.method() === 'POST' ? { status: 'success', job: jobs[0] } : jobs; break;
       case '/api/studio/jobs/9/stream':
         jobs[0] = { ...jobs[0], status: 'plan_review', plan: { ...jobs[0].plan, title: 'Mekanisme layanan warga', angle: 'Akses layanan', sections: ['Mekanisme layanan', 'Hak warga'], format: 'carousel', slide_count_hint: 6 } };
@@ -172,8 +172,10 @@ test('Chromium: newsroom opens without login, navigation, fresh draft review, Ra
   assert.match(await page.locator('#editor-editorial-mode').textContent(), /Current/);
   assert.match(await page.locator('#editor-editorial-angle').textContent(), /Membaca hubungan/);
   assert.match(await page.locator('#editor-editorial-scope').textContent(), /mekanisme umum/);
-  assert.match(await page.locator('#editor-editorial-references').textContent(), /service: Layanan dibuka kembali.*Dinas/);
-  assert.equal(await page.locator('#editor-editorial-references a').getAttribute('href'), currentInput.facts[0].source_url);
+  assert.match(await page.locator('#editor-editorial-references').textContent(), /service: Dinas menyatakan layanan kembali dibuka.*Dinas/);
+  assert.ok((await page.locator('#editor-article-body').textContent()).length >= 1200);
+  assert.ok(await page.locator('#editor-article-references').textContent());
+  assert.equal(await page.locator('#editor-editorial-references a').first().getAttribute('href'), currentInput.facts[0].source_url);
   assert.ok(requests.some((entry) => entry.method === 'GET' && entry.path === '/api/drafts/21'));
   assert.equal(await page.locator('#editor-reviewed').isChecked(), false);
   await page.locator('#editor-media-file').setInputFiles(path.join(PUBLIC, 'assets/logo.png'));
@@ -221,8 +223,12 @@ test('Chromium: newsroom opens without login, navigation, fresh draft review, Ra
   await page.waitForFunction(() => /muat ulang/i.test(document.querySelector('#toast').textContent));
   assert.deepEqual(requests.slice(beforeEditedApproval).filter((entry) => entry.path.startsWith('/api/drafts')), []);
   await page.locator('#btn-back-to-gallery').click();
+  await page.waitForURL('**/#view-review');
   await page.locator('#review-gallery-subview').waitFor({ state: 'visible' });
+  const reopenedDraft = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/drafts/21' && response.request().method() === 'GET');
   await page.locator('.gallery-card').click();
+  await page.waitForURL('**/#view-review/draft/21');
+  assert.equal((await reopenedDraft).status(), 200);
   await page.waitForFunction(() => document.querySelector('#editor-input-caption').value === 'Saved edit requires a fresh review');
   assert.equal(await page.locator('#editor-reviewed').isChecked(), false);
   const beforeFreshApproval = requests.length;
@@ -255,7 +261,7 @@ test('Chromium: newsroom opens without login, navigation, fresh draft review, Ra
   await page.waitForFunction(() => !document.querySelector('#btn-save-agents-config-top').disabled);
   assert.equal(config.designer.image_generation.model, 'gemini-3.1-flash-lite-image');
   await page.locator('[data-view="view-trends"]').click();
-  await page.waitForFunction(() => document.querySelector('#trend-health-message').textContent.includes('fallback'));
+  await page.waitForFunction(() => document.querySelector('#trend-health-message').textContent.includes('Firecrawl Search perlu API key'));
   for (const desk of ['politik', 'sosial', 'hukum', 'lingkungan', 'ekonomi', 'bursa']) {
     assert.equal(await page.locator(`#trend-source-category option[value="${desk}"]`).count(), 1);
   }
@@ -279,12 +285,19 @@ test('Chromium: newsroom opens without login, navigation, fresh draft review, Ra
   await page.locator('#studio-editorial-mode').selectOption('current');
   const beforeEmptyCurrent = requests.filter((request) => request.path === '/api/studio/jobs' && request.method === 'POST').length;
   await page.locator('#btn-studio-submit').click();
-  await page.waitForFunction(() => document.querySelector('#toast').textContent.includes('minimal satu catatan fakta'));
-  assert.equal(requests.filter((request) => request.path === '/api/studio/jobs' && request.method === 'POST').length, beforeEmptyCurrent);
+  await page.waitForFunction(() => document.querySelector('#toast').textContent.includes('Job #9 dibuat'));
+  await page.waitForFunction(() => !document.querySelector('#btn-studio-submit').disabled);
+  const automaticResearchJob = requests.slice(beforeEmptyCurrent).find((request) => request.path === '/api/studio/jobs' && request.method === 'POST');
+  assert.ok(automaticResearchJob);
+  assert.equal(automaticResearchJob.body.editorial_input, undefined, 'empty current mode lets the backend research the trending topic');
+  await page.locator('#studio-prompt-input').fill('Jelaskan mekanisme akses layanan publik');
   await page.locator('#studio-editorial-facts').fill(JSON.stringify(currentInput.facts));
+  const curatedJobResponse = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/studio/jobs' && response.request().method() === 'POST');
   await page.locator('#btn-studio-submit').click();
+  assert.equal((await curatedJobResponse).status(), 200);
+  await page.waitForFunction(() => !document.querySelector('#btn-studio-submit').disabled);
   await page.locator('#plan-edit-9').waitFor({ state: 'attached' });
-  const submittedJob = requests.find((request) => request.path === '/api/studio/jobs' && request.method === 'POST');
+  const submittedJob = requests.findLast((request) => request.path === '/api/studio/jobs' && request.method === 'POST');
   assert.deepEqual(submittedJob.body.editorial_input, currentInput);
   assert.equal(JSON.parse(await page.locator('#plan-edit-9').inputValue()).editorial_input.mode, 'current');
   assert.equal(submittedJob.body.summary, undefined);
@@ -294,7 +307,7 @@ test('Chromium: newsroom opens without login, navigation, fresh draft review, Ra
   await page.locator('#plan-edit-9').waitFor({ state: 'attached' });
   await page.locator('[data-view="view-review"]').click();
   await page.locator('.gallery-card').click();
-  await page.locator('#editor-original-review details summary').click();
+  await page.locator('#editor-original-review details summary').nth(1).click();
   await page.locator('#editor-reviewed').check();
   await page.locator('#editor-regenerate-mode').selectOption('explainer');
   assert.equal(await page.locator('#editor-reviewed').isChecked(), false);
@@ -322,6 +335,8 @@ test('Chromium: newsroom opens without login, navigation, fresh draft review, Ra
   assert.ok(custom.caption_body.length >= 1200);
   assert.ok(custom.threads_caption.length <= 500);
   assert.deepEqual(custom.editorial_references, makeContent(currentInput).editorial_references);
+  assert.ok(custom.article_body.length >= 1200);
+  assert.deepEqual(custom.article_references, makeContent(currentInput).article_references);
   assert.equal(custom.summary, undefined);
   await page.waitForFunction(() => document.querySelectorAll('.editor-thumb-box').length === 6);
   await page.once('dialog', (dialog) => dialog.accept());

@@ -1,4 +1,4 @@
-export function buildTrendHealth(sources, { xApiConfigured = false, rssHubConfigured = false, now = Date.now(), staleAfterMs = 2 * 60 * 60 * 1000 } = {}) {
+export function buildTrendHealth(sources, { xApiConfigured = false, rssHubConfigured = false, firecrawlApiConfigured = false, now = Date.now(), staleAfterMs = 2 * 60 * 60 * 1000 } = {}) {
   const rows = Array.isArray(sources) ? sources : [];
   const active = rows.filter((source) => source.is_active);
   const successTimes = active
@@ -18,6 +18,7 @@ export function buildTrendHealth(sources, { xApiConfigured = false, rssHubConfig
     stale: ageMs === null || ageMs > staleAfterMs,
     x_api_configured: Boolean(xApiConfigured),
     rsshub_configured: Boolean(rssHubConfigured),
-    provider_mode: xApiConfigured ? 'x_api' : rssHubConfigured ? 'rsshub_then_google_news' : 'google_news_fallback',
+    firecrawl_api_configured: Boolean(firecrawlApiConfigured),
+    provider_mode: firecrawlApiConfigured ? 'firecrawl_search' : xApiConfigured ? 'x_api' : rssHubConfigured ? 'rsshub_then_google_news' : 'google_trends_bluesky_forums',
   };
 }

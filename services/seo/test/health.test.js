@@ -13,13 +13,13 @@ test('reports the newest successful scan and fresh status', () => {
   assert.equal(result.provider_mode, 'x_api');
 });
 
-test('surfaces old or absent data and labels X fallbacks honestly', () => {
+test('surfaces old or absent data and labels public-web trend fallbacks honestly', () => {
   assert.equal(buildTrendHealth([], { now: 1000 }).stale, true);
   const result = buildTrendHealth([{ is_active: true, last_error: null, last_scanned_at: '2026-11-16T08:00:00Z' }], {
     now: Date.parse('2026-11-16T12:00:00Z'), rssHubConfigured: false,
   });
   assert.equal(result.stale, true);
-  assert.equal(result.provider_mode, 'google_news_fallback');
+  assert.equal(result.provider_mode, 'google_trends_bluesky_forums');
 });
 
 test('marks an all-failed source set stale without hiding its active source count', () => {

@@ -9,7 +9,8 @@ function sortKeys(value) {
 export function draftContentHash(draft) {
   const content = { slides: draft.slides ?? [], caption: draft.caption ?? '', hashtags: draft.hashtags ?? [], content_format: draft.content_format ?? 'carousel' };
   if (draft.editorial_input != null || draft.editorial_mode != null) {
-    for (const field of ['editorial_input', 'editorial_mode', 'caption_body', 'threads_caption', 'angle', 'scope_note', 'editorial_references']) content[field] = draft[field] ?? null;
+    for (const field of ['editorial_input', 'editorial_mode', 'caption_body', 'threads_caption', 'angle', 'scope_note', 'editorial_references', 'article_body', 'article_references', 'article_facts']) content[field] = draft[field] ?? null;
   }
+  if (draft.article_metadata != null) content.article_metadata = draft.article_metadata;
   return createHash('sha256').update(JSON.stringify(sortKeys(content))).digest('hex');
 }

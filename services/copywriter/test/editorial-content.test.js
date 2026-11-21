@@ -13,7 +13,7 @@ function draft() {
 test('only a fully rendered original carousel is complete, including JSONB string adapters', () => {
   const content = draft();
   assert.equal(isDraftComplete(content), true);
-  assert.equal(isDraftComplete({ ...content, slides: JSON.stringify(content.slides), editorial_input: JSON.stringify(content.editorial_input), editorial_references: JSON.stringify(content.editorial_references) }), true);
+  assert.equal(isDraftComplete({ ...content, slides: JSON.stringify(content.slides), editorial_input: JSON.stringify(content.editorial_input), editorial_references: JSON.stringify(content.editorial_references), article_facts: JSON.stringify(content.article_facts) }), true);
   for (const status of ['approved', 'scheduled', 'published']) assert.equal(isDraftComplete({ ...content, status }), true);
 });
 
@@ -45,8 +45,10 @@ test('partial, empty, duplicated, malformed and unaudited scripts are incomplete
     (value) => { value.editorial_references.caption[0].fact_ids = ['invented']; },
     (value) => { value.editorial_references.caption.pop(); },
     (value) => { value.editorial_references.threads = ['invented']; },
+    (value) => { value.article_body = 'Naskah lama yang belum memiliki panjang artikel yang diwajibkan.'; },
   ]) {
     const value = draft(); mutate(value);
     assert.equal(isDraftComplete(value), false);
   }
+  assert.equal(isDraftComplete({ ...draft(), article_body: '' }), false);
 });

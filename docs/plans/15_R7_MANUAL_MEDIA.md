@@ -1,5 +1,12 @@
 # R7 — Unggah gambar manual sebagai jalur utama, cover slide 1 wajib bergambar
 
+**Pembaruan 19 November 2026:** enam sampel pipeline terbaru yang mencakup seluruh
+desk sudah disiapkan sebagai draf 150–155, lengkap artikel, petikan fakta,
+referensi, caption dan cover. Catatan koreksi, visual serta keputusan owner yang
+masih `pending` ada di [paket review enam desk](18_R7_SIX_DESK_REVIEW.md).
+Sampel 144–149 di laporan awal tetap dipertahankan. R7 belum ditutup secara
+editorial; batch/shadow R8 belum dijalankan.
+
 Tanggal: 18 November 2026. Mengikuti [blueprint editorial](07_EDITORIAL_REDESIGN_BLUEPRINT.md),
 [R3 ilustrasi](11_R3_AI_ILLUSTRATIONS.md) dan [R6 naskah/desain](14_R6_ORIGINAL_EDITORIAL.md).
 

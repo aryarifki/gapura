@@ -23,17 +23,17 @@ const psql = (sql) => {
 try {
   psql(`CREATE ROLE ${name} LOGIN PASSWORD '${password}';\nCREATE DATABASE ${name} OWNER ${name};`);
   const env = {
-    ...process.env, NODE_ENV: 'test', PORT: '0', GAPURA_DISABLE_WORKERS: 'true', GAPURA_PUBLIC_ORIGIN: '',
+    ...process.env, NODE_ENV: 'test', PORT: '0', GAPURA_DISABLE_WORKERS: 'true', GAPURA_PUBLIC_ORIGIN: '', GAPURA_TEST_WEB_RESEARCH: 'true',
     GAPURA_ADMIN_TOKEN: token, HME_DB_HOST: '127.0.0.1', HME_DB_PORT: '5432', HME_DB_USER: name, HME_DB_PASSWORD: password, HME_DB_NAME: name,
-    PGPASSWORD: password, GOOGLE_API_KEY: '', GEMINI_API_KEY: '', OPENAI_API_KEY: '',
-    MASB_API_KEY: '', XINGCHI_API_KEY: '', ANTHROPIC_API_KEY: '', DEEPSEEK_API_KEY: '', OPENROUTER_API_KEY: '', XAI_API_KEY: '', NVIDIA_API_KEY: '',
+    PGPASSWORD: password, GOOGLE_API_KEY: '', GEMINI_API_KEY: '', GEMINI_API_KEYS: '', OPENAI_API_KEY: '',
+    GEMINI_API_KEY_1: '', GEMINI_API_KEY_2: '', GEMINI_API_KEY_3: '', GEMINI_API_KEY_4: '', GEMINI_API_KEY_5: '', GEMINI_API_KEY_6: '',
+    GROQ_API_KEY: '', XINGCHI_API_KEY: '', ANTHROPIC_API_KEY: '', DEEPSEEK_API_KEY: '', OPENROUTER_API_KEY: '', XAI_API_KEY: '', NVIDIA_API_KEY: '',
     AGENTS_CONFIG_PATH: path.join(temp, 'agents.json'), AGENT_SKILLS_DIR: path.join(temp, 'skills'),
     PROVIDERS_CONFIG_PATH: path.join(temp, 'providers.json'), MODELS_CACHE_PATH: path.join(temp, 'models.cache.json'),
     GAPURA_PROVIDER_SECRETS: path.join(temp, 'provider-keys.json'),
     META_APP_ID: '', META_APP_SECRET: '', META_UNIFIED_CONFIG_ID: '', META_UNIFIED_REDIRECT_URI: '',
     META_PAGE_ACCESS_TOKEN: '', META_INSTAGRAM_ACCESS_TOKEN: '', META_THREADS_ACCESS_TOKEN: '',
     GAPURA_META_CONNECTION: path.join(temp, 'meta-unified.json'),
-    GAPURA_AI_MATERIAL_HOSTS: 'publisher.example.org,news.google.com',
     STORAGE_PATH: path.join(temp, 'storage'), DESIGN_SYSTEM_PATH: path.join(temp, 'design-system'),
   };
   const migrations = ['database/schema.sql', 'database/migrations/20261111_seo_verifikator.sql', 'database/migrations/20261111_prompt_studio.sql',
@@ -79,12 +79,22 @@ try {
           }
           throw new Error('fixture_prompt_json_invalid');
         };
-        if (prompt.includes('BRIEF_EDITORIAL_JSON:')) result = { title: 'Memahami layanan publik', angle: 'Akses informasi dan kebutuhan warga', sections: ['Mekanisme kebijakan', 'Akses informasi', 'Pertanyaan warga'], format: 'carousel', slide_count_hint: 6, caption_tone: 'jelas' };
+        if (prompt.includes('KANDIDAT_PETIKAN_JSON:')) {
+          const candidates = jsonAfter('KANDIDAT_PETIKAN_JSON:');
+          result = { passage_ids: candidates.slice(0, 12).map((candidate) => candidate.passage_id) };
+        }
+        else if (prompt.includes('BRIEF_EDITORIAL_JSON:')) result = { title: 'Memahami layanan publik', angle: 'Akses informasi dan kebutuhan warga', sections: ['Mekanisme kebijakan', 'Akses informasi', 'Pertanyaan warga'], format: 'carousel', slide_count_hint: 6, caption_tone: 'jelas' };
         else if (prompt.includes('NASKAH_GAPURA_JSON:') || prompt.includes('NASKAH_ORISINAL_JSON:')) result = { slides: jsonAfter(prompt.includes('NASKAH_GAPURA_JSON:') ? 'NASKAH_GAPURA_JSON:' : 'NASKAH_ORISINAL_JSON:').slides.map(({ no, layout }) => ({ no, layout })) };
         else if (prompt.includes('EDITORIAL_BRIEF_JSON:') || prompt.includes('ORIGINAL_EDITORIAL_JSON:')) {
           const brief = jsonAfter(prompt.includes('ORIGINAL_EDITORIAL_JSON:') ? 'ORIGINAL_EDITORIAL_JSON:' : 'EDITORIAL_BRIEF_JSON:');
           if (JSON.stringify(brief).includes('FIXTURE_GENERATION_ERROR')) result = { format: 'single', slides: [] };
-          else result = originalFixture(brief);
+          else {
+            result = originalFixture(brief);
+            if (brief.mode === 'current') result.caption_blocks = [
+              ...result.caption_blocks.filter((block) => block.kind === 'fact'),
+              ...result.caption_blocks.filter((block) => block.kind === 'context').slice(0, 3),
+            ];
+          }
         }
         res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(result) } }] }));
       } else res.writeHead(404).end();
@@ -95,6 +105,9 @@ try {
   env.RENDER_SERVICE_URL = fixtureUrl;
   const config = JSON.parse(await fs.readFile(path.join(root, 'config/agents.json'), 'utf8'));
   for (const key of ['analis', 'copywriter', 'designer', 'seo', 'studio']) Object.assign(config[key], { provider: 'custom', endpoint: fixtureUrl, api_key: 'fixture-key', model: 'fixture-model' });
+  // These API fixtures exercise the pre-v2 editorial contract. Staged v2 has
+  // dedicated gate, DAG and checkpoint suites; production keeps version 2.
+  config.copywriter.editorial_version = 1;
   config.designer.image_generation = { enabled: true, provider: 'gemini', model: 'fixture-image', rights_reference: 'https://ai.google.dev/gemini-api/terms', timeout_ms: 30000 };
   await fs.writeFile(env.AGENTS_CONFIG_PATH, JSON.stringify(config));
   await fs.writeFile(env.PROVIDERS_CONFIG_PATH, JSON.stringify({

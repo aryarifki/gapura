@@ -230,13 +230,19 @@
 
             <label class="editor-review-confirmation" for="editor-reviewed">
               <input id="editor-reviewed" type="checkbox">
-              <span>Saya sudah memeriksa mode, batas cakupan, fakta beserta rujukannya, caption, dan seluruh slide. Perubahan terbaru sudah ditinjau sebelum persetujuan.</span>
+                <span>Saya sudah memeriksa mode, batas cakupan, fakta dan rujukannya, artikel lengkap, caption, serta seluruh slide. Perubahan terbaru sudah ditinjau sebelum persetujuan.</span>
             </label>
             <div class="editor-form-card" id="editor-original-review" style="margin-bottom:16px;">
               <p id="editor-editorial-mode"></p>
               <p id="editor-editorial-angle"></p>
               <p id="editor-editorial-scope"></p>
-              <div id="editor-editorial-references" style="overflow-wrap:anywhere;"></div>
+                <div id="editor-editorial-references" style="overflow-wrap:anywhere;"></div>
+                <details id="editor-article-review" style="margin-top:12px;" open>
+                   <summary>Artikel berita lengkap hasil riset web</summary>
+                   <div id="editor-article-metadata" style="margin-top:12px;display:grid;gap:8px;"></div>
+                   <article id="editor-article-body" style="white-space:pre-wrap;line-height:1.65;max-height:600px;overflow:auto;margin-top:12px;"></article>
+                   <div id="editor-article-references" aria-label="Referensi artikel"></div>
+                </details>
               <details style="margin-top:12px;">
                 <summary>Ubah mode atau catatan untuk rancang ulang</summary>
                 <p class="form-help-text">Periksa rujukan sendiri sebelum memasukkan fakta. Perubahan diterapkan melalui Rancang ulang dan memerlukan review baru.</p>
@@ -293,6 +299,13 @@
                     <label class="form-label-editor">Pilih / Ketik Layout Slide (Bebas & Dinamis AI)</label>
                     <div style="display: flex; gap: 8px;">
                       <select class="form-input-dark form-select-dark" id="editor-select-layout" style="flex: 1;">
+                        <option value="editorial-cover">Cover foto editorial</option>
+                        <option value="editorial-lead">Lead / perkembangan utama</option>
+                        <option value="editorial-breakdown">Rincian bernomor</option>
+                        <option value="editorial-timeline">Linimasa</option>
+                        <option value="editorial-quote">Kutipan narasumber</option>
+                        <option value="editorial-impact">Arti bagi pembaca</option>
+                        <option value="editorial-close">Pertanyaan penutup</option>
                         <option value="cover-stat">cover-stat (Cover Hook Stat)</option>
                         <option value="cover-editorial">cover-editorial (Cover Editorial)</option>
                         <option value="big-statement">big-statement (Pernyataan Kunci)</option>
@@ -623,9 +636,9 @@
                   </select>
                 </div>
                 <div class="form-group-editor">
-                  <label class="form-label-editor" for="studio-custom-editorial-facts">Catatan fakta dan referensi (JSON array)</label>
+                  <label class="form-label-editor" for="studio-custom-editorial-facts">Opsional: fakta terkurasi (JSON array)</label>
                   <textarea id="studio-custom-editorial-facts" class="form-input-dark" rows="5" spellcheck="false" aria-describedby="studio-custom-editorial-help">[]</textarea>
-                  <p id="studio-custom-editorial-help" class="form-help-text">Pilih topik Radar agar Gapura mengambil dan memeriksa materi artikel. Jika domain sumber belum disetujui untuk pemrosesan AI atau materi tidak cukup, masukkan sedikitnya 3 catatan fakta yang sudah dikurasi: {"id":"layanan","text":"Uraian fakta yang cukup lengkap.","source_url":"https://example.org/rilis","source_name":"Dinas"}. Ringkasan/URL saja tidak dianggap isi berita.</p>
+                  <p id="studio-custom-editorial-help" class="form-help-text">Pilih topik Radar dan biarkan fakta kosong agar AI mencari referensi lintas web, berita, forum, serta media sosial. Artikel lengkap dan carousel akan menyertakan tautan sumber. Fakta terkurasi boleh ditambahkan manual; klaim tanpa dukungan sumber tidak akan dibuat-buat.</p>
                 </div>
 
                 <button class="btn btn-lime" id="btn-studio-generate-ai" style="width: 100%; justify-content: center; font-weight: 700;">
@@ -786,7 +799,7 @@
               <span class="redaksi-greeting">Agen SEO · Trend Intelligence</span>
               <h2 style="font-family: 'Archivo Black', sans-serif; font-size: 28px; color: #fff; margin-bottom: 6px;">RADAR TRENDING</h2>
               <p style="font-size: 13px; color: var(--muted); max-width: 680px;">
-                Berita dan percakapan yang sedang naik dari X, Google Trends, dan momentum pemberitaan. Skor virality menimbang bobot sumber, kesegaran, angka, dan relevansi enam desk. Promosikan trend menjadi topik editorial untuk diproses Analis.
+                AI memilih topik yang ramai dari Google Trends, web umum, berita, forum, dan jejaring sosial publik. Sesudah promosi, Copywriter menelusuri sumber web lintas-domain dan menyiapkan artikel lengkap untuk ditinjau.
               </p>
             </div>
             <div class="redaksi-actions-right" style="display: flex; gap: 10px;">
@@ -798,6 +811,7 @@
               </button>
             </div>
           </div>
+
 
           <div class="overview-stats-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 24px;">
             <div class="overview-stat-card">
@@ -839,6 +853,7 @@
             <button class="gallery-tab-btn btn-trend-filter" data-platform="news">Momentum Berita</button>
             <button class="gallery-tab-btn btn-trend-filter" data-platform="google_trends">Google Trends</button>
             <button class="gallery-tab-btn btn-trend-filter" data-platform="x">X / Twitter</button>
+            <button class="gallery-tab-btn btn-trend-filter" data-platform="public_web">Web Publik</button>
           </div>
 
           <div id="trend-health-banner" class="trend-health-banner" role="status" aria-live="polite">
@@ -857,6 +872,8 @@
             </div>
           </div>
 
+          <p class="form-help-text" id="firecrawl-search-key-status" role="status" style="margin-bottom:18px;">Firecrawl Search API key dikelola operator di server; jangan masukkan credential melalui dashboard. Tanpa key, Radar tetap memindai Google Trends dan jejaring sosial.</p>
+
           <div class="agent-config-card" style="margin: 0;">
             <div class="agent-card-title-row">
               <h3 class="agent-card-title"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#settings"></use></svg> Sumber Trending yang Dipantau (Dapat Dikustomisasi)</h3>
@@ -874,6 +891,8 @@
                   <option value="x_query">Query Pencarian X</option>
                   <option value="google_trends">Google Trends (Geo)</option>
                   <option value="news_query">Query Momentum Berita</option>
+                  <option value="public_web">Web publik + sosial</option>
+                  <option value="public_web">Web publik + sosial</option>
                 </select>
               </div>
               <div class="form-group-editor">
@@ -1126,7 +1145,7 @@
 
             <div style="margin-top: 16px; border-top: 1px solid var(--border); padding-top: 16px;">
               <label class="form-label-editor" for="provider-routing-chain">Rantai fallback global (satu per baris, format <code>provider/model</code>)</label>
-              <textarea id="provider-routing-chain" class="form-input-dark form-textarea" rows="4" placeholder="masb/qwen3.8-27b"></textarea>
+              <textarea id="provider-routing-chain" class="form-input-dark form-textarea" rows="4" placeholder="groq/llama-3.3-70b-versatile&#10;openrouter/google/gemini-2.5-flash"></textarea>
               <div style="display: flex; gap: 10px; align-items: center; margin-top: 10px; flex-wrap: wrap;">
                 <button class="btn btn-outline" id="btn-save-routing" type="button"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#save"></use></svg> <span>Simpan rantai fallback</span></button>
                 <span id="provider-routing-status" role="status" aria-live="polite" style="font-size: 12px; color: var(--muted);"></span>
@@ -1710,7 +1729,7 @@ sara|ujaran kebencian|fitnah|politik identitas</textarea>
             </div>
             <label for="studio-editorial-facts" class="form-label-editor">Catatan fakta dan referensi (JSON array)</label>
             <textarea id="studio-editorial-facts" class="form-input-dark" rows="5" style="width:100%;" spellcheck="false" aria-describedby="studio-editorial-help">[]</textarea>
-            <p id="studio-editorial-help" class="form-help-text">Untuk berita, masukkan sedikitnya tiga fakta substantif yang sudah dikurasi, masing-masing memiliki source_name dan URL rujukan. Contoh: [{"id":"layanan","text":"Dinas menjelaskan ketentuan layanan secara rinci untuk warga.","source_url":"https://example.org/rilis","source_name":"Dinas"}]. Domain sumber harus diizinkan untuk pemrosesan AI. Tidak memakai headline saja sebagai isi berita.</p>
+            <p id="studio-editorial-help" class="form-help-text">Kosongkan fakta agar AI menelusuri referensi publik dari berbagai jenis situs lalu menyusun artikel lengkap dan carousel beserta rujukan. Fakta terkurasi boleh ditambahkan manual. Artikel dan draf tetap menunggu review redaktur.</p>
             <div style="display: flex; gap: 12px; align-items: center;">
               <button type="button" class="btn btn-lime" id="btn-studio-submit"><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#rocket"></use></svg> <span>Buat Rencana</span></button>
               <span style="font-size: 12px; color: var(--muted);" id="studio-submit-hint">Rencana bisa Anda edit / generate ulang sebelum diproduksi.</span>

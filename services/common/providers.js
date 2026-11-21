@@ -1,14 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { configuredGeminiKeys, selectGeminiKeys } from './llm-pool.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 export const PROVIDER_KINDS = Object.freeze(['gemini', 'openai', 'anthropic']);
 const PROVIDER_ID = /^[a-z0-9][a-z0-9_-]{0,39}$/;
 const ENV_NAME = /^[A-Z][A-Z0-9_]*$/;
 const MAX_MODELS = 500;
-
-const BROWSER_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 export const BUILTIN_PROVIDERS = Object.freeze({
   gemini: {
@@ -44,10 +43,10 @@ export const BUILTIN_PROVIDERS = Object.freeze({
     label: 'NVIDIA NIM', kind: 'openai',
     base_url: 'https://integrate.api.nvidia.com/v1', api_key_env: 'NVIDIA_API_KEY', enabled: true,
   },
-  masb: {
-    label: 'MASB Agent Router', kind: 'openai',
-    base_url: 'https://ai.masb.web.id/v1', api_key_env: 'MASB_API_KEY', enabled: true,
-    headers: { 'User-Agent': BROWSER_UA },
+  groq: {
+    label: 'Groq Cloud', kind: 'openai',
+    base_url: 'https://api.groq.com/openai/v1', api_key_env: 'GROQ_API_KEY', enabled: true,
+    default_model: 'qwen/qwen3.8-27b', max_tokens: 8192,
   },
   xingchi: {
     label: 'Xingchi API', kind: 'openai',
@@ -88,11 +87,14 @@ export function defaultProvidersConfig() {
 
 export function loadProvidersConfig(file = providersConfigPath()) {
   if (!fs.existsSync(file)) return defaultProvidersConfig();
-  const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
-  return {
+  let parsed;
+  try { parsed = JSON.parse(fs.readFileSync(file, 'utf8')); }
+  catch { return defaultProvidersConfig(); }
+  const merged = {
     providers: { ...JSON.parse(JSON.stringify(BUILTIN_PROVIDERS)), ...(parsed.providers || {}) },
     routing: { fallback_chain: [], ...(parsed.routing || {}) },
   };
+  return validateProvidersConfig(merged).length ? defaultProvidersConfig() : merged;
 }
 
 export function saveProvidersConfig(config, file = providersConfigPath()) {
@@ -189,7 +191,7 @@ function secretFor(envName, { env, secrets }) {
 }
 
 function attemptFrom(providerId, model, config, { env, secrets, endpoint, apiKey, fallback }) {
-  const entry = config.providers?.[providerId];
+  const entry = config.providers?.[providerId] || BUILTIN_PROVIDERS[providerId];
   if (!entry && !endpoint) throw new Error(`Provider "${providerId}" tidak dikenal.`);
   if (entry?.enabled === false) throw new Error(`Provider "${providerId}" sedang dinonaktifkan di katalog.`);
   const baseUrl = String(endpoint || entry?.base_url || '').replace(/\/+$/, '');
@@ -209,7 +211,7 @@ function attemptFrom(providerId, model, config, { env, secrets, endpoint, apiKey
   };
 }
 
-export function buildAttempts(agent, config, { env = process.env, secrets = {} } = {}) {
+export function buildAttempts(agent, config, { env = process.env, secrets = {}, stage = '' } = {}) {
   if (!agent || typeof agent !== 'object') throw new Error('Konfigurasi agen tidak valid.');
   const primaryProvider = String(agent.provider || 'gemini').toLowerCase();
   const primaryModel = String(agent.model || '').trim();
@@ -218,24 +220,42 @@ export function buildAttempts(agent, config, { env = process.env, secrets = {} }
   const seen = new Set();
   const push = (attempt) => {
     if (!attempt) return;
-    const key = `${attempt.providerId}|${attempt.model}|${attempt.baseUrl}`;
+    const key = `${attempt.providerId}|${attempt.model}|${attempt.baseUrl}|${attempt.poolKey || attempt.apiKey}`;
     if (seen.has(key)) return;
     seen.add(key);
     attempts.push(attempt);
   };
-  push(attemptFrom(primaryProvider, primaryModel, config, {
-    env, secrets, endpoint: agent.endpoint, apiKey: agent.api_key, fallback: false,
-  }));
+  if (primaryProvider === 'gemini') {
+    const keys = configuredGeminiKeys({ env, secrets, inlineKey: agent.api_key });
+    const selected = selectGeminiKeys(keys, /^stage[1-4]/u.test(stage) ? 2 : keys.length);
+    const indexedSlots = Object.keys({ ...secrets, ...env })
+      .filter((name) => /^GEMINI_API_KEY_\d+$/u.test(name))
+      .sort((a, b) => Number(a.slice(15)) - Number(b.slice(15)))
+      .map((name, index) => ({ key: secrets[name] || env[name], slot: Number(name.slice(15)) || index + 1 }));
+    const model = stage === 'stage1_synthesis'
+      ? env.GEMINI_MODEL_SYNTHESIS || secrets.GEMINI_MODEL_SYNTHESIS || agent.model
+      : /^stage[23]/u.test(stage)
+        ? env.GEMINI_MODEL_ADAPTER || secrets.GEMINI_MODEL_ADAPTER || agent.model
+        : agent.model;
+    selected.forEach((key) => push({ ...attemptFrom('gemini', model, config, { env, secrets, endpoint: agent.endpoint, apiKey: key, fallback: false }),
+      poolKey: key, keySlot: indexedSlots.find((item) => item.key === key)?.slot }));
+  } else push(attemptFrom(primaryProvider, primaryModel, config, { env, secrets, endpoint: agent.endpoint, apiKey: agent.api_key, fallback: false }));
 
   const fallbacks = [];
-  if (Array.isArray(agent.fallback_models)) fallbacks.push(...agent.fallback_models);
-  else if (typeof agent.fallback_models === 'string' && agent.fallback_models.trim()) fallbacks.push(...agent.fallback_models.split(',').map((item) => item.trim()).filter(Boolean));
-  if (agent.fallback_model) fallbacks.push({ provider: primaryProvider, model: agent.fallback_model });
-  if (Array.isArray(config.routing?.fallback_chain)) fallbacks.push(...config.routing.fallback_chain);
+  if (primaryProvider === 'gemini') {
+    fallbacks.push(`groq/${env.GROQ_MODEL || secrets.GROQ_MODEL || 'qwen/qwen3.8-27b'}`);
+    fallbacks.push(`openrouter/${env.OPENROUTER_MODEL || secrets.OPENROUTER_MODEL || 'google/gemini-2.5-flash'}`);
+  } else {
+    if (Array.isArray(agent.fallback_models)) fallbacks.push(...agent.fallback_models);
+    else if (typeof agent.fallback_models === 'string' && agent.fallback_models.trim()) fallbacks.push(...agent.fallback_models.split(',').map((item) => item.trim()).filter(Boolean));
+    if (agent.fallback_model) fallbacks.push({ provider: primaryProvider, model: agent.fallback_model });
+    if (Array.isArray(config.routing?.fallback_chain)) fallbacks.push(...config.routing.fallback_chain);
+  }
 
   for (const value of fallbacks) {
     const parsed = parseFallback(value, primaryProvider);
     if (!parsed?.provider || !parsed.model) continue;
+    if (primaryProvider === 'gemini' && !['groq', 'openrouter'].includes(parsed.provider)) continue;
     try {
       push(attemptFrom(parsed.provider, parsed.model, config, {
         env, secrets, fallback: true,
@@ -262,17 +282,34 @@ export function normalizeModelsUrl(baseUrl) {
   return `${base}${/\/v\d+(?:\.\d+)?$/.test(base) ? '' : '/v1'}/models`;
 }
 
-export function buildChatRequest(attempt, { prompt, policy = '', jsonMode = true } = {}) {
+function isFlatRowsSchema(schema) {
+  const properties = schema?.properties?.rows?.items?.properties;
+  return schema?.type === 'object' && schema.properties?.rows?.type === 'array' &&
+    schema.properties.rows.items?.type === 'object' && properties && typeof properties === 'object' && !Array.isArray(properties) &&
+    Object.values(properties).every((property) => {
+      if (!property || !['string', 'number', 'integer', 'boolean'].includes(property.type)) return false;
+      return property.enum === undefined || (Array.isArray(property.enum) &&
+        property.enum.every((value) => ['string', 'number', 'boolean'].includes(typeof value)));
+    });
+}
+
+export function buildChatRequest(attempt, { prompt, policy = '', jsonMode = true, responseSchema, stream = false, stage = '' } = {}) {
   const headers = { 'Content-Type': 'application/json', ...attempt.headers };
   if (attempt.kind === 'gemini') {
     if (attempt.apiKey) headers['x-goog-api-key'] = attempt.apiKey;
+    const strictSchema = stage ? (/^stage[123]/u.test(stage) && isFlatRowsSchema(responseSchema) ? responseSchema : undefined) : responseSchema;
     return {
-      url: `${attempt.baseUrl.replace(/\/v1beta$/, '')}/v1beta/models/${encodeURIComponent(attempt.model)}:generateContent`,
+      url: `${attempt.baseUrl.replace(/\/v1beta$/, '')}/v1beta/models/${encodeURIComponent(attempt.model)}:${stream ? 'streamGenerateContent?alt=sse' : 'generateContent'}`,
       headers,
       body: {
         ...(policy ? { systemInstruction: { parts: [{ text: policy }] } } : {}),
         contents: [{ role: 'user', parts: [{ text: String(prompt) }] }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: attempt.maxTokens, ...(jsonMode ? { responseMimeType: 'application/json' } : {}) },
+        generationConfig: { temperature: 0.2, maxOutputTokens: attempt.maxTokens,
+          // Exact extraction does not benefit from hidden reasoning, and a
+          // thinking budget can consume the whole output window before any
+          // JSON is emitted (observed as MAX_TOKENS on stage 1).
+          ...(stage && /^stage[123]/u.test(stage) ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+          ...(jsonMode ? { responseMimeType: 'application/json' } : {}), ...(strictSchema ? { responseJsonSchema: strictSchema } : {}) },
       },
     };
   }
@@ -290,12 +327,16 @@ export function buildChatRequest(attempt, { prompt, policy = '', jsonMode = true
     };
   }
   if (attempt.apiKey) headers.Authorization = `Bearer ${attempt.apiKey}`;
+  const schemaPrompt = /^stage[123]/u.test(stage) && isFlatRowsSchema(responseSchema)
+    ? `\n\nContoh bentuk respons JSON yang wajib diikuti (tanpa markdown): ${JSON.stringify(responseSchema)}`
+    : '';
+  const chatPolicy = `${policy}${schemaPrompt}`;
   return {
     url: normalizeChatUrl(attempt.baseUrl),
     headers,
     body: {
       model: attempt.model, temperature: 0.2, max_tokens: attempt.maxTokens,
-      messages: [...(policy ? [{ role: 'system', content: policy }] : []), { role: 'user', content: String(prompt) }],
+      messages: [...(chatPolicy ? [{ role: 'system', content: chatPolicy }] : []), { role: 'user', content: String(prompt) }],
       ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
     },
   };
@@ -325,6 +366,13 @@ export function adaptChatBody(body, errorText) {
 export function parseChatResponse(kind, data) {
   let text = '';
   if (kind === 'gemini') {
+    if (data?.candidates?.[0]?.finishReason === 'MAX_TOKENS') {
+      const error = new Error('Gemini stopped at MAX_TOKENS; the truncated response was rejected.');
+      error.code = 'MAX_TOKENS';
+      error.retryable = true;
+      error.skipProvider = true;
+      throw error;
+    }
     text = (data?.candidates?.[0]?.content?.parts || [])
       .filter((part) => !part.thought)
       .map((part) => part.text || '').join('');

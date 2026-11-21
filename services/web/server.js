@@ -16,7 +16,7 @@ import { exec } from 'child_process';
 import { isIP } from 'node:net';
 import { createOriginGuard, mergeAgentConfig, redactAgentConfig } from './access.js';
 import { isValidSignedStorageRequest } from '../common/storage-signature.js';
-import { renderPayload, hasCoverImage } from '../common/images.js';
+import { renderPayload, hasEditorialCover } from '../common/images.js';
 import { validatePublicSourceUrl, parsePublicSourceUrl } from '../common/sources.js';
 import { buildEditorialBrief, normalizeEditorialInput, validateOriginalContent } from '../common/original-editorial.js';
 import { draftContentHash } from '../common/draft-revision.js';
@@ -109,7 +109,7 @@ const draftDependencies = { pool, renderUrl: RENDER_SERVICE_URL, renderSecret: R
 
 function editorialError(res, error) {
   if (/original_|generation_required/u.test(error.message)) return res.status(422).json({ error: 'Naskah editorial belum valid. Periksa mode, catatan fakta dan rujukannya, lalu buat ulang. Mode explainer memakai fakta kosong; mode current memerlukan fakta beratribusi.' });
-  if (/source_material_permission_required|source_material_insufficient|source_material_url_invalid/u.test(error.message)) return res.status(422).json({ error: 'Materi sumber belum siap untuk generasi berita. Pastikan domain sumber diizinkan untuk pemrosesan AI atau masukkan sedikitnya tiga fakta substantif yang sudah dikurasi, dengan nama sumber dan URL untuk masing-masing fakta.' });
+  if (/source_material_insufficient|source_material_url_invalid/u.test(error.message)) return res.status(422).json({ error: 'Riset web belum menemukan referensi publik yang memadai. Coba pindai ulang, periksa akses sumber, atau masukkan fakta dan URL yang sudah dikurasi.' });
   if (/needs_media|illustration_/u.test(error.message)) return res.status(409).json({ error: 'needs_media: Ilustrasi topik belum siap atau revisinya tidak cocok. Buat atau pilih ilustrasi topik sebelum produksi.' });
   if (/not_found|tidak ditemukan/u.test(error.message)) return res.status(404).json({ error: 'Topik, draf, atau job tidak ditemukan.' });
   if (/Render|render/u.test(error.message)) return res.status(502).json({ error: 'Render belum selesai. Tinjau status draf sebelum mencoba ulang.' });
@@ -145,10 +145,12 @@ function customOriginalContent(body) {
     return slide;
   }) : body.slides;
   const content = validateOriginalContent({ format: body.format, mode: input.mode, slides,
-    angle: body.angle, scope_note: body.scope_note, caption_blocks: blocks,
+    angle: body.angle, scope_note: body.scope_note, article_blocks: body.article_blocks, article_metadata: body.article_metadata, caption_blocks: blocks,
     threads_body: tagSuffix && threads.endsWith(tagSuffix) ? threads.slice(0, -tagSuffix.length) : threads,
-    threads_fact_ids: references.threads, hashtags: tags }, brief);
+    threads_fact_ids: references.threads, article_body: body.article_body, article_fact_ids: references.article || body.article_fact_ids,
+    hashtags: tags }, brief);
   if (body.caption !== content.caption || body.caption_body !== content.caption_body || body.threads_caption !== content.threads_caption) throw new Error('original_caption_mismatch');
+  if (content.article_body.length < 1200 || (input.mode === 'current' && content.article_references.length < 3)) throw new DraftError('Artikel lengkap dan sumber yang memadai wajib tersedia sebelum draf dapat disimpan.', 422);
   // Descriptor ownership, readiness and the pinned hash are checked against the
   // selected topic by pinIllustrationSlides before any insert or raster fetch.
   return { ...content, slides: content.slides.map((slide, index) => media[index] ? { ...slide, data: { ...slide.data, ...media[index] } } : slide) };
@@ -337,11 +339,12 @@ app.get('/api/drafts', async (req, res) => {
 // 2b. Single Draft Detail with Slides
 app.get('/api/drafts/:id/export', async (req, res) => {
   try {
-    const { rows: [draft] } = await pool.query('SELECT caption,hashtags,slides FROM drafts WHERE id=$1', [req.params.id]);
+    const { buildDraftTextFiles } = await import('./article-export.js');
+    const { rows: [draft] } = await pool.query('SELECT d.*, t.title AS topic_title FROM drafts d JOIN topics t ON t.id=d.topic_id WHERE d.id=$1', [req.params.id]);
     if (!draft) return res.status(404).json({ error: 'Draf tidak ditemukan.' });
     const { rows: slides } = await pool.query('SELECT slide_no FROM draft_slides WHERE draft_id=$1 ORDER BY slide_no', [req.params.id]);
     if (!slides.length || slides.length !== draft.slides.length) return res.status(409).json({ error: 'Render belum lengkap. Render ulang sebelum ekspor.' });
-    const files = [{ name: 'caption.txt', data: `${draft.caption}\n\n${(draft.hashtags || []).join(' ')}` }];
+    const files = buildDraftTextFiles(draft);
     for (const { slide_no } of slides) files.push({ name: `slide_${slide_no}.png`, data: await fs.promises.readFile(path.join(STORAGE_PATH, 'drafts', req.params.id, `slide_${slide_no}.png`)) });
     res.set('Content-Disposition', `attachment; filename="Gapura_Draft_${req.params.id}.zip"`);
     res.type('application/zip').send(createZip(files));
@@ -364,6 +367,11 @@ app.get('/api/drafts/:id', async (req, res) => {
     }
 
     const d = drafts[0];
+    for (const field of ['editorial_input', 'editorial_references', 'article_references', 'article_facts']) {
+      if (typeof d[field] === 'string') {
+        try { d[field] = JSON.parse(d[field]); } catch { if (field === 'article_facts' || field === 'article_references') d[field] = []; }
+      }
+    }
     d.revision = draftContentHash(d);
     const { rows: slides } = await pool.query(
       'SELECT slide_no, layout, render_path, text_snapshot, data_snapshot FROM draft_slides WHERE draft_id = $1 ORDER BY slide_no ASC',
@@ -392,7 +400,7 @@ app.post('/api/drafts/:id/regenerate-ai', async (req, res) => {
     if (!current) return res.status(404).json({ error: 'Draf tidak ditemukan.' });
     const options = req.body?.editorial_input === undefined ? {} : { editorialInput: normalizeEditorialInput(req.body.editorial_input) };
     const result = await regenerateDraft(draftId, pool, options);
-    const { rows: [draft] } = await pool.query('SELECT caption,hashtags,editorial_input,editorial_mode,editorial_references,caption_body,threads_caption,angle,scope_note FROM drafts WHERE id=$1', [draftId]);
+    const { rows: [draft] } = await pool.query('SELECT caption,hashtags,editorial_input,editorial_mode,editorial_references,caption_body,threads_caption,angle,scope_note,article_body,article_references,article_facts,article_metadata FROM drafts WHERE id=$1', [draftId]);
     const { rows: slides } = await pool.query('SELECT slide_no,layout,text_snapshot AS text,data_snapshot AS data FROM draft_slides WHERE draft_id=$1 ORDER BY slide_no', [draftId]);
     res.json({ status: 'success', ...result, ...draft, needs_review: true, rendered_slides: slides.map((slide) => ({ ...slide, image_url: `/storage/drafts/${draftId}/slide_${slide.slide_no}.png` })) });
   } catch (err) {
@@ -475,14 +483,14 @@ app.post('/api/drafts/create-from-custom', async (req, res) => {
     const defaultHashtags = original?.hashtags || (Array.isArray(hashtags) && hashtags.length > 0 ? hashtags : ['#GapuraMedia', '#BeritaNasional', '#IsuPublik', '#Indonesia']);
 
     const { rows: draftRows } = await client.query(
-      `INSERT INTO drafts (topic_id, slides, content_format, caption, hashtags, disclaimer_type, status, needs_review, tokens_version, copy_model)
-        VALUES ($1, $2, $3, $4, $5, NULL, 'draft', true, 'v1.0', 'original-editorial-v1') RETURNING id`,
-      [topicId, JSON.stringify(pinnedSlides), req.body?.format === 'single' && slides.length === 1 ? 'single' : 'carousel', defaultCaption, defaultHashtags]
+      `INSERT INTO drafts (topic_id, slides, content_format, caption, hashtags, disclaimer_type, status, needs_review, tokens_version, copy_model, article_body, article_references, article_facts)
+        VALUES ($1, $2, $3, $4, $5, NULL, 'draft', true, 'v1.0', 'original-editorial-v1', $6, $7, $8) RETURNING id`,
+      [topicId, JSON.stringify(pinnedSlides), req.body?.format === 'single' && slides.length === 1 ? 'single' : 'carousel', defaultCaption, defaultHashtags, original.article_body || null, JSON.stringify(original.article_references || []), JSON.stringify(original.article_facts || [])]
     );
     const draftId = draftRows[0].id;
     if (original) await client.query(
-      'UPDATE drafts SET editorial_input=$2,editorial_mode=$3,caption_body=$4,threads_caption=$5,angle=$6,scope_note=$7,editorial_references=$8 WHERE id=$1',
-      [draftId, JSON.stringify(original.editorial_input), original.editorial_mode, original.caption_body, original.threads_caption, original.angle, original.scope_note, JSON.stringify(original.editorial_references)]);
+      'UPDATE drafts SET editorial_input=$2,editorial_mode=$3,caption_body=$4,threads_caption=$5,angle=$6,scope_note=$7,editorial_references=$8,article_body=$9,article_references=$10,article_facts=$11,article_metadata=$12 WHERE id=$1',
+      [draftId, JSON.stringify(original.editorial_input), original.editorial_mode, original.caption_body, original.threads_caption, original.angle, original.scope_note, JSON.stringify(original.editorial_references), original.article_body || null, JSON.stringify(original.article_references || []), JSON.stringify(original.article_facts || []), original.article_metadata ? JSON.stringify(original.article_metadata) : null]);
 
     // 3. Render slides
     const renderResp = await fetch(`${RENDER_SERVICE_URL}/render`, {
@@ -565,14 +573,25 @@ app.post('/api/drafts/:id/approve', async (req, res) => {
         await client.query('ROLLBACK');
         return res.status(409).json({ error: 'Konfirmasi review konten wajib diisi sebelum menyetujui.' });
       }
-      // Cover is slide 1: a draft without an image there cannot be approved or published.
-      if (!hasCoverImage(lockedDrafts[0].slides)) {
+      // Explicit typography is a valid editorial fallback when no licensed photo fits.
+      if (!hasEditorialCover(lockedDrafts[0].slides)) {
         await client.query('ROLLBACK');
-        return res.status(409).json({ error: 'Cover (slide 1) wajib memiliki gambar sebelum disetujui.' });
+        return res.status(409).json({ error: 'Cover wajib memiliki gambar berlisensi atau desain tipografi editorial eksplisit sebelum disetujui.' });
       }
       if (lockedDrafts[0].copy_model === 'studio-ai-designer') {
         await client.query('ROLLBACK');
         return res.status(409).json({ error: 'Draf lama belum memenuhi kontrak berita bersumber. Buat ulang melalui generator berita dan tinjau isi serta caption lengkap sebelum menyetujui.' });
+      }
+      if (lockedDrafts[0].editorial_input != null
+        && (typeof lockedDrafts[0].article_body !== 'string' || lockedDrafts[0].article_body.trim().length < 1200
+          || (lockedDrafts[0].editorial_mode === 'current'
+            && (!Array.isArray(lockedDrafts[0].article_references) || lockedDrafts[0].article_references.length < 3)))) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'Artikel berita lengkap atau rujukan riset web belum tersedia; buat ulang melalui riset web sebelum review.' });
+      }
+      if (lockedDrafts[0].copy_model === 'staged-editorial-v3' && lockedDrafts[0].article_metadata?.pipeline?.status !== 'VALIDATED') {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'Tahap editorial belum lengkap. Lanjutkan dari checkpoint sebelum review.' });
       }
       const gate = validateDraftApproval({
         status: lockedDrafts[0].status,
@@ -996,9 +1015,8 @@ app.post('/api/topics/:id/material/enrich', async (req, res) => {
   } catch (error) {
     const reason = error.message === 'topic_not_found' ? 'Topik tidak ditemukan.' : 'Materi tidak dapat diproses; periksa URL sumber dan status akses.';
     const status = error.message === 'topic_not_found' ? 404
-      : /source_material_permission_required/u.test(error.message) ? 403
-        : /material_.*invalid|topic_id_invalid/u.test(error.message) ? 409 : 500;
-    return res.status(status).json({ error: status === 403 ? 'Domain sumber belum mendapat izin pemrosesan AI.' : reason });
+      : /material_.*invalid|topic_id_invalid/u.test(error.message) ? 409 : 500;
+    return res.status(status).json({ error: reason });
   } finally { activeMaterialRequests--; }
 });
 
@@ -1025,7 +1043,9 @@ app.post('/api/topics/:id/auto-produce', async (req, res) => {
   try {
     const topic = (await pool.query('SELECT id FROM topics WHERE id=$1', [topicId])).rows[0];
     if (!topic) return res.status(404).json({ error: 'Topik tidak ditemukan.' });
-    const options = req.body?.editorial_input === undefined ? {} : { editorialInput: assertNewsEditorialInput(req.body.editorial_input) };
+    const suppliedInput = req.body?.editorial_input === undefined ? undefined
+      : await resolveTopicEditorialInput(topicEditorialLoader, topicId, req.body.editorial_input);
+    const options = suppliedInput === undefined ? {} : { editorialInput: assertNewsEditorialInput(suppliedInput) };
     let result;
     if (force) {
       const { rows } = await pool.query('SELECT id FROM drafts WHERE topic_id=$1 ORDER BY id DESC LIMIT 1', [topicId]);
@@ -1236,6 +1256,7 @@ app.post('/api/providers/:providerId', async (req, res) => {
   const body = req.body || {};
   const unknown = Object.keys(body).filter((key) => !PROVIDER_EDITABLE.has(key));
   if (unknown.length) return res.status(400).json({ error: `Field tidak dikenal: ${unknown.join(', ')}.` });
+  if (body.api_key_env === 'FIRECRAWL_API_KEY') return res.status(403).json({ error: 'Firecrawl Search API key hanya dapat dipasang operator pada environment atau secret store server.' });
   try {
     const config = loadProvidersConfig(PROVIDERS_CONFIG_PATH);
     const existing = config.providers[providerId] || {};
@@ -1263,6 +1284,7 @@ app.post('/api/providers/:providerId/key', async (req, res) => {
   if (!apiKey) return res.status(400).json({ error: 'API key wajib diisi.' });
   const entry = loadProvidersConfig(PROVIDERS_CONFIG_PATH).providers?.[providerId];
   if (!entry) return res.status(404).json({ error: 'Provider tidak ditemukan.' });
+  if (entry.api_key_env === 'FIRECRAWL_API_KEY') return res.status(403).json({ error: 'Firecrawl Search API key hanya dapat dipasang operator pada environment atau secret store server.' });
   try {
     saveProviderSecret(entry.api_key_env, apiKey);
     await writeAudit('ai_providers', null, 'set_api_key', 'web_admin', { provider_id: providerId, env: entry.api_key_env });
@@ -1577,7 +1599,7 @@ app.get('/api/trend-sources', async (req, res) => {
 
 app.post('/api/trend-sources', async (req, res) => {
   const { kind, value, label = null, category = 'trending', weight = 10, poll_interval_mins = 60, is_active = true } = req.body || {};
-  const allowed = ['x_account', 'x_query', 'google_trends', 'news_query'];
+  const allowed = ['x_account', 'x_query', 'google_trends', 'news_query', 'public_web'];
   if (!allowed.includes(kind) || !value) {
     return res.status(400).json({ error: `kind wajib salah satu dari: ${allowed.join(', ')} dan value wajib diisi.` });
   }
@@ -1602,7 +1624,7 @@ app.post('/api/trend-sources', async (req, res) => {
 app.put('/api/trend-sources/:id', async (req, res) => {
   const id = parseInt(req.params.id, 10);
   const { kind, value, label = null, category = 'trending', weight = 10, poll_interval_mins = 60, is_active = true } = req.body || {};
-  const allowed = ['x_account', 'x_query', 'google_trends', 'news_query'];
+  const allowed = ['x_account', 'x_query', 'google_trends', 'news_query', 'public_web'];
   if (!allowed.includes(kind) || !value) {
     return res.status(400).json({ error: 'kind dan value wajib valid.' });
   }
@@ -1679,6 +1701,7 @@ app.get('/api/seo/health', async (_req, res) => {
     res.json(buildTrendHealth(rows, {
       xApiConfigured: Boolean(process.env.X_BEARER_TOKEN),
       rssHubConfigured: Boolean(process.env.RSSHUB_BASE_URL),
+      firecrawlApiConfigured: Boolean(process.env.FIRECRAWL_API_KEY || loadProviderSecrets().FIRECRAWL_API_KEY),
     }));
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1795,7 +1818,11 @@ app.get('/api/studio/jobs/:id/stream', async (req, res) => {
 app.post('/api/studio/jobs/:id/regenerate-plan', async (req, res) => {
   const id = parseInt(req.params.id, 10);
   try {
-    const options = req.body?.editorial_input === undefined ? {} : { editorialInput: normalizeEditorialInput(req.body.editorial_input) };
+    const job = await getJob(id);
+    if (!job) return res.status(404).json({ error: 'Job tidak ditemukan.' });
+    const options = req.body?.editorial_input === undefined ? {} : {
+      editorialInput: await resolveTopicEditorialInput(topicEditorialLoader, job.topic_id, req.body.editorial_input),
+    };
     const plan = await regeneratePlan(id, String(req.body?.instruction || '').slice(0, 1000), options);
     res.json({ status: 'success', plan });
   } catch (err) {

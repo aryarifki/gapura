@@ -1,6 +1,10 @@
 // Keep rendering bounded and local. Source image URLs are hydrated by trusted
 // callers; only embedded raster images can become Satori image sources.
 export const MAX_SLIDES = 9;
+export const EDITORIAL_LAYOUTS = Object.freeze([
+  'editorial-cover', 'editorial-lead', 'editorial-breakdown', 'editorial-timeline',
+  'editorial-quote', 'editorial-impact', 'editorial-close',
+]);
 const MAX_TEXT = 4000;
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const MAX_IMAGE_CHARS = Math.ceil(MAX_IMAGE_BYTES / 3) * 4;
@@ -98,6 +102,27 @@ const hasText = (value) => typeof value === 'string' && Boolean(value.trim());
 // Historical data layouts remain available, but every displayed datum must come
 // from the caller. Share this check with direct layout resolution and the API.
 export function validateLayoutData(layout, data = {}) {
+  if (EDITORIAL_LAYOUTS.includes(layout)) {
+    object(data, 'slide.data');
+    if (!hasText(data.title)) invalid(`${layout} requires non-empty slide.data.title`);
+    if (layout === 'editorial-breakdown' && (!Array.isArray(data.items) || !data.items.length || data.items.length > 4
+      || data.items.some((item) => !hasText(item?.label) || !hasText(item?.value)))) {
+      invalid('editorial-breakdown requires 1-4 slide.data.items with a non-empty label and narrative value');
+    }
+    if (layout === 'editorial-timeline' && (!Array.isArray(data.events) || !data.events.length || data.events.length > 5
+      || data.events.some((event) => !hasText(event?.date) || !hasText(event?.text) || !Array.isArray(event?.fact_ids)
+        || !event.fact_ids.length || event.fact_ids.length > 8 || event.fact_ids.some((id) => !hasText(id))))) {
+      invalid('editorial-timeline requires 1-5 slide.data.events with a source date, text and non-empty fact_ids');
+    }
+    if (layout === 'editorial-quote' && ['quote', 'author', 'role_label'].some((field) => !hasText(data[field]))) {
+      invalid('editorial-quote requires non-empty slide.data.quote, author and role_label');
+    }
+    if (layout === 'editorial-close' && !hasText(data.question)) invalid('editorial-close requires non-empty slide.data.question');
+    if (layout === 'editorial-impact' && data.items !== undefined && (!Array.isArray(data.items) || !data.items.length || data.items.length > 4
+      || data.items.some((item) => !hasText(item?.label) || !(hasText(item?.value) || (typeof item?.value === 'number' && Number.isFinite(item.value)))))) {
+      invalid('editorial-impact requires 1-4 slide.data.items with a non-empty label and value when items are supplied');
+    }
+  }
   if (layout === 'stat-grid' && (!Array.isArray(data.items) || !data.items.length || data.items.some((item) =>
     !hasText(item?.label) || !(hasText(item?.value) || (typeof item?.value === 'number' && Number.isFinite(item.value)))))) {
     invalid('stat-grid requires non-empty slide.data.items with a label and value for every item');
@@ -144,7 +169,7 @@ export function validateSlide(slide, budget = { nodes: 0, text: 0, imageBytes: 0
       if (!RIGHTS_BASES.has(data.rights_basis)) invalid('slide.data.rights_basis must be a known rights basis for an editor_upload image');
     }
   }
-  textFields(data, ['title', 'headline', 'subtitle', 'subtext', 'unit', 'label', 'category', 'author', 'quote', 'callout', 'regulasi', 'note', 'cta', 'disclaimer', 'status', 'verdict', 'claim', 'explanation', 'finding', 'fakta', 'misconception', 'miskonsepsi', 'source_note', 'image_url', 'credit']);
+  textFields(data, ['title', 'headline', 'kicker', 'role_label', 'question', 'subtitle', 'subtext', 'unit', 'label', 'category', 'author', 'quote', 'callout', 'regulasi', 'note', 'cta', 'disclaimer', 'status', 'verdict', 'claim', 'explanation', 'finding', 'fakta', 'misconception', 'miskonsepsi', 'source_note', 'image_url', 'credit']);
   for (const key of ['value', 'stat', 'credibility']) if (data[key] !== undefined && data[key] !== null) scalar(data[key], `slide.data.${key}`);
   if (!(slide.teks || data.title || data.headline || '').trim()) invalid('slide requires non-empty teks, title or headline');
 
@@ -159,6 +184,7 @@ export function validateSlide(slide, budget = { nodes: 0, text: 0, imageBytes: 0
     invalid('slide.data.labels and values must be non-empty arrays of matching length');
   }
   collection(data, 'events', (event, name) => { object(event, name); text(event.date, `${name}.date`); text(event.text, `${name}.text`); });
+  collection(data, 'paragraphs', (paragraph, name) => { object(paragraph, name); text(paragraph.text, `${name}.text`, 600); });
   collection(data, 'list', (entry, name) => {
     if (typeof entry === 'string') return text(entry, name);
     object(entry, name);
