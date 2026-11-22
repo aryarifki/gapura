@@ -130,3 +130,25 @@ test('default selection sends the research topic and an isolated ID-only contrac
   assert.ok(input.facts.length >= 3);
   assert.ok(input.facts.every(({ text, source_url }) => sources.some((source) => source.url === source_url && source.text.includes(text))));
 });
+
+test('snippet leads promoted by article-reader pass the three-publisher source quality gate as pages', async () => {
+  const snippetHits = sources.map((source) => ({
+    url: source.url, name: source.name, title: source.title, kind: source.kind, text: '', text_kind: 'snippet',
+  }));
+  let selectedDocs = [];
+  const input = await researchTopic(topic, {
+    minimumPublishers: 3,
+    search: async () => snippetHits,
+    reader: {
+      async read({ url }) {
+        const match = sources.find((source) => source.url === url);
+        return { canonical_url: url, title: match.title, publisher: match.name, body: match.text };
+      },
+    },
+    choose: async () => [],
+    onDocuments: (docs) => { selectedDocs = docs; },
+  });
+  assert.equal(selectedDocs.length, 3);
+  assert.equal(selectedDocs.every((doc) => doc.text_kind === 'page'), true);
+  assert.ok(input.facts.length >= 3);
+});

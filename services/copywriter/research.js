@@ -165,7 +165,8 @@ export async function researchTopic(topic, { search = searchPublicWeb, reader = 
     }
     try {
       const document = await reader.read({ url: item.url, publisher: item.name || '' });
-      return { ...item, name: document.publisher || item.name, title: document.title || item.title, url: document.canonical_url || item.url, text: plain(document.body).slice(0, 16000) };
+      const body = plain(document.body).slice(0, 16000);
+      return { ...item, name: document.publisher || item.name, title: document.title || item.title, url: document.canonical_url || item.url, text: body, ...(body.length >= 30 ? { text_kind: 'page' } : {}) };
     } catch { return { ...item, text: '' }; }
   });
   const uniqueDocuments = new Map();
