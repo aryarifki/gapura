@@ -677,3 +677,16 @@ test('resuming a checkpoint reuses a stage that succeeded within the four-reques
   assert.deepEqual(resumedCalls, [S2, S3A, S3B, S3C]);
   assert.equal(resumed.checkpoint.status, 'VALIDATED');
 });
+
+test('caption preparation strips extraneous fields from hashtag rows before gate validation', async () => {
+  const story = await buildStagedStory(brief, {
+    documents,
+    invoke: async (_a, _p, _s, _j, { stage }) => {
+      if (stage !== S3B) return response(stage);
+      const polluted = caption.map((row) => row.kind === 'hashtag' ? { ...row, fact_ids: 'f11' } : row);
+      return JSON.stringify({ rows: polluted });
+    },
+  });
+  assert.equal(story.checkpoint.stages[S3B].receipt.status, 'complete');
+  assert.ok(story.raw.hashtags.length >= 5);
+});

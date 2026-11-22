@@ -672,6 +672,7 @@ export async function buildStagedStory(brief, { documents, checkpoint, saveCheck
         if (row.kind === 'slide' && row.no === 3 && row.title?.includes('?')) return { ...row, title: 'Pendapat Anda' };
         return row;
       });
+      if (stage === CAPTION) return normalized.map((row) => row?.kind === 'hashtag' ? { kind: 'hashtag', ...(row.text !== undefined ? { text: row.text } : {}) } : row);
       return stage === ARTICLE ? normalizeArticle(normalized, context.entities) : normalized;
     };
     const materialize = (rows) => {
