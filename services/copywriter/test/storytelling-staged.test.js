@@ -381,24 +381,46 @@ test('carousel close repair preserves its question and uses a neutral non-questi
   assert.equal(result.teks, close.text);
 });
 
-test('Gemini stage budget is shared across validation attempts', async () => {
+test('a provider error retries the stage once with fresh keys before failing', async () => {
+  let articleCalls = 0;
+  const story = await buildStagedStory(brief, { documents, invoke: async (_a, _p, _s, _j, options) => {
+    if (options.stage !== S2) return response(options.stage);
+    articleCalls += 1;
+    if (articleCalls === 1) throw new Error('Gemini could not be reached (timeout).');
+    return JSON.stringify({ rows: article });
+  } });
+  assert.equal(articleCalls, 2);
+  assert.equal(story.checkpoint.stages[S2].receipt.status, 'complete');
+});
+
+test('a provider error on both stage attempts surfaces as a stage failure', async () => {
+  let articleCalls = 0;
+  await assert.rejects(buildStagedStory(brief, { documents, invoke: async (_a, _p, _s, _j, options) => {
+    if (options.stage !== S2) return response(options.stage);
+    articleCalls += 1;
+    throw new Error('OpenRouter API (402, PROVIDER_ERROR).');
+  } }), /stage2_article: OpenRouter API \(402/u);
+  assert.equal(articleCalls, 2);
+});
+
+test('Gemini stage budget allows two keys per validation attempt (the fallbacks cannot serve large staged prompts)', async () => {
   const bad = structuredClone(article);
   bad.find((row) => row.kind === 'paragraph').text = Array(39).fill('jalur').join(' ');
   let calls = 0;
   const story = await buildStagedStory(brief, { documents, invoke: async (_a, _p, _s, _j, options) => {
     if (options.stage !== S2) return response(options.stage);
     if (++calls === 1) {
-      assert.equal(options.geminiAttemptLimit, 2);
+      assert.equal(options.geminiAttemptLimit, 4);
       options.onAttempt({ provider: 'gemini', status: 429, outcome: 'rate_limited' });
       options.onAttempt({ provider: 'gemini', status: 200, outcome: 'success' });
       return JSON.stringify({ rows: bad });
     }
-    assert.equal(options.geminiAttemptLimit, 0);
-    options.onAttempt({ provider: 'groq', status: 200, outcome: 'success' });
+    assert.equal(options.geminiAttemptLimit, 2);
+    options.onAttempt({ provider: 'gemini', status: 200, outcome: 'success' });
     return JSON.stringify({ rows: article });
   } });
   assert.equal(calls, 2);
-  assert.equal(story.checkpoint.stages[S2].receipt.attempts.flatMap((row) => row.provider_attempts).filter((row) => row.provider === 'gemini').length, 2);
+  assert.equal(story.checkpoint.stages[S2].receipt.attempts.flatMap((row) => row.provider_attempts).filter((row) => row.provider === 'gemini').length, 3);
 });
 
 test('adapter micro-repair adds missing references without changing copy', () => {
@@ -619,4 +641,39 @@ test('source selection rejects duplicate publishers and keeps evidence boundarie
     return JSON.stringify({ rows: crossed });
   } }), /evidence_excerpt_not_verbatim/u);
   assert.equal(calls, 2);
+});
+
+test('resuming a checkpoint reuses a stage that succeeded within the four-request Gemini budget', async () => {
+  const snapshots = [];
+  let s1Calls = 0;
+  await assert.rejects(buildStagedStory(brief, {
+    documents,
+    saveCheckpoint: async (value) => snapshots.push(value),
+    invoke: async (_a, _p, _s, _j, options) => {
+      if (options.stage === S1) {
+        s1Calls += 1;
+        options.onAttempt?.({ provider: 'gemini', status: 503, outcome: 'transient_error' });
+        options.onAttempt?.({ provider: 'gemini', status: 429, outcome: 'rate_limited' });
+        options.onAttempt?.({ provider: 'gemini', status: 200, outcome: 'success' });
+        return response(S1);
+      }
+      if (options.stage === S2) throw new Error('stop_after_s1');
+      return response(options.stage);
+    },
+  }), /stop_after_s1/u);
+  assert.equal(s1Calls, 1);
+  const failed = snapshots.at(-1);
+  assert.equal(failed.stages[S1].receipt.attempts[0].provider_attempts.length, 3);
+  const resumedCalls = [];
+  const resumed = await buildStagedStory(brief, {
+    documents,
+    checkpoint: failed,
+    invoke: async (_a, _p, _s, _j, { stage }) => {
+      resumedCalls.push(stage);
+      return response(stage);
+    },
+  });
+  assert.equal(resumedCalls.includes(S1), false);
+  assert.deepEqual(resumedCalls, [S2, S3A, S3B, S3C]);
+  assert.equal(resumed.checkpoint.status, 'VALIDATED');
 });

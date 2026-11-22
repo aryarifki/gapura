@@ -123,3 +123,51 @@ test('one malformed search URL does not discard valid page content and snippets 
   assert.equal(results.find(({ url }) => url.endsWith('/body')).text_kind, 'page');
   assert.equal(results.find(({ url }) => url.endsWith('/snippet')).text_kind, 'snippet');
 });
+
+test('search sends no recency window and drops Google redirect wrappers', async () => {
+  // Measured 2026-11-22: any `tbs` window made Firecrawl return mostly
+  // google.com/goto wrappers (3/4 at qdr:m, 7/8 at qdr:d) instead of publisher
+  // pages, which starved the three-publisher research floor.
+  const results = await searchPublicWeb('ruu perampasan aset', { firecrawlKey: 'fixture-key', fetchImpl: async (value) => {
+    if (new URL(value).hostname === 'api.firecrawl.dev') {
+      return Response.json({ success: true, data: { web: [
+        { url: 'https://www.google.com/goto?url=CAEScQHEIkXXjunk', markdown: 'Google interstitial body that must never be a source.' },
+        { url: 'https://www.google.com/url?q=https%3A%2F%2Fpublisher.example%2Fa', markdown: 'Another Google wrapper.' },
+        { url: 'https://news.example/aset', markdown: 'Laporan parlemen mengesahkan undang-undang perampasan aset.' },
+      ], news: [] } });
+    }
+    return new Response('', { status: 503 });
+  } });
+  assert.equal(results.some(({ url }) => /google\.com\/(?:goto|url)/u.test(url)), false);
+  assert.equal(results.length, 1);
+  assert.equal(results[0].url, 'https://news.example/aset');
+});
+
+test('the Firecrawl request body omits tbs and keeps markdown scraping', async () => {
+  let request = null;
+  await searchPublicWeb('rute bus', { firecrawlKey: 'fixture-key', fetchImpl: async (value, options = {}) => {
+    if (new URL(value).hostname === 'api.firecrawl.dev') {
+      request = JSON.parse(options.body);
+      return Response.json({ success: true, data: { web: [], news: [] } });
+    }
+    return Response.json({ posts: [], hits: [] });
+  } });
+  assert.equal(Object.hasOwn(request, 'tbs'), false);
+  assert.deepEqual(request.scrapeOptions, { formats: ['markdown'], onlyMainContent: true, storeInCache: false });
+});
+
+test('a Firecrawl connect blip is retried instead of dropping the query', async () => {
+  let calls = 0;
+  const results = await searchPublicWeb('ruu perampasan aset', { firecrawlKey: 'fixture-key', fetchImpl: async (value) => {
+    if (new URL(value).hostname === 'api.firecrawl.dev') {
+      calls += 1;
+      if (calls === 1) throw new TypeError('fetch failed');
+      return Response.json({ success: true, data: { web: [
+        { url: 'https://news.example/aset', markdown: 'Laporan parlemen mengesahkan undang-undang perampasan aset.' },
+      ], news: [] } });
+    }
+    return new Response('', { status: 503 });
+  } });
+  assert.equal(calls, 2);
+  assert.equal(results.some(({ url }) => url === 'https://news.example/aset'), true);
+});

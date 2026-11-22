@@ -3,6 +3,15 @@ import { loadProviderSecrets } from '../common/secret-store.js';
 import { fetchSourceFeed, cleanText, normalizeArticleUrl, safeDate } from './sources.js';
 
 const BSKY = 'https://api.bsky.app/xrpc/';
+// Firecrawl search occasionally returns Google click-tracking wrappers
+// (google.com/goto, google.com/url) instead of the publisher URL. They are not
+// publishers: they carry Google's interstitial body and would consume the
+// limited result slots, starving the three-publisher research floor.
+const WRAPPED_REDIRECT = /^https?:\/\/(?:[\w-]+\.)*google\.[a-z.]{2,}\/(?:goto|url)(?:[/?#]|$)/iu;
+const sourceUrl = (value) => {
+  const url = normalizeArticleUrl(value);
+  return url && !WRAPPED_REDIRECT.test(url) ? url : null;
+};
 const plain = (value) => cleanText(value || '');
 const parse = (text) => JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/gu, '').trim());
 const firecrawlApiKey = () => process.env.FIRECRAWL_API_KEY || loadProviderSecrets().FIRECRAWL_API_KEY || '';
@@ -28,23 +37,37 @@ export async function searchPublicWeb(query, { fetchImpl = fetch, firecrawlKey =
   const jobs = [
     ...(firecrawlKey ? searchQueries.map((searchQuery) => async () => {
       const root = `${String(process.env.FIRECRAWL_API_URL || 'https://api.firecrawl.dev').replace(/\/+$/u, '')}/v2/search`;
-      const response = await fetchImpl(root, {
-        method: 'POST', headers: { 'User-Agent': 'GapuraMediaScout/3.2 (+https://gapura.avenia.my.id)', Accept: 'application/json', 'Content-Type': 'application/json', Authorization: `Bearer ${firecrawlKey}` },
-        body: JSON.stringify({ query: searchQuery, sources: ['web', 'news'], limit: resultLimit, location: 'Indonesia', country: 'ID', tbs: 'qdr:m',
-          scrapeOptions: { formats: ['markdown'], onlyMainContent: true, storeInCache: false } }),
-        redirect: 'error', signal: AbortSignal.timeout(30000),
-      });
-      if (!response.ok) throw new Error(`firecrawl_http_${response.status}`);
-      const data = await response.json();
-      if (data.success === false) throw new Error('firecrawl_search_failed');
-      return ['web', 'news'].flatMap((kind) => (data.data?.[kind] || []).flatMap((item) => {
-        const url = normalizeArticleUrl(item.url || item.metadata?.sourceURL);
-        if (!url) return [];
-        const body = plain(item.markdown || item.content);
-        return [{ url, title: plain(item.title || item.metadata?.title), name: new URL(url).hostname,
-          text: body || plain(item.description || item.snippet), text_kind: body ? 'page' : 'snippet', kind,
-          published_at: item.date || item.metadata?.publishedTime || null }];
-      }));
+      let lastError;
+      // A connect timeout drops the whole query (and therefore every publisher
+      // it would have supplied). Retry short network blips before giving up.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const response = await fetchImpl(root, {
+            method: 'POST', headers: { 'User-Agent': 'GapuraMediaScout/3.2 (+https://gapura.avenia.my.id)', Accept: 'application/json', 'Content-Type': 'application/json', Authorization: `Bearer ${firecrawlKey}` },
+            // No `tbs` recency filter: measured on 2026-11-22 it returns mostly
+            // Google redirect wrappers (3/4 at qdr:m, 7/8 at qdr:d) instead of
+            // publisher pages, which starves the research publisher floor.
+            body: JSON.stringify({ query: searchQuery, sources: ['web', 'news'], limit: resultLimit, location: 'Indonesia', country: 'ID',
+              scrapeOptions: { formats: ['markdown'], onlyMainContent: true, storeInCache: false } }),
+            redirect: 'error', signal: AbortSignal.timeout(30000),
+          });
+          if (!response.ok) throw new Error(`firecrawl_http_${response.status}`);
+          const data = await response.json();
+          if (data.success === false) throw new Error('firecrawl_search_failed');
+          return ['web', 'news'].flatMap((kind) => (data.data?.[kind] || []).flatMap((item) => {
+            const url = sourceUrl(item.url || item.metadata?.sourceURL);
+            if (!url) return [];
+            const body = plain(item.markdown || item.content);
+            return [{ url, title: plain(item.title || item.metadata?.title), name: new URL(url).hostname,
+              text: body || plain(item.description || item.snippet), text_kind: body ? 'page' : 'snippet', kind,
+              published_at: item.date || item.metadata?.publishedTime || null }];
+          }));
+        } catch (error) {
+          lastError = error;
+          if (String(error?.message || error).startsWith('firecrawl_http_4')) break;
+        }
+      }
+      throw lastError;
     }) : []),
     async () => {
       const data = await getJson(`${BSKY}app.bsky.feed.searchPosts?${new URLSearchParams({ q, sort: 'top', limit: '15' })}`, fetchImpl);
@@ -79,7 +102,7 @@ export async function searchPublicWeb(query, { fetchImpl = fetch, firecrawlKey =
   const batches = await Promise.allSettled(jobs.map((job) => job()));
   const unique = new Map();
   for (const result of batches) if (result.status === 'fulfilled') for (const item of result.value) {
-    const url = normalizeArticleUrl(item.url);
+    const url = sourceUrl(item.url);
     if (url) {
       const previous = unique.get(url);
       if (!previous || (previous.text_kind === 'snippet' && item.text_kind !== 'snippet')
@@ -105,7 +128,7 @@ function publisherLinks(value) {
     for (const key of ['u', 'url', 'text']) {
       const target = link.searchParams.get(key) || '';
       const direct = target.match(/https:\/\/[^\s)<>"\]]+/u)?.[0];
-      const url = direct && normalizeArticleUrl(direct);
+      const url = direct && sourceUrl(direct);
       if (url && !/\/(?:share|sharing|intent|sharer)(?:\/|\.|$)/iu.test(new URL(url).pathname)) found.add(url);
     }
   }
@@ -140,17 +163,23 @@ export async function discoverWebTrends({ now = new Date(), fetchImpl = fetch, t
       const response = await fetchImpl(`${String(process.env.FIRECRAWL_API_URL || 'https://api.firecrawl.dev').replace(/\/+$/u, '')}/v2/search`, {
         method: 'POST', headers: { 'User-Agent': 'GapuraMediaScout/3.2 (+https://gapura.avenia.my.id)', Accept: 'application/json', 'Content-Type': 'application/json',
           ...(firecrawlKey ? { Authorization: `Bearer ${firecrawlKey}` } : {}) },
+        // See searchPublicWeb: a `tbs` recency window makes Firecrawl return
+        // Google redirect wrappers instead of publisher pages.
         body: JSON.stringify({ query: searchQuery, sources: ['web', 'news'], limit: 3,
-          location: 'Indonesia', country: 'ID', tbs: 'qdr:d' }), redirect: 'error', signal: AbortSignal.timeout(30000),
+          location: 'Indonesia', country: 'ID' }), redirect: 'error', signal: AbortSignal.timeout(30000),
       });
       if (!response.ok) throw new Error(`firecrawl_trends_http_${response.status}`);
       const data = await response.json();
-      return ['web', 'news'].flatMap((kind) => (data.data?.[kind] || []).map((item) => ({
-        title: plain(item.title), summary: plain(item.description || item.snippet), url: item.url,
-        source: new URL(item.url).hostname, platform: 'public_web', provider: 'firecrawl_search',
-        published_at: safeDate(item.date || item.metadata?.publishedTime),
-        engagement: {},
-      })));
+      return ['web', 'news'].flatMap((kind) => (data.data?.[kind] || []).flatMap((item) => {
+        const url = sourceUrl(item.url);
+        if (!url) return [];
+        return [{
+          title: plain(item.title), summary: plain(item.description || item.snippet), url,
+          source: new URL(url).hostname, platform: 'public_web', provider: 'firecrawl_search',
+          published_at: safeDate(item.date || item.metadata?.publishedTime),
+          engagement: {},
+        }];
+      }));
     }) : []),
   ]);
   const cutoff = now.getTime() - 3 * 86400000;

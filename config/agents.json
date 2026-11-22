@@ -27,6 +27,7 @@
     "endpoint": "https://generativelanguage.googleapis.com",
     "api_key": "",
     "model": "gemini-3.5-flash-lite",
+    "timeout_ms": 90000,
     "slide_count": 6,
     "editorial_version": 2,
     "tone_of_voice": "Penjelas isu nasional yang jernih, netral dan berwibawa; mendahulukan kepentingan publik, tanpa hiperbola atau klaim tanpa dasar",

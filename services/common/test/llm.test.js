@@ -313,6 +313,19 @@ test('the default provider deadline is exactly 35 seconds', async (t) => {
   assert.deepEqual(deadlines, [35000]);
 });
 
+test('a per-agent timeout_ms overrides the 35s default, and explicit options still win', async (t) => {
+  resetGeminiPool();
+  const timeout = AbortSignal.timeout.bind(AbortSignal);
+  const deadlines = [];
+  t.mock.method(AbortSignal, 'timeout', (milliseconds) => { deadlines.push(milliseconds); return timeout(milliseconds); });
+  const config = { studio: { provider: 'gemini', model: 'gemini-2.5-flash', timeout_ms: 90000 } };
+  const options = { config, providers: routerProviders(), env: { GEMINI_API_KEY_1: 'deadline' }, secrets: {},
+    fetchImpl: async () => Response.json({ candidates: [{ content: { parts: [{ text: '{}' }] } }] }) };
+  await callAgentLLM('studio', 'Return JSON', '', true, options);
+  await callAgentLLM('studio', 'Return JSON', '', true, { ...options, timeoutMs: 12000 });
+  assert.deepEqual(deadlines, [90000, 12000]);
+});
+
 test('401/403 and API_KEY_INVALID quarantine only that Gemini key; 404 model failure does not', async () => {
   resetGeminiPool();
   for (const status of [401, 403]) {

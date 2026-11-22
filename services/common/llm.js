@@ -339,7 +339,11 @@ export async function callAgentLLM(agentKey, promptText, systemPrompt = '', json
     options.includeAgentPolicy === false ? '' : skills,
   ].filter(Boolean))].join('\n\n');
   const fetchImpl = options.fetchImpl || fetch;
-  const timeoutMs = Number(options.timeoutMs) || 35000;
+  // A per-agent timeout_ms in config/agents.json overrides the 35s default. Large
+  // structured editorial stages (stage2_article: ~1700-token prompt, up to 4096
+  // output tokens) routinely take 15-35s on Gemini, so the old 35s default timed
+  // out mid-generation and fell through to weaker providers.
+  const timeoutMs = Number(options.timeoutMs) || Number(agent.timeout_ms) || 35000;
   const secretsToRedact = [...new Set([...attempts.map((attempt) => attempt.apiKey), ...Object.entries(secrets).filter(([name]) => /(?:API_KEY|GEMINI_API_KEYS)/u.test(name)).map(([, value]) => String(value).split(','))].flat())];
   let lastError;
   let index = 0;

@@ -638,7 +638,7 @@ export async function buildStagedStory(brief, { documents, checkpoint, saveCheck
     const schema = EDITORIAL_STAGE_SCHEMAS[stage];
     const input_hash = digest([stage === SYNTHESIS ? 3 : 2, stage, prompt, context]);
     const previous = snapshot.stages[stage];
-    if (!repairIssues && previous?.receipt?.status === 'complete' && previous.receipt.input_hash === input_hash && geminiRequests(previous.receipt) <= 2) {
+    if (!repairIssues && previous?.receipt?.status === 'complete' && previous.receipt.input_hash === input_hash && geminiRequests(previous.receipt) <= 4) {
       try {
         const candidate = stage === ARTICLE ? normalizeArticle(previous.value, context.entities) : previous.value;
         const value = await pythonGate({ op: 'validate', stage, value: candidate, context });
@@ -760,9 +760,9 @@ export async function buildStagedStory(brief, { documents, checkpoint, saveCheck
         const start = Date.now();
         let rows = null;
         try {
-          const response = await adapter('copywriter', focusedPrompt || (prompt + correction), stage === REVIEW ? REVIEW_POLICY : STORY_WRITER_POLICY, true, {
+          const request = () => adapter('copywriter', focusedPrompt || (prompt + correction), stage === REVIEW ? REVIEW_POLICY : STORY_WRITER_POLICY, true, {
             stage, includeAgentPolicy: false, skills: '', responseSchema: schema, maxTokens: 4096,
-            geminiAttemptLimit: Math.max(0, 2 - geminiRequests(receipt)),
+            geminiAttemptLimit: Math.max(0, 4 - geminiRequests(receipt)),
             onMetadata: (meta) => { Object.assign(record, providerDetails(meta)); },
             onAttempt: (event) => {
               const safe = providerDetails(event);
@@ -770,6 +770,18 @@ export async function buildStagedStory(brief, { documents, checkpoint, saveCheck
               return onAttempt?.({ ...safe, stage, validation_attempt: attempt });
             },
           });
+          // A provider/transport error is not a content problem. Retry it once
+          // so a transient Gemini UNAVAILABLE burst rotates onto the next keys
+          // instead of aborting the stage; content (gate) failures keep their
+          // own two-attempt budget and are not retried here.
+          let response;
+          for (let transportAttempt = 1; ; transportAttempt += 1) {
+            try { response = await request(); break; }
+            catch (error) {
+              if (error instanceof EditorialValidationError || transportAttempt >= 2) throw error;
+              record.transport_retries = (record.transport_retries || 0) + 1;
+            }
+          }
           const parsed = await editorialJson(response);
           record.repaired = parsed.repaired;
           rows = prepare(stage === REVIEW ? reviewRows(parsed.value) : materialize(unwrapRows(parsed.value)));
