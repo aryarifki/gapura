@@ -1,5 +1,6 @@
 import { callAgentLLM, loadAgentsConfig } from '../common/llm.js';
 import { loadProviderSecrets } from '../common/secret-store.js';
+import { parseFeed } from '../common/rss.js';
 import { fetchSourceFeed, cleanText, normalizeArticleUrl, safeDate } from './sources.js';
 
 const BSKY = 'https://api.bsky.app/xrpc/';
@@ -11,6 +12,19 @@ const WRAPPED_REDIRECT = /^https?:\/\/(?:[\w-]+\.)*google\.[a-z.]{2,}\/(?:goto|u
 const sourceUrl = (value) => {
   const url = normalizeArticleUrl(value);
   return url && !WRAPPED_REDIRECT.test(url) ? url : null;
+};
+const unwrapBingNewsUrl = (rawLink) => {
+  if (typeof rawLink !== 'string' || !rawLink.trim()) return null;
+  try {
+    const parsed = new URL(rawLink);
+    if (/^(?:www\.)?bing\.com$/iu.test(parsed.hostname)) {
+      const target = parsed.searchParams.get('url');
+      if (target) return sourceUrl(target);
+    }
+  } catch {
+    return null;
+  }
+  return sourceUrl(rawLink);
 };
 const plain = (value) => cleanText(value || '');
 const parse = (text) => JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/gu, '').trim());
@@ -69,6 +83,32 @@ export async function searchPublicWeb(query, { fetchImpl = fetch, firecrawlKey =
       }
       throw lastError;
     }) : []),
+    ...searchQueries.slice(0, 2).map((searchQuery) => async () => {
+      const endpoint = `https://www.bing.com/news/search?${new URLSearchParams({ q: searchQuery, format: 'rss', mkt: 'id-ID', setlang: 'id' })}`;
+      const response = await fetchImpl(endpoint, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; GapuraMediaBot/3.2; +https://gapura.avenia.my.id)',
+          Accept: 'application/rss+xml, application/xml, text/xml',
+        },
+        redirect: 'error',
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok) throw new Error(`bing_news_http_${response.status}`);
+      const xml = await response.text();
+      return parseFeed(xml).slice(0, 12).flatMap((item) => {
+        const url = unwrapBingNewsUrl(item.link);
+        if (!url) return [];
+        return [{
+          url,
+          title: plain(item.title),
+          name: new URL(url).hostname,
+          text: '',
+          text_kind: 'snippet',
+          kind: 'news',
+          published_at: item.pubDate || null,
+        }];
+      });
+    }),
     async () => {
       const data = await getJson(`${BSKY}app.bsky.feed.searchPosts?${new URLSearchParams({ q, sort: 'top', limit: '15' })}`, fetchImpl);
       return (data.posts || []).flatMap((post) => {

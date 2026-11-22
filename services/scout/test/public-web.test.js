@@ -171,3 +171,44 @@ test('a Firecrawl connect blip is retried instead of dropping the query', async 
   assert.equal(calls, 2);
   assert.equal(results.some(({ url }) => url === 'https://news.example/aset'), true);
 });
+
+test('Bing News RSS fallback returns unwrapped publisher URLs as snippets when Firecrawl returns 402 or has no key', async () => {
+  const rssXml = `<?xml version="1.0" encoding="utf-8" ?>
+    <rss version="2.0"><channel>
+      <item>
+        <title>Ekspor RI ke Eropa Diproyeksi Naik</title>
+        <link>https://www.bing.com/news/apiclick.aspx?ref=FexRss&amp;aid=&amp;tid=123&amp;url=https%3A%2F%2Fwww.cnbcindonesia.com%2Fnews%2F20261122-ekspor</link>
+        <pubDate>Sun, 22 Nov 2026 08:40:00 GMT</pubDate>
+      </item>
+      <item>
+        <title>Wrapper Google Harus Ditolak</title>
+        <link>https://www.bing.com/news/apiclick.aspx?url=https%3A%2F%2Fwww.google.com%2Fgoto%3Furl%3Dabc</link>
+      </item>
+      <item>
+        <title>URL Tidak Valid Harus Ditolak</title>
+        <link>https://www.bing.com/news/apiclick.aspx?url=not-a-valid-url</link>
+      </item>
+    </channel></rss>`;
+
+  for (const key of ['', 'exhausted-key']) {
+    const results = await searchPublicWeb('ekspor ri eropa', {
+      firecrawlKey: key,
+      fetchImpl: async (value) => {
+        const u = new URL(value);
+        if (u.hostname === 'api.firecrawl.dev') return new Response('{"error":"insufficient_credits"}', { status: 402 });
+        if (u.hostname === 'www.bing.com') {
+          assert.equal(u.searchParams.get('format'), 'rss');
+          assert.equal(u.searchParams.get('mkt'), 'id-ID');
+          return new Response(rssXml, { status: 200, headers: { 'Content-Type': 'application/rss+xml' } });
+        }
+        return new Response('', { status: 503 });
+      },
+    });
+    assert.equal(results.length, 1);
+    assert.equal(results[0].url, 'https://www.cnbcindonesia.com/news/20261122-ekspor');
+    assert.equal(results[0].name, 'www.cnbcindonesia.com');
+    assert.equal(results[0].text_kind, 'snippet');
+    assert.equal(results[0].kind, 'news');
+    assert.equal(results.some(({ url }) => /google\.com\/goto/u.test(url)), false);
+  }
+});
