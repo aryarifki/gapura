@@ -749,3 +749,47 @@ test('a daily quota exhaustion transport failure fails fast without sleeping or 
   assert.equal(articleCalls, 1);
   assert.deepEqual(waits, []);
 });
+
+test('stage gate matches validator parity for non-asserted qualifiers (including sementara) and unreferenced Menurut attributions', () => {
+  const qFacts = [{ id: 'f1', text: 'Pasokan air sementara dialihkan ke jalur timur.', source_name: 'PDAM Kota' }];
+  const qRows = [
+    { kind: 'hook', text: 'Pasokan air dialihkan ke jalur timur.', fact_ids: 'f1' },
+    { kind: 'paragraph', text: 'Warga di kawasan timur menerima pasokan air melalui jaringan pengalihan pipa utama.', fact_ids: 'f1' },
+    { kind: 'paragraph', text: 'Petugas menjaga tekanan aliran air agar kebutuhan harian warga sekitar tetap terpenuhi.', fact_ids: 'f1' },
+    { kind: 'question', text: 'Apakah pengalihan jaringan ini sudah menjangkau wilayah Anda?' },
+    ...['#GapuraMedia', '#AirBersih', '#LayananPublik', '#Kota', '#Info'].map((text) => ({ kind: 'hashtag', text })),
+  ];
+  assert.equal(gate(S3B, qRows, { facts: qFacts, entities: [] }).error, 'caption_hook_qualifier_missing');
+
+  const attrFacts = [{ id: 'f1', text: 'Pekerjaan rampung pada November 2026.', source_name: 'news.detik.com' }];
+  const attrRows = [
+    { kind: 'hook', text: 'Pekerjaan infrastruktur memasuki tahap akhir pada November 2026.', fact_ids: 'f1' },
+    { kind: 'paragraph', text: 'Menurut Keterangan pengawas lapangan, pekerjaan fisik ditargetkan selesai pada November 2026.', fact_ids: 'f1' },
+    { kind: 'paragraph', text: 'Warga di sekitar lokasi menantikan kelancaran akses setelah pekerjaan perbaikan selesai dilakukan.', fact_ids: 'f1' },
+    { kind: 'question', text: 'Apa dampak proyek ini bagi aktivitas warga sekitar?' },
+    ...['#GapuraMedia', '#Infrastruktur', '#Publik', '#Pembangunan', '#Info'].map((text) => ({ kind: 'hashtag', text })),
+  ];
+  assert.equal(gate(S3B, attrRows, { facts: attrFacts, entities: [] }).error, 'caption_paragraph_source_unreferenced');
+});
+
+test('local first-mention repair expands unexpanded person mentions in carousel and caption from sourced registry without extra LLM calls', async () => {
+  const bareCarousel = structuredClone(carousel);
+  bareCarousel.find((row) => row.kind === 'paragraph').text = 'Dewi Aruna memaparkan jalur pengganti bus di sekitar Pasar Utara untuk masa pemeliharaan, sehingga penumpang dapat menyesuaikan rencana perjalanan sebelum berangkat.';
+  const bareCaption = structuredClone(caption);
+  bareCaption[1].text = 'Selama perbaikan jalan, Dewi Aruna memaparkan jalur menuju pasar berpindah sementara. Pengelola menyediakan pemberhentian lain di sekitar kawasan agar penumpang tetap dapat melanjutkan perjalanan.';
+
+  let calls = { [S3A]: 0, [S3B]: 0 };
+  const story = await buildStagedStory(brief, {
+    documents,
+    invoke: async (_a, _p, _s, _j, { stage }) => {
+      if (stage === S3A) { calls[S3A] += 1; return JSON.stringify({ rows: bareCarousel }); }
+      if (stage === S3B) { calls[S3B] += 1; return JSON.stringify({ rows: bareCaption }); }
+      return response(stage);
+    },
+  });
+  assert.equal(calls[S3A], 1);
+  assert.equal(calls[S3B], 1);
+  assert.equal(story.checkpoint.stages[S3A].receipt.attempts[0].repair_source, 'local_first_mention');
+  assert.equal(story.checkpoint.stages[S3B].receipt.attempts[0].repair_source, 'local_first_mention');
+  assert.match(story.raw.caption_blocks[1].text, /Kepala Bidang Angkutan Kota Pesisir Dewi Aruna/u);
+});

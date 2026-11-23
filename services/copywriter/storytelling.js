@@ -46,13 +46,13 @@ export const STORY_WRITER_POLICY = `Anda adalah bagian dari meja redaksi Gapura 
 
 const RULES = {
   [SYNTHESIS]: `Susun ringkasan internal dari dokumen penerbit. Keluarkan satu baris {kind:"summary",title,angle,scope_note}. Scope_note adalah satu kalimat internal tentang batas cakupan yang material, bukan teks publik. Lalu 3–24 baris {kind:"evidence",source_id,fact_id,text} dengan ID unik (f1, f2, dst.), sedikitnya satu dari tiga penerbit berbeda. Target 8–14 petikan yang saling melengkapi bila tersedia, maksimal 25 kata tiap petikan, salin tepat termasuk huruf dan tanda baca; jangan memotong negasi, atribusi, keterangan kondisi atau satuan numerik. Ambil dari salah satu passage saja, tidak dari judul sumber. Jika passage berbahasa asing, salin petikan dalam bahasa aslinya; jangan diterjemahkan. Dilarang keluarkan URL. Untuk kutipan langsung hanya isi quote dan speaker bila keduanya serta tanda kutip benar-benar ada di petikan yang sama. Bila tersedia, beri {kind:"timeline",date,text,fact_ids}, {kind:"number",value,text,fact_ids}, serta {kind:"person"|"acronym",name,full_label,short_label,fact_ids}. Urutkan timeline. Date, value, nama dan jabatan/kepanjangan harus didukung petikan rujukan yang sama. Full_label memuat nama + jabatan lengkap atau kepanjangan + akronim; urutan nama dan jabatan boleh disesuaikan. Short_label opsional boleh meringkas jabatan dan memakai akronim lembaga yang jelas dipasangkan dengan kepanjangannya dalam petikan itu, misalnya "Iding Pardi, Direktur BEI"; bukan harus substring full_label. Pertahankan nama, tingkat jabatan, lembaga, serta kualifikasi seperti mantan atau pelaksana tugas. Jangan membuat token atau kapasitas baru. Field expansion/short diterima untuk kompatibilitas, pilih satu pasangan field. Jangan menebak untuk melengkapi daftar: tidak perlu baris fitur yang tidak didukung.` ,
-  [ARTICLE]: `Tulis artikel berita dengan piramida terbalik. Satu metadata (kind,headline,seo_title,meta_description dan fact_ids opsional), satu lead (kind,text,fact_ids), 3–4 section (kind:"section",section bernomor mulai 1,text hanya subjudul 3–10 kata), paragraph per section (kind:"paragraph",section,text,fact_ids), dan 2–4 takeaway (kind,text,fact_ids). Bila memilih 3 section, tulis tepat 3 paragraph per section; bila memilih 4 section, tulis 2–3 paragraph per section. Jangan memakai kind:"section" untuk paragraf isi dan jangan memakai kind:"paragraph" untuk subjudul. Body (lead + paragraf, tanpa subjudul) 350–550 kata; sasaran 420–465 kata. Tiap paragraf WAJIB 40–55 kata; lead 35–55 kata. Buka dengan perkembangan utama, bukan nama media/atribusi. Headline 10–12 kata dan maksimal 120 karakter, berfokus pada kebijakan atau satu pelaku utama. Hindari akronim di headline; gunakan nama lengkap atau sebutan umum yang tepat, dan pindahkan lembaga lain ke lead. SEO title maksimal 100 karakter; meta_description cukup satu kalimat ringkas 120–150 karakter, batas keras 200. Metadata SEO bukan patokan first mention dan tidak perlu memuat semua kepanjangan lembaga. Urutan baca publik untuk first mention adalah headline, lead, takeaway/Poin utama, lalu section dan paragraph. Pada penyebutan pertama orang/akronim dalam urutan itu, sertakan nama + jabatan lengkap atau kepanjangan + akronim dalam kalimat yang sama. Angka, tahun, persentase, nominal, dan satuan hanya boleh yang tertulis di fakta yang dirujuk; judul topik bukan bukti, jadi bila angkanya tidak muncul di fakta mana pun, jangan menuliskan angka itu. Setiap paragraf dan takeaway merujuk petikan yang tepat, sedikitnya tiga penerbit menopang isi artikel. Detail harus saling melengkapi, bukan mengulang satu fakta. Nama orang tidak wajib disebut; jika nama+jabatannya terlalu panjang, jelaskan kebijakan lembaganya tanpa nama orang, jangan memendekkan jabatan hingga salah. Jangan masukkan scope_note ke naskah. Parafrase klaim diperbolehkan, bukan menyalin kalimat sumber. Jangan memakai waktu relatif (kemarin, hari ini, besok, pekan ini, bulan ini, tahun ini); pakai tanggal absolut bersumber atau hilangkan klausa waktu.` ,
+  [ARTICLE]: `Tulis artikel berita dengan piramida terbalik. Satu metadata (kind,headline,seo_title,meta_description dan fact_ids opsional), satu lead (kind,text,fact_ids), 3–4 section (kind:"section",section bernomor mulai 1,text hanya subjudul 3–10 kata), paragraph per section (kind:"paragraph",section,text,fact_ids), dan 2–4 takeaway (kind,text,fact_ids). Bila memilih 3 section, tulis tepat 3 paragraph per section; bila memilih 4 section, tulis 2–3 paragraph per section. Jangan memakai kind:"section" untuk paragraf isi dan jangan memakai kind:"paragraph" untuk subjudul. Body (lead + paragraf, tanpa subjudul) 350–550 kata; sasaran 420–465 kata. Tiap paragraf WAJIB 40–55 kata; lead 35–55 kata. Buka dengan perkembangan utama, bukan nama media/atribusi. Headline 10–12 kata dan maksimal 120 karakter, berfokus pada kebijakan atau satu pelaku utama. Hindari akronim di headline; gunakan nama lengkap atau sebutan umum yang tepat, dan pindahkan lembaga lain ke lead. SEO title maksimal 100 karakter; meta_description cukup satu kalimat ringkas 120–150 karakter, batas keras 200. Metadata SEO bukan patokan first mention dan tidak perlu memuat semua kepanjangan lembaga. Urutan baca publik untuk first mention adalah headline, lead, takeaway/Poin utama, lalu section dan paragraph. Pada penyebutan pertama orang/akronim dalam urutan itu, sertakan nama + jabatan lengkap atau kepanjangan + akronim dalam kalimat yang sama. Angka, tahun, persentase, nominal, dan satuan hanya boleh yang tertulis di fakta yang dirujuk; judul topik bukan bukti, jadi bila angkanya tidak muncul di fakta mana pun, jangan menuliskan angka itu. Setiap paragraf dan takeaway merujuk petikan yang tepat, sedikitnya tiga penerbit menopang isi artikel. Detail harus saling melengkapi, bukan mengulang satu fakta. Nama orang tidak wajib disebut; jika nama+jabatannya terlalu panjang, jelaskan kebijakan lembaganya tanpa nama orang, jangan memendekkan jabatan hingga salah. Jangan masukkan scope_note ke naskah. Parafrase klaim diperbolehkan, bukan menyalin kalimat sumber. Hindari frasa "Menurut <Nama/Jabatan/Keterangan>" kecuali menyebut nama media sumber; gunakan atribusi langsung ("<Nama>, <Jabatan>, menyatakan..."). Jika seluruh fakta rujukan sebuah baris memuat kata kehati-hatian (diduga, belum, berpotensi, diperkirakan, kemungkinan, sementara), pertahankan penanda tersebut. Jangan memakai waktu relatif (kemarin, hari ini, besok, pekan ini, bulan ini, tahun ini); pakai tanggal absolut bersumber atau hilangkan klausa waktu.` ,
   [CAROUSEL]: `Adaptasi artikel menjadi tepat TIGA baris kind:"slide" (no 1–3) plus baris kind:"paragraph" untuk slide 2. Piramida terbalik: judul, inti, ajakan.
 Slide no 1 kind:"slide" role:"cover" layout:"editorial-cover": title = headline artikel (10–12 kata), text KOSONG, kicker unik kontekstual.
 Slide no 2 kind:"slide" role:"lead" layout:"editorial-lead": title pendek tematik maksimal 8 kata; text = teras berita (lead) 35–45 kata memuat inti peristiwa 5W+1H, dimulai dengan peristiwa utama; lalu 2–4 baris kind:"paragraph" no:2 berisi paragraf (masing-masing 30–60 kata, di bawah 30 kata dilarang) melanjutkan detail dari yang terpenting ke konteks. Total lead + semua paragraph WAJIB 120–250 kata (di bawah 100 kata ditolak; bila dua paragraf 30 kata masih kurang dari 100, tulis 3–4 paragraf). fact_ids slide harus mencakup fact_ids semua paragraph; sedikitnya tiga fact berbeda.
 Slide no 3 kind:"slide" role:"close" layout:"editorial-close": title pendek; question = SATU pertanyaan (akhir ?) mengajak pembaca berkomentar/menyampaikan pendapat; text = ajakan follow dan share plus kritik dan saran; total title + text + question maksimal 40 kata.
-Semua slide: purpose internal unik, visual_query frasa pencarian ilustrasi pendek (bukan URL, tidak ditampilkan). Jangan mengulang kicker/title antar slide. Jangan menulis hashtag. Jangan memakai kata waktu relatif (kemarin, hari ini, besok, pekan ini, bulan ini, tahun ini); gunakan tanggal absolut dari artikel atau hilangkan klausa waktu. Gunakan isi artikel yang sudah divalidasi; jangan menambah klaim, angka, atau tanggal baru.` ,
-  [CAPTION]: `Tulis caption Instagram mandiri: satu hook maksimal 120 karakter, 2–3 paragraf yang memberi progres atau konteks baru, dan satu pertanyaan diskusi pada penutup (tepat satu tanda tanya di akhir). Baris kind:"hook"|"paragraph"|"question" memuat text dan fact_ids yang diperlukan. Panjang body total 300–1700 karakter. Gunakan tiga atau lebih fakta berbeda. First mention setiap orang/akronim harus dengan jabatan/kepanjangan lengkap dalam kalimat yang sama. Dengan kind:"hashtag", keluarkan 5–7 baris unik, setiap text satu token tagar; jangan masukkan tagar ke body. Jangan memakai kata waktu relatif (kemarin, hari ini, besok, pekan ini, bulan ini, tahun ini); gunakan tanggal absolut dari artikel atau hilangkan klausa waktu. Hindari judul atau kalimat persis dari artikel, URL atau CTA generik.` ,
+Semua slide: purpose internal unik, visual_query frasa pencarian ilustrasi pendek (bukan URL, tidak ditampilkan). Jangan mengulang kicker/title antar slide. Jangan menulis hashtag. Hindari frasa "Menurut <Nama/Jabatan/Keterangan>" kecuali menyebut nama media sumber, dan pertahankan kata kehati-hatian jika seluruh fakta rujukan memuatnya. Jangan memakai kata waktu relatif (kemarin, hari ini, besok, pekan ini, bulan ini, tahun ini); gunakan tanggal absolut dari artikel atau hilangkan klausa waktu. Gunakan isi artikel yang sudah divalidasi; jangan menambah klaim, angka, atau tanggal baru.` ,
+  [CAPTION]: `Tulis caption Instagram mandiri: satu hook maksimal 120 karakter, 2–3 paragraf yang memberi progres atau konteks baru, dan satu pertanyaan diskusi pada penutup (tepat satu tanda tanya di akhir). Baris kind:"hook"|"paragraph"|"question" memuat text dan fact_ids yang diperlukan. Panjang body total 300–1700 karakter. Gunakan tiga atau lebih fakta berbeda. First mention setiap orang/akronim harus dengan jabatan/kepanjangan lengkap dalam kalimat yang sama. Dengan kind:"hashtag", keluarkan 5–7 baris unik, setiap text satu token tagar; jangan masukkan tagar ke body. Hindari frasa "Menurut <Nama/Jabatan/Keterangan>" kecuali menyebut nama media sumber; gunakan atribusi langsung ("<Nama>, <Jabatan>, menyatakan..."). Jika seluruh fakta rujukan sebuah baris memuat kata kehati-hatian (diduga, belum, berpotensi, diperkirakan, kemungkinan, sementara), pertahankan penanda tersebut. Jangan memakai kata waktu relatif (kemarin, hari ini, besok, pekan ini, bulan ini, tahun ini); gunakan tanggal absolut dari artikel atau hilangkan klausa waktu. Hindari judul atau kalimat persis dari artikel, URL atau CTA generik.` ,
   [THREADS]: `Buat rangkaian Threads empat pos berbeda, masing-masing {no,text,fact_ids}, no 1–4, maksimum 420 karakter per pos. Tidak ada tagar atau nomor pos di text. Pos 1 perkembangan dan relevansinya; pos 2 konteks/perincian yang didukung; pos 3 apa artinya bagi pembaca atau pihak terkait; pos 4 sintesis atau pertanyaan konkret. Tulis alami, bukan mengulang hook yang sama. Pada first mention gunakan jabatan/kepanjangan lengkap atau short persis dari registry dalam satu frasa. Jika nama/akronim tidak dapat dijelaskan dengan tepat, tulis tanpa menyebutnya. Jangan memakai kata waktu relatif (kemarin, hari ini, besok, pekan ini, bulan ini, tahun ini); gunakan tanggal absolut dari artikel atau hilangkan klausa waktu.` ,
 };
 
@@ -751,6 +751,49 @@ export async function buildStagedStory(brief, {
         throw error;
       }
     };
+    const localFirstMentionRepair = async (rows, code) => {
+      if (!rows || !/^(?:person|acronym)_first_mention_unexpanded$/u.test(code)) return null;
+      const entities = Array.isArray(context.entities) ? context.entities : [];
+      if (!entities.length || ![ARTICLE, CAROUSEL, CAPTION, THREADS].includes(stage)) return null;
+      const candidate = structuredClone(rows);
+      const allowShort = stage === CAROUSEL || stage === THREADS;
+      const orderedRows = stage === ARTICLE
+        ? [
+          ...candidate.filter((row) => row.kind === 'lead'),
+          ...candidate.filter((row) => row.kind === 'takeaway'),
+          ...candidate.filter((row) => row.kind === 'paragraph'),
+        ]
+        : stage === CAROUSEL
+          ? candidate.filter((row) => (row.kind === 'slide' && row.no === 2) || row.kind === 'paragraph')
+          : stage === CAPTION
+            ? candidate.filter((row) => ['hook', 'paragraph', 'question'].includes(row.kind))
+            : candidate;
+      const tokens = (value) => plain(value).toLocaleLowerCase('id').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+      const namePattern = (name) => new RegExp(`(?<![\\p{L}\\p{N}])${escapePattern(name)}(?![\\p{L}\\p{N}])`, 'iu');
+      let changed = false;
+      for (const entity of entities) {
+        if (!entity?.name || !entity?.expansion) continue;
+        const matcher = namePattern(entity.name);
+        const firstRow = orderedRows.find((row) => typeof row?.text === 'string' && matcher.test(row.text));
+        if (!firstRow) continue;
+        const label = allowShort && entity.short ? entity.short : entity.expansion;
+        const coreLabel = tokens(label).replace(new RegExp(`(?:^|\\s)${escapePattern(tokens(entity.name))}(?=\\s|$)`, 'gu'), ' ').replace(/\s+/gu, ' ').trim();
+        const sentenceText = firstRow.text;
+        const alreadyExpanded = !coreLabel || verbatim(tokens(label), [tokens(sentenceText)]) || verbatim(coreLabel, [tokens(sentenceText)]);
+        if (alreadyExpanded) continue;
+        const replacement = matcher.test(label)
+          ? label
+          : entity.kind === 'acronym'
+            ? `${label} (${entity.name})`
+            : `${label} ${entity.name}`;
+        firstRow.text = firstRow.text.replace(matcher, replacement);
+        const mergedFacts = [...new Set([...(firstRow.fact_ids || '').split(',').map((id) => id.trim()).filter(Boolean), ...(entity.fact_ids || [])])];
+        if (mergedFacts.length) firstRow.fact_ids = mergedFacts.join(',');
+        changed = true;
+      }
+      if (!changed) return null;
+      return candidate;
+    };
     if (stage === ARTICLE && repairIssues && previous?.value) {
       articleRepairPlan = articleReviewPlan(previous.value, repairIssues);
       if (articleRepairPlan) {
@@ -812,13 +855,27 @@ export async function buildStagedStory(brief, {
           Object.assign(record, { status: 'failed', duration_ms: Date.now() - start, error: errorDetail(error) });
           let code = String(record.error);
           let localValue = await localEntityRepair(rows, code);
-          const repairSource = localValue ? 'local_entity' : 'local_fact';
+          let repairSource = localValue ? 'local_entity' : 'local_fact';
           if (!localValue) {
             const repaired = await localFactRepair(rows, code);
             if (repaired) {
               rows = repaired;
               try { localValue = await pythonGate({ op: 'validate', stage, value: rows, context }); }
               catch (remaining) {
+                if (!(remaining instanceof EditorialValidationError)) throw remaining;
+                code = errorDetail(remaining);
+                record.error = code;
+              }
+            }
+          }
+          if (!localValue) {
+            const mentionRepaired = await localFirstMentionRepair(rows, code);
+            if (mentionRepaired) {
+              try {
+                localValue = await pythonGate({ op: 'validate', stage, value: mentionRepaired, context });
+                rows = mentionRepaired;
+                repairSource = 'local_first_mention';
+              } catch (remaining) {
                 if (!(remaining instanceof EditorialValidationError)) throw remaining;
                 code = errorDetail(remaining);
                 record.error = code;

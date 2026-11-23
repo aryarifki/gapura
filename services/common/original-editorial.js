@@ -484,8 +484,12 @@ function assertEntitiesExpanded(entities, channels) {
   const labelIn = (sentence, label) => contains(words(sentence), words(label));
   for (const { value, allowShort = false } of channels) for (const entity of entities) {
     const sentence = [...segmenter.segment(value)].map(({ segment }) => segment).find((part) => contains(part, entity.name));
+    const nameWords = words(entity.name);
+    const coreExpansion = (label) => (nameWords
+      ? words(label).replace(new RegExp(`(?:^|\\s)${nameWords.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}(?=\\s|$)`, 'gu'), ' ')
+      : words(label)).replace(/\s+/gu, ' ').trim();
     const expandedIn = (label) => labelIn(sentence || '', label)
-      || (entity.kind === 'person' && labelIn(sentence || '', words(label).replace(words(entity.name), '').trim()));
+      || (Boolean(coreExpansion(label)) && labelIn(sentence || '', coreExpansion(label)));
     const compactPerson = allowShort && entity.kind === 'acronym' && entities.some((person) => person.kind === 'person' && person.short
       && contains(person.short, entity.name) && labelIn(sentence || '', person.short)
       && person.fact_ids.some((id) => entity.fact_ids.includes(id)));

@@ -59,7 +59,8 @@ NUMBER = re.compile(
     r"(?<![\w.,+\-])(?:(Rp|IDR|USD|US\$|EUR|\$)\s*)?([+\-]?\d+(?:[.,]\d+)*)"
     r"(?:\s*(%|persen\b|ribu\b|juta\b|miliar\b|triliun\b|bps\b|basis\s+(?:poin|point)\b|kg\b|km\b))?(?!\w|[.,]\d)", re.I
 )
-QUALIFIER = re.compile(r"\b(?:diduga|dugaan|dituduh|tuduhan|belum|berpotensi|diperkirakan|kemungkinan)\b", re.I)
+QUALIFIER = re.compile(r"\b(?:diduga|dugaan|dituduh|tuduhan|belum|berpotensi|diperkirakan|sementara(?!\s+itu\b)|kemungkinan)\b", re.I)
+ATTRIBUTION = re.compile(r"\b[Mm]enurut\s+([A-Z\u00C0-\u024F][A-Za-z\u00C0-\u024F]*)")
 ASSERTED = re.compile(r"\b(?:menetapkan|memutuskan|mengumumkan|mengonfirmasi|terjadi|meninggal|tewas|ditangkap|ditahan|mencapai|terdampak|naik|turun|menang|kalah|dinyatakan|mengalami|memastikan)\b", re.I)
 QUESTION_END = re.compile(r"\?$")
 MONTHS = "januari februari maret april mei juni juli agustus september oktober november desember".split()
@@ -243,9 +244,16 @@ def claim(text, ids, facts, field, maximum=1500, minimum=1, *, question=False):
     quoted = re.findall(r'[“"]([^”"]+)[”"]', text)
     require(all(any(facts[key].get("quote", {}).get("text") == part.rstrip(",") and
                     contains(text, facts[key]["quote"]["speaker"]) for key in ids) for part in quoted), f"{field}_quote_unreferenced")
+    source_names = [clean(facts[item].get("source_name", "")).casefold() for item in ids if facts[item].get("source_name")]
+    for match in ATTRIBUTION.finditer(text):
+        if re.fullmatch(r"(?:anda|kamu|kalian)", match.group(1), re.I) and text.endswith("?"):
+            continue
+        if source_names:
+            require(any(match.group(1).casefold() in name for name in source_names), f"{field}_source_unreferenced")
+    if not question and ids:
+        require(QUALIFIER.search(text) or not all(QUALIFIER.search(source) for source in support), f"{field}_qualifier_missing")
     if not question and ASSERTED.search(text):
         require(ids, f"{field}_fact_ids_required")
-        require(QUALIFIER.search(text) or not all(QUALIFIER.search(source) for source in support), f"{field}_qualifier_missing")
 
 
 def question(text, field):

@@ -127,3 +127,16 @@ test('Gemini structured generation receives the editorial JSON schema', () => {
   assert.deepEqual(request.body.generationConfig.responseJsonSchema, EDITORIAL_STORY_SCHEMA);
   assert.equal(request.body.generationConfig.responseMimeType, 'application/json');
 });
+
+test('story acronym first mention accepts full expansion wording even when the acronym is introduced inline', () => {
+  const raw = storyFixture();
+  const b = brief();
+  b.facts.push({ id: 'acr', text: 'Data Survei Sosial Ekonomi Nasional (Susenas) dipakai untuk memetakan biaya hidup.', source_url: 'https://city.example.com/susenas', source_name: 'BPS Kota Uji' });
+  raw.article_metadata.entities.push({ kind: 'acronym', name: 'Susenas', expansion: 'Survei Sosial Ekonomi Nasional (Susenas)', fact_ids: ['acr'] });
+  const target = raw.article_metadata.sections[0].paragraphs[0];
+  target.text += ' Data tersebut bersumber dari Survei Sosial Ekonomi Nasional atau disingkat sebagai Susenas terbaru.';
+  target.fact_ids.push('acr');
+  assert.doesNotThrow(() => validateOriginalContent(raw, b));
+  target.text = target.text.replace('Survei Sosial Ekonomi Nasional atau disingkat sebagai Susenas', 'Susenas');
+  assert.throws(() => validateOriginalContent(raw, b), /acronym_first_mention_unexpanded/u);
+});
