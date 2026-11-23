@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import { configuredGeminiKeys, geminiPoolStatus, markGeminiKey, resetGeminiPool, selectGeminiKeys } from '../llm-pool.js';
+import { configuredGeminiKeys, geminiCooldownMs, geminiPoolStatus, markGeminiKey, resetGeminiPool, selectGeminiKeys } from '../llm-pool.js';
 
 test('collects six indexed credentials in slot order and deduplicates legacy keys', () => {
   resetGeminiPool();
@@ -46,4 +46,14 @@ test('API_KEY_INVALID quarantines; model availability errors do not', () => {
   markGeminiKey('bad-key', 'API_KEY_INVALID');
   markGeminiKey('valid-key', 404);
   assert.deepEqual(geminiPoolStatus(['bad-key', 'valid-key']).map(({ state }) => state), ['quarantined', 'ready']);
+});
+
+test('reports how long until the first pooled key leaves its 429 cooldown', () => {
+  resetGeminiPool();
+  const keys = ['cool-a', 'cool-b'];
+  markGeminiKey('cool-a', 429, 1_000);
+  markGeminiKey('cool-b', 429, 5_000);
+  assert.equal(geminiCooldownMs(keys, 2_000), 64_000);
+  assert.equal(geminiCooldownMs(keys, 66_000), 0);
+  assert.equal(geminiCooldownMs(['fresh'], 2_000), 0);
 });

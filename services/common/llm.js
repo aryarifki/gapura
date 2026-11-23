@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildAttempts, buildChatRequest, parseChatResponse, adaptChatBody, loadProvidersConfig } from './providers.js';
 import { loadProviderSecrets } from './secret-store.js';
-import { markGeminiKey } from './llm-pool.js';
+import { markGeminiKey, configuredGeminiKeys, geminiCooldownMs } from './llm-pool.js';
 import { normalizeJsonResponse } from './json-repair.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -328,9 +328,25 @@ export async function callAgentLLM(agentKey, promptText, systemPrompt = '', json
   const secrets = options.secrets ?? (process.env.NODE_ENV === 'test' ? {} : loadProviderSecrets());
   const env = options.env || process.env;
   const geminiLimit = Number.isSafeInteger(options.geminiAttemptLimit) && options.geminiAttemptLimit >= 0 ? options.geminiAttemptLimit : Infinity;
-  let geminiCount = 0;
-  const attempts = buildAttempts(agent, providers, { env, secrets, stage: options.stage || '' })
-    .filter((attempt) => attempt.providerId !== 'gemini' || geminiCount++ < geminiLimit);
+  const buildChain = () => {
+    let geminiCount = 0;
+    return buildAttempts(agent, providers, { env, secrets, stage: options.stage || '' })
+      .filter((attempt) => attempt.providerId !== 'gemini' || geminiCount++ < geminiLimit);
+  };
+  let attempts = buildChain();
+  // A 429 burst can put every pooled Gemini key into its 65s cooldown, so the
+  // chain would be built without any Gemini attempt and fall straight through
+  // to Groq/OpenRouter — which cannot serve a ~9k-token staged prompt (413/402).
+  // For staged editoral calls, wait out the shortest cooldown and rebuild once.
+  if (options.stage && String(agent.provider || '').toLowerCase() === 'gemini' && !attempts.some((attempt) => attempt.poolKey)) {
+    const poolKeys = configuredGeminiKeys({ env, secrets, inlineKey: agent.api_key });
+    const waitMs = Math.min(geminiCooldownMs(poolKeys), Number(options.maxPoolWaitMs ?? 70000));
+    if (waitMs > 0) {
+      const sleep = options.sleepImpl || ((ms) => new Promise((resolve) => { setTimeout(resolve, ms); }));
+      await sleep(waitMs);
+      attempts = buildChain();
+    }
+  }
   if (!attempts.length) throw new Error(`Tidak ada provider yang dapat dipakai untuk agen ${agentKey}.`);
   const skills = options.skills ?? loadAgentSkills(agentKey);
   const policy = [...new Set([
@@ -347,9 +363,14 @@ export async function callAgentLLM(agentKey, promptText, systemPrompt = '', json
   const secretsToRedact = [...new Set([...attempts.map((attempt) => attempt.apiKey), ...Object.entries(secrets).filter(([name]) => /(?:API_KEY|GEMINI_API_KEYS)/u.test(name)).map(([, value]) => String(value).split(','))].flat())];
   let lastError;
   let index = 0;
+  let rateLimited = false;
   const transientFailures = new Map();
   const skipProvider = (providerId) => {
     while (attempts[index + 1]?.providerId === providerId) index++;
+  };
+  const fail = () => {
+    if (lastError) lastError.rateLimited = rateLimited;
+    throw lastError;
   };
   while (index < attempts.length) {
     const attempt = attempts[index];
@@ -366,6 +387,7 @@ export async function callAgentLLM(agentKey, promptText, systemPrompt = '', json
       return result.value;
     } catch (error) {
       const safeCode = /^[A-Z][A-Z0-9_]{1,63}$/u.test(String(error.code || '')) ? error.code : null;
+      if (error.status === 429) rateLimited = true;
       if (attempt.poolKey && (error.quarantine || [401, 403].includes(error.status))) markGeminiKey(attempt.poolKey, error.quarantine ? 'API_KEY_INVALID' : error.status);
       else if (attempt.poolKey && error.status === 429) markGeminiKey(attempt.poolKey, 429);
       lastError = new Error(redactProviderError(error.message, secretsToRedact));
@@ -376,7 +398,7 @@ export async function callAgentLLM(agentKey, promptText, systemPrompt = '', json
           : error.status === 408 ? 'timeout' : [500, 502, 503, 504].includes(error.status) ? 'transient_error' : 'error',
         ...(safeCode ? { error_code: safeCode } : {}),
       });
-      if (!error.retryable && !error.skipProvider) throw lastError;
+      if (!error.retryable && !error.skipProvider) fail();
       if (error.skipProvider) skipProvider(attempt.providerId);
       else if (attempt.poolKey && (error.quarantine || [401, 403, 429].includes(error.status))) {
         // Rotate this unhealthy credential only; leave later pool slots eligible.
@@ -387,9 +409,9 @@ export async function callAgentLLM(agentKey, promptText, systemPrompt = '', json
         if (count >= 2) skipProvider(attempt.providerId);
         else if (!attempt.poolKey) index--;
       } else skipProvider(attempt.providerId);
-      if (index >= attempts.length - 1) throw lastError;
+      if (index >= attempts.length - 1) fail();
     }
     index++;
   }
-  throw lastError;
+  fail();
 }

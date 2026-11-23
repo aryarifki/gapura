@@ -37,4 +37,14 @@ export function markGeminiKey(key, status, now = Date.now()) {
 export function geminiPoolStatus(keys, now = Date.now()) {
   return keys.map((key, index) => { const s = slot(key); return { slot: index + 1, state: s.quarantined ? 'quarantined' : s.cooldownUntil > now ? 'cooldown' : 'ready', cooldown_until: s.cooldownUntil || null }; });
 }
+
+/** Milliseconds until the first pooled key leaves its 429 cooldown; 0 when one is ready. */
+export function geminiCooldownMs(keys, now = Date.now()) {
+  const unique = [...new Set((keys || []).map(normal).filter(Boolean))];
+  if (!unique.length) return 0;
+  if (unique.some((key) => { const s = slot(key); return !s.quarantined && s.cooldownUntil <= now; })) return 0;
+  const pending = unique.filter((key) => !slot(key).quarantined).map((key) => slot(key).cooldownUntil - now).filter((ms) => ms > 0);
+  return pending.length ? Math.min(...pending) : 0;
+}
+
 export function resetGeminiPool() { state.clear(); state.cursor = 0; }

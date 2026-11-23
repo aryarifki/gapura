@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { callAgentLLM, loadAgentSkills, saveAgentSkills } from '../llm.js';
 import { buildAttempts } from '../providers.js';
-import { geminiPoolStatus, resetGeminiPool } from '../llm-pool.js';
+import { geminiPoolStatus, markGeminiKey, resetGeminiPool } from '../llm-pool.js';
 
 test('Gemini sends credentials in a header and uses real system instructions plus temporary skills', async () => {
   let request;
@@ -464,4 +464,46 @@ test('rejects a streamed MAX_TOKENS response instead of accepting truncated JSON
       : Response.json({ choices: [{ message: { content: '{"rows":[]}' } }] }),
   });
   assert.equal(result, '{"rows":[]}');
+});
+
+test('a staged call waits out a full Gemini cooldown instead of falling to dead fallbacks', async () => {
+  resetGeminiPool();
+  markGeminiKey('cooled-key', 429, Date.now());
+  const deadlines = [];
+  const result = await callAgentLLM('copywriter', 'Return JSON', '', true, {
+    config: { copywriter: { provider: 'gemini', model: 'gemini-3-flash-preview' } },
+    providers: routerProviders(), env: { GEMINI_API_KEY_1: 'cooled-key', GROQ_API_KEY: 'groq' }, secrets: {},
+    stage: 'stage2_article',
+    sleepImpl: async (ms) => { deadlines.push(ms); resetGeminiPool(); },
+    fetchImpl: async () => Response.json({ candidates: [{ content: { parts: [{ text: '{"rows":[]}' }] } }] }),
+  });
+  assert.equal(result, '{"rows":[]}');
+  assert.equal(deadlines.length, 1);
+  assert.ok(deadlines[0] > 60_000 && deadlines[0] <= 65_000, String(deadlines[0]));
+});
+
+test('a non-staged call never waits for the Gemini cooldown', async () => {
+  resetGeminiPool();
+  markGeminiKey('cooled-key', 429, Date.now());
+  let slept = false;
+  const result = await callAgentLLM('studio', 'Return JSON', '', true, {
+    config: { studio: { provider: 'gemini', model: 'gemini-3-flash-preview' } },
+    providers: routerProviders(), env: { GEMINI_API_KEY_1: 'cooled-key', GROQ_API_KEY: 'groq' }, secrets: {},
+    sleepImpl: async () => { slept = true; },
+    fetchImpl: async () => Response.json({ choices: [{ message: { content: '{}' } }] }),
+  });
+  assert.equal(result, '{}');
+  assert.equal(slept, false);
+});
+
+test('an exhausted chain marks the thrown error as rate limited when any provider returned 429', async () => {
+  resetGeminiPool();
+  const error = await callAgentLLM('studio', 'Return JSON', '', true, {
+    config: routerConfig, providers: routerProviders(),
+    env: { GEMINI_API_KEY_1: 'rl', GROQ_API_KEY: 'rlg', OPENROUTER_API_KEY: 'rlo' }, secrets: {},
+    timeoutMs: 50,
+    fetchImpl: async (url) => new Response('{"error":{"code":429}}', { status: 429 }),
+  }).catch((failure) => failure);
+  assert.match(error.message, /\(429,/u);
+  assert.equal(error.rateLimited, true);
 });
