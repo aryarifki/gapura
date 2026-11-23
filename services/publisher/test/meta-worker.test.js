@@ -2,7 +2,7 @@ import test, { after, afterEach, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { captionHash, createMetaPublisherWorker, publicationConfigFromEnv } from '../meta-worker.js';
+import { captionHash, createMetaPublisherWorker, parseWorkerArgs, publicationConfigFromEnv } from '../meta-worker.js';
 import { draftContentHash } from '../../common/draft-revision.js';
 
 const configRoot = fs.mkdtempSync('/tmp/opencode/gapura-meta-worker-config-');
@@ -93,12 +93,13 @@ function assertReviewEvidence(q) {
 
 function fakePool(rows, { inserted = 1, failPublishedOnce = false, saveContainerCount = 1 } = {}) {
   const queue = structuredClone(rows);
-  const state = { updates: [], audits: [], shadowResets: 0, inserts: 0, queries: [], current: structuredClone(rows[0]), scheduleActive: true };
+  const state = { updates: [], audits: [], shadowResets: 0, inserts: 0, queries: [], queryCalls: [], current: structuredClone(rows[0]), scheduleActive: true };
   const client = {
     release() {},
     async query(sql, values = []) {
       const q = sql.replace(/\s+/g, ' ').trim();
       state.queries.push(q);
+      state.queryCalls.push({ q, values });
       if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(q)) return { rows: [], rowCount: 0 };
       if (/^SELECT t\.\*/i.test(q)) {
         assertReviewEvidence(q);
@@ -689,4 +690,53 @@ test('shadow uses the same complete R6 revision as live publication, including c
     assert.equal(graph.calls.length, 0);
     assert.equal(pool.state.updates[0].status, change ? 'blocked' : 'shadow');
   }
+});
+
+test('parseWorkerArgs parses --reset-shadow and --draft-id and rejects invalid values fail-closed', () => {
+  assert.deepEqual(parseWorkerArgs([]), { resetShadow: false, draftId: null });
+  assert.deepEqual(parseWorkerArgs(['--reset-shadow']), { resetShadow: true, draftId: null });
+  assert.deepEqual(parseWorkerArgs(['--draft-id', '159']), { resetShadow: false, draftId: 159 });
+  assert.deepEqual(parseWorkerArgs(['--draft-id=159', '--reset-shadow']), { resetShadow: true, draftId: 159 });
+  for (const invalid of [
+    ['--draft-id'],
+    ['--draft-id', ''],
+    ['--draft-id='],
+    ['--draft-id', '0'],
+    ['--draft-id', '-5'],
+    ['--draft-id', 'abc'],
+    ['--draft-id=159x'],
+    ['--draft-id', '--reset-shadow'],
+  ]) {
+    assert.throws(() => parseWorkerArgs(invalid), /draft-id|draft_id/i, JSON.stringify(invalid));
+  }
+});
+
+test('runOnce forwards draftId filter to resetShadow, syncTargets and CLAIM_NEXT and rejects invalid draftId before DB calls', async () => {
+  const pool = fakePool([claimRow({ draft_id: 159 })]);
+  const worker = createMetaPublisherWorker({ pool, config: publicationConfigFromEnv(baseEnv), fetchImpl: async () => { throw new Error('no calls'); } });
+  const result = await worker.runOnce({ resetShadow: true, draftId: 159 });
+  assert.equal(result.shadow, 1);
+
+  const resetCall = pool.state.queryCalls.find(({ q }) => /UPDATE publication_targets SET status = 'pending'/i.test(q));
+  assert.match(resetCall.q, /\(\$1::bigint IS NULL OR draft_id = \$1::bigint\)/);
+  assert.deepEqual(resetCall.values, [159]);
+
+  const syncCalls = pool.state.queryCalls.filter(({ q }) => /^INSERT INTO publication_targets/i.test(q));
+  assert.equal(syncCalls.length, 2);
+  for (const call of syncCalls) {
+    assert.match(call.q, /\(\$3::bigint IS NULL OR d\.id = \$3::bigint\)/);
+    assert.equal(call.values[2], 159);
+  }
+
+  const claimCalls = pool.state.queryCalls.filter(({ q }) => /^WITH candidate/i.test(q));
+  assert.equal(claimCalls.length, 2);
+  for (const call of claimCalls) {
+    assert.match(call.q, /\(\$3::bigint IS NULL OR t\.draft_id = \$3::bigint\)/);
+    assert.equal(call.values[2], 159);
+  }
+
+  const badPool = fakePool([]);
+  const badWorker = createMetaPublisherWorker({ pool: badPool, config: publicationConfigFromEnv(baseEnv), fetchImpl: async () => { throw new Error('no calls'); } });
+  await assert.rejects(() => badWorker.runOnce({ draftId: 'not-a-number' }), /draft_id/i);
+  assert.equal(badPool.state.queryCalls.length, 0);
 });

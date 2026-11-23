@@ -70,6 +70,44 @@ export function publicationConfigFromEnv(env = process.env) {
   };
 }
 
+export function normalizeDraftId(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const text = typeof value === 'string' ? value.trim() : String(value);
+  if (!/^[1-9][0-9]*$/.test(text)) {
+    throw new Error('draft_id publikasi harus berupa bilangan bulat positif.');
+  }
+  const parsed = Number(text);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new Error('draft_id publikasi harus berupa bilangan bulat positif.');
+  }
+  return parsed;
+}
+
+export function parseWorkerArgs(argv = process.argv.slice(2)) {
+  let resetShadow = false;
+  let draftId = null;
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === '--reset-shadow') {
+      resetShadow = true;
+    } else if (arg === '--draft-id') {
+      const next = argv[i + 1];
+      if (!next || next.startsWith('--')) {
+        throw new Error('Argumen --draft-id wajib disertai bilangan bulat positif.');
+      }
+      draftId = normalizeDraftId(next);
+      i++;
+    } else if (arg.startsWith('--draft-id=')) {
+      const raw = arg.slice('--draft-id='.length);
+      draftId = normalizeDraftId(raw);
+      if (draftId === null) {
+        throw new Error('Argumen --draft-id wajib disertai bilangan bulat positif.');
+      }
+    }
+  }
+  return { resetShadow, draftId };
+}
+
 export function captionHash(caption) {
   return crypto.createHash('sha256').update(String(caption ?? '')).digest('hex');
 }
@@ -117,7 +155,7 @@ const CLAIM_NEXT = `
     JOIN jsonb_to_recordset($1::jsonb) active(platform text, account_id text)
       ON active.platform = t.platform AND active.account_id = t.account_id
     WHERE t.status = 'pending' AND d.status = 'scheduled'
-      AND NOT (t.id = ANY($2::bigint[])) AND ${DUE_SCHEDULE}
+      AND NOT (t.id = ANY($2::bigint[])) AND ($3::bigint IS NULL OR t.draft_id = $3::bigint) AND ${DUE_SCHEDULE}
       AND EXISTS (SELECT 1 FROM scheduled_posts due WHERE due.id = t.schedule_id
         AND due.draft_id = d.id AND due.status = 'pending' AND due.mode = 'auto' AND due.scheduled_at <= NOW())
     ORDER BY t.created_at ASC, t.id ASC
@@ -157,7 +195,8 @@ export function createMetaPublisherWorker({ pool, config, fetchImpl = globalThis
     return wrapped;
   }
 
-  async function syncTargets(client) {
+  async function syncTargets(client, { draftId = null } = {}) {
+    const targetDraftId = normalizeDraftId(draftId);
     let inserted = 0;
     for (const platform of PLATFORM_KEYS) {
       const entry = config.platforms[platform];
@@ -172,6 +211,7 @@ export function createMetaPublisherWorker({ pool, config, fetchImpl = globalThis
            AND status = 'pending' AND mode = 'auto' AND scheduled_at <= NOW()
            ORDER BY scheduled_at DESC, id DESC LIMIT 1) sp ON TRUE
            WHERE d.status = 'scheduled' AND ${DUE_SCHEDULE}
+             AND ($3::bigint IS NULL OR d.id = $3::bigint)
              AND NOT EXISTS (SELECT 1 FROM publication_targets old WHERE old.draft_id = d.id
                AND old.platform = $1 AND old.account_id <> $2)
          ON CONFLICT (draft_id, platform, account_id) DO UPDATE
@@ -181,7 +221,7 @@ export function createMetaPublisherWorker({ pool, config, fetchImpl = globalThis
              AND publication_targets.status IN ('pending', 'shadow', 'blocked', 'failed')
              AND publication_targets.remote_id IS NULL AND publication_targets.container_id IS NULL
              AND publication_targets.publish_attempted_at IS NULL`,
-        [platform, entry.accountId],
+        [platform, entry.accountId, targetDraftId],
       );
       inserted += rowCount || 0;
     }
@@ -203,20 +243,22 @@ export function createMetaPublisherWorker({ pool, config, fetchImpl = globalThis
     if (rowCount !== 1) throw new Error('Klaim publikasi hilang saat finalisasi.');
   }
 
-  async function runOnce({ resetShadow = false } = {}) {
+  async function runOnce({ resetShadow = false, draftId = null } = {}) {
+    const targetDraftId = normalizeDraftId(draftId);
     const result = { inserted: 0, shadow: 0, published: 0, failed: 0, blocked: 0, unknown: 0, retried: 0 };
     const client = await pool.connect();
     const attempted = [];
     try {
       if (resetShadow) {
         const { rowCount } = await client.query(
-          `UPDATE publication_targets SET status = 'pending', updated_at = NOW() WHERE status = 'shadow'`,
+          `UPDATE publication_targets SET status = 'pending', updated_at = NOW() WHERE status = 'shadow' AND ($1::bigint IS NULL OR draft_id = $1::bigint)`,
+          [targetDraftId],
         );
         result.reset = rowCount || 0;
       }
-      result.inserted = await syncTargets(client);
+      result.inserted = await syncTargets(client, { draftId: targetDraftId });
       while (true) {
-        const { rows } = await client.query(CLAIM_NEXT, [JSON.stringify(activeAccounts), attempted]);
+        const { rows } = await client.query(CLAIM_NEXT, [JSON.stringify(activeAccounts), attempted, targetDraftId]);
         if (!rows.length) break;
         const row = rows[0];
         attempted.push(row.id);
@@ -368,15 +410,22 @@ function defaultRuntime() {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  let args;
+  try {
+    args = parseWorkerArgs(process.argv.slice(2));
+  } catch (error) {
+    console.error('[MetaPublisher] Argumen tidak valid:', error.message);
+    process.exit(1);
+  }
   const runtime = defaultRuntime();
   const enabled = Object.values(runtime.config.platforms).some((entry) => entry.enabled);
   if (!enabled) {
     console.log('[MetaPublisher] Tidak ada platform aktif (META_PLATFORMS kosong atau kredensial belum lengkap).');
     process.exit(0);
   }
-  console.log(`[MetaPublisher] mode=${runtime.config.mode}`);
+  console.log(`[MetaPublisher] mode=${runtime.config.mode}${args.draftId ? ` draft_id=${args.draftId}` : ''}`);
   createMetaPublisherWorker({ pool: runtime.pool, config: runtime.config })
-    .runOnce({ resetShadow: process.argv.includes('--reset-shadow') })
+    .runOnce(args)
     .then((result) => { console.log('[MetaPublisher]', JSON.stringify(result)); process.exit(0); })
     .catch((error) => { console.error('[MetaPublisher] Runner gagal:', error.message); process.exit(1); });
 }
