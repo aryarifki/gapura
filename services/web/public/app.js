@@ -1629,20 +1629,35 @@ async function rejectCurrentDraft() {
 
 async function publishCurrentDraftNow() {
   if (!activeDraft) return;
+  const statusEl = document.getElementById('editor-publish-status');
+  const setInlineStatus = (html) => {
+    if (!statusEl) return;
+    statusEl.innerHTML = html;
+    statusEl.style.display = 'block';
+  };
   if (!activeDraft.revision) {
-    showToast('Muat ulang atau buka kembali draf dari galeri sebelum publish langsung.');
+    const msg = 'Muat ulang atau buka kembali draf dari galeri sebelum publish langsung.';
+    setInlineStatus(`<b style="color: var(--danger, #b23a48);">Gagal:</b> ${escapeHtml(msg)}`);
+    showToast(msg);
     return;
   }
-  const reviewed = document.getElementById('editor-reviewed')?.checked === true;
+  const reviewedEl = document.getElementById('editor-reviewed');
+  const reviewed = reviewedEl?.checked === true;
   if (activeDraft.status === 'draft' && !reviewed) {
-    showToast('Centang konfirmasi review editorial terlebih dahulu sebelum publish lintas platform.');
+    const msg = 'Centang kotak konfirmasi review di bawah sebelum klik Publish sekarang.';
+    setInlineStatus(`<b style="color: var(--highlight, #d79344);">Perlu Konfirmasi Review:</b> ${escapeHtml(msg)}`);
+    if (reviewedEl && typeof reviewedEl.focus === 'function') reviewedEl.focus();
+    showToast(msg);
     return;
   }
   if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
     if (!window.confirm(`Publish draf #${activeDraft.id} sekarang ke seluruh platform Meta aktif (Instagram & Facebook)?`)) return;
   }
   const btn = document.getElementById('btn-action-publish-now');
+  const btnLabel = btn?.querySelector('span');
   if (btn) btn.disabled = true;
+  if (btnLabel) btnLabel.textContent = 'Mempublikasikan...';
+  setInlineStatus(`<b>Memproses:</b> Sedang mempublikasikan Draf #${escapeHtml(String(activeDraft.id))} ke Instagram &amp; Facebook...`);
   showToast(`Mengirim draf #${activeDraft.id} ke Instagram & Facebook...`);
   try {
     const res = await fetch(`/api/drafts/${activeDraft.id}/publish-now`, {
@@ -1655,11 +1670,17 @@ async function publishCurrentDraftNow() {
     const publishedPlatforms = (result.targets || [])
       .filter((t) => t.status === 'published')
       .map((t) => String(t.platform || '').toUpperCase());
+    renderDraftPublishStatus({
+      publication_targets: result.targets || [],
+      latest_schedule: activeDraft.latest_schedule,
+    });
     showToast(`Draf #${activeDraft.id} berhasil dipublish (${publishedPlatforms.join(', ') || 'Meta'}).`);
     showGalleryView();
   } catch (err) {
+    setInlineStatus(`<b style="color: var(--danger, #b23a48);">Gagal publish langsung:</b> ${escapeHtml(err.message)}`);
     showToast(`Gagal publish langsung: ${err.message}`);
   } finally {
+    if (btnLabel) btnLabel.textContent = 'Publish sekarang';
     if (btn) btn.disabled = activeDraft?.status === 'published' || activeDraft?.status === 'rejected';
   }
 }
