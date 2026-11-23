@@ -1670,12 +1670,20 @@ async function publishCurrentDraftNow() {
     const publishedPlatforms = (result.targets || [])
       .filter((t) => t.status === 'published')
       .map((t) => String(t.platform || '').toUpperCase());
+    const unpubPlatforms = (result.targets || [])
+      .filter((t) => t.status !== 'published')
+      .map((t) => `${String(t.platform || '').toUpperCase()} (${t.status}${t.error_message ? `: ${t.error_message}` : ''})`);
     renderDraftPublishStatus({
       publication_targets: result.targets || [],
       latest_schedule: activeDraft.latest_schedule,
     });
-    showToast(`Draf #${activeDraft.id} berhasil dipublish (${publishedPlatforms.join(', ') || 'Meta'}).`);
-    showGalleryView();
+    if (result.status === 'partial' || unpubPlatforms.length > 0) {
+      if (result.draft_status) activeDraft.status = result.draft_status;
+      showToast(`Publish parsial: ${publishedPlatforms.join(', ') || '-'} berhasil; belum selesai: ${unpubPlatforms.join('; ')}.`);
+    } else {
+      showToast(`Draf #${activeDraft.id} berhasil dipublish (${publishedPlatforms.join(', ') || 'Meta'}).`);
+      showGalleryView();
+    }
   } catch (err) {
     setInlineStatus(`<b style="color: var(--danger, #b23a48);">Gagal publish langsung:</b> ${escapeHtml(err.message)}`);
     showToast(`Gagal publish langsung: ${err.message}`);

@@ -56,6 +56,11 @@ test('graph client marks 429 and 5xx as retryable and an HTML body as retryable'
   await assert.rejects(() => tooMany.request('me'), (error) => error.retryable === true);
   const html = createGraphClient({ accessToken: 't', fetchImpl: async () => new Response('<html>Just a moment...</html>', { status: 200 }) });
   await assert.rejects(() => html.request('me'), (error) => error.retryable === true && /non-JSON/.test(error.message));
+  const transientTimeout = createGraphClient({
+    accessToken: 't',
+    fetchImpl: async () => Response.json({ error: { code: -2, message: 'Timeout' } }, { status: 400 }),
+  });
+  await assert.rejects(() => transientTimeout.request('me'), (error) => error.retryable === true && error.code === -2);
 });
 
 test('Instagram publishes a single image after the container is ready', async () => {

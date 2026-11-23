@@ -139,3 +139,61 @@ test('publishDraftNow promotes a reviewed draft and triggers scoped cross-platfo
   assert.equal(res.body.status, 'published');
   assert.equal(res.body.targets.length, 2);
 });
+
+test('publishDraftNow retries transient platform errors automatically so partial publish finishes in one click', async () => {
+  const revision = draftContentHash(baseDraft);
+  const runCalls = [];
+  const targetsAfter = [
+    { id: 10, platform: 'instagram', account_id: '17841471438781611', status: 'published', remote_id: 'ig-retry-ok', container_id: 'c-2', permalink: 'https://instagram.com/p/retryok', error_message: null, attempts: 2, published_at: '2026-11-23T13:35:00Z' },
+    { id: 11, platform: 'facebook', account_id: '102321216076547', status: 'published', remote_id: 'fb-ok', container_id: null, permalink: 'https://facebook.com/posts/ok', error_message: null, attempts: 1, published_at: '2026-11-23T13:34:50Z' },
+  ];
+  const pool = {
+    async connect() {
+      return {
+        release() {},
+        async query(sql) {
+          const q = sql.replace(/\s+/g, ' ').trim();
+          if (q === 'BEGIN' || q === 'COMMIT' || q === 'ROLLBACK') return { rows: [] };
+          if (q.includes('FROM drafts d JOIN topics t')) return { rows: [{ ...baseDraft }] };
+          if (q.includes('FROM publication_targets WHERE draft_id = $1')) return { rows: [] };
+          if (q.startsWith("UPDATE drafts SET status = 'scheduled'")) return { rowCount: 1 };
+          if (q.startsWith('INSERT INTO scheduled_posts')) return { rowCount: 1 };
+          if (q.startsWith('INSERT INTO audit_log')) return { rowCount: 1 };
+          throw new Error(`Unexpected SQL: ${q}`);
+        },
+      };
+    },
+    async query(sql) {
+      const q = sql.replace(/\s+/g, ' ').trim();
+      if (q.includes('FROM publication_targets WHERE draft_id = $1 ORDER BY')) return { rows: targetsAfter };
+      if (q === 'SELECT status FROM drafts WHERE id = $1') return { rows: [{ status: 'published' }] };
+      throw new Error(`Unexpected Pool SQL: ${q}`);
+    },
+  };
+
+  const res = await publishDraftNow({
+    pool,
+    draftId: 301,
+    body: { reviewed: true, expected_revision: revision },
+    env: activeEnv,
+    retryDelayMs: 0,
+    maxRetryPasses: 2,
+    createWorker: () => ({
+      async runOnce(args) {
+        runCalls.push(args);
+        if (runCalls.length === 1) {
+          return { inserted: 2, shadow: 0, published: 1, failed: 0, blocked: 0, unknown: 0, retried: 1, reset: 0 };
+        }
+        return { inserted: 0, shadow: 0, published: 1, failed: 0, blocked: 0, unknown: 0, retried: 0 };
+      },
+    }),
+  });
+
+  assert.deepEqual(runCalls, [
+    { draftId: 301, resetShadow: true },
+    { draftId: 301, resetShadow: false },
+  ]);
+  assert.equal(res.httpStatus, 200);
+  assert.equal(res.body.status, 'published');
+  assert.equal(res.body.summary.published, 2);
+});

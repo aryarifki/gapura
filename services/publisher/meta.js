@@ -16,7 +16,7 @@ export class MetaApiError extends Error {
   }
 }
 
-const RETRYABLE_CODES = new Set([1, 2, 4, 17, 32, 341, 613]);
+const RETRYABLE_CODES = new Set([-2, 1, 2, 4, 17, 32, 341, 613]);
 
 export function createGraphClient({
   fetchImpl = globalThis.fetch, accessToken, version = 'v23.0',
@@ -45,7 +45,8 @@ export function createGraphClient({
     try {
       response = await fetchImpl(url.toString(), init);
     } catch (error) {
-      throw new MetaApiError(`Meta tidak dapat dihubungi: ${error.name || 'network error'}`, { retryable: true });
+      const code = error?.cause?.code ? ` (${error.cause.code})` : '';
+      throw new MetaApiError(`Meta tidak dapat dihubungi: ${error.name || 'network error'}${code}`, { retryable: true });
     }
     let data;
     try {

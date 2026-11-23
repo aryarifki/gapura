@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from 'node:timers/promises';
 import { draftContentHash } from '../common/draft-revision.js';
 import { validateDraftApproval } from '../common/editorial.js';
 import { hasEditorialCover } from '../common/images.js';
@@ -15,6 +16,8 @@ export async function publishDraftNow({
   env = process.env,
   configFromEnv = publicationConfigFromEnv,
   createWorker = createMetaPublisherWorker,
+  retryDelayMs = 1500,
+  maxRetryPasses = 2,
 }) {
   const publishConfig = configFromEnv({ ...env, META_PUBLISH_MODE: 'live' });
   const hasPlatform = Object.values(publishConfig.platforms || {}).some((entry) => entry?.enabled);
@@ -161,7 +164,21 @@ export async function publishDraftNow({
     client.release();
   }
 
-  const summary = await createWorker({ pool, config: publishConfig }).runOnce({ draftId, resetShadow: true });
+  const worker = createWorker({ pool, config: publishConfig });
+  const summary = await worker.runOnce({ draftId, resetShadow: true });
+  let pass = 0;
+  let lastRetried = summary.retried || 0;
+  while (lastRetried > 0 && pass < maxRetryPasses) {
+    pass++;
+    if (retryDelayMs > 0) await sleep(retryDelayMs);
+    const retrySummary = await worker.runOnce({ draftId, resetShadow: false });
+    summary.published = (summary.published || 0) + (retrySummary.published || 0);
+    summary.failed = (summary.failed || 0) + (retrySummary.failed || 0);
+    summary.blocked = (summary.blocked || 0) + (retrySummary.blocked || 0);
+    summary.unknown = (summary.unknown || 0) + (retrySummary.unknown || 0);
+    summary.retried = (summary.retried || 0) + (retrySummary.retried || 0);
+    lastRetried = retrySummary.retried || 0;
+  }
   const { rows: targets } = await pool.query(
     `SELECT id, platform, account_id, status, remote_id, container_id, permalink, error_message, attempts, published_at
      FROM publication_targets WHERE draft_id = $1 ORDER BY id ASC`,
