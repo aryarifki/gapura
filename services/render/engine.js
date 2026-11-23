@@ -79,6 +79,31 @@ const EDITORIAL = Object.freeze({
   paper: '#F5F3ED', mist: '#EDF4F4', muted: '#546A7B', light: '#C8D9E1',
   line: '#CEDADC', darkLine: '#345064',
 });
+// Alamat situs yang dicetak pada desain slide (ditetapkan pemilik media).
+const SITE_URL_LABEL = 'GAPURAMEDIA.MY.ID';
+const BAR_BG = '#08131C';
+
+// Lockup merek GAPURA MEDIA (batang aksen + wordmark) untuk permukaan gelap
+// maupun terang; dipakai header editorial, bar bawah, dan sampul.
+const editorialLockup = ({ dark = false } = {}) => editorialNode({ alignItems: 'center', gap: '10px' }, [
+  editorialNode({ width: '8px', height: '26px', backgroundColor: dark ? EDITORIAL.teal : EDITORIAL.mint }),
+  editorialText('GAPURA', { fontFamily: 'Archivo Black', fontSize: '24px', letterSpacing: '1px', lineHeight: '1', color: dark ? EDITORIAL.navy : '#FFFFFF' }),
+  editorialText('MEDIA', { fontWeight: 700, color: dark ? EDITORIAL.teal : EDITORIAL.mint, fontSize: '17px', letterSpacing: '4px' }),
+]);
+
+// Bar bawah gelap ala wireframe media berita: alamat situs mikro di kiri,
+// lockup + panah geser di kanan. Menempel ke tepi bawah kanvas (absolute),
+// menggantikan footer sumber pada halaman artikel dan penutup.
+const editorialBottomBar = () => editorialNode({
+  position: 'absolute', left: 0, right: 0, bottom: 0, height: '84px',
+  backgroundColor: BAR_BG, alignItems: 'center', justifyContent: 'space-between', padding: '0 72px',
+}, [
+  editorialText(SITE_URL_LABEL, { fontSize: '14px', fontWeight: 700, letterSpacing: '2px', color: 'rgba(255,255,255,0.85)' }),
+  editorialNode({ alignItems: 'center', gap: '18px' }, [
+    editorialLockup(),
+    editorialText('→', { fontSize: '28px', fontWeight: 700, color: EDITORIAL.mint, lineHeight: '1' }),
+  ]),
+]);
 
 const editorialNode = (style, children = []) => ({ type: 'div', props: { style: { display: 'flex', flexShrink: 0, ...style }, children } });
 const editorialText = (text, style = {}) => editorialNode({ fontFamily: 'Inter', lineHeight: '1.4', ...style }, String(text ?? ''));
@@ -111,6 +136,19 @@ function estimateLineCount(text, fontSize, widthPx, ratio = CHAR_RATIO.display) 
 function fitFontSize(text, { max = 72, min = 22, width = CONTENT_WIDTH, ratio = CHAR_RATIO.display, maxLines = 4, step = 2 } = {}) {
   for (let size = max; size > min; size -= step) {
     if (estimateLineCount(text, size, width, ratio) <= maxLines) return size;
+  }
+  return min;
+}
+
+// Archivo Black jauh lebih lebar daripada rasio display rata-rata, dan kata
+// terpanjang tidak dapat dipenggal Satori: ukuran font display harus lolos
+// uji kata terpanjang juga, bukan hanya perkiraan jumlah baris.
+function fitDisplaySize(text, { max = 78, min = 30, width = CONTENT_WIDTH, maxLines = 3 } = {}) {
+  const clean = String(text || '').replace(/\s+/g, ' ').trim();
+  const longest = clean.split(' ').reduce((acc, word) => Math.max(acc, word.length), 0);
+  for (let size = max; size > min; size -= 1) {
+    if (longest * size * 0.8 > width) continue;
+    if (estimateLineCount(clean, size, width, 0.8) <= maxLines) return size;
   }
   return min;
 }
@@ -400,7 +438,7 @@ export class RenderEngine {
 
   // Disclosure is part of the image itself, independent of source visibility or
   // client credit text. Fixed contrast keeps it readable under token overrides.
-  renderImage(data, { width = CONTENT_WIDTH, height = 390, cover = false } = {}) {
+  renderImage(data, { width = CONTENT_WIDTH, height = 390, cover = false, bare = false } = {}) {
     if (!data?.image_data) return null;
     const image = {
       type: 'img',
@@ -411,6 +449,9 @@ export class RenderEngine {
         style: { width: `${width}px`, height: `${height}px`, objectFit: 'cover', borderRadius: cover ? '0px' : '4px' },
       },
     };
+    // bare: hanya node gambar; pemanggil menggambar scrim dan label
+    // kredit/disclosure sendiri (dipakai sampul full-bleed).
+    if (bare) return image;
     if (!isMediaImage(data) && !cover) return image;
     const manual = data.image_kind === 'editor_upload';
     return {
@@ -441,7 +482,7 @@ export class RenderEngine {
 
   // Editorial layouts use a top-aligned reading rhythm and the same source
   // footer on every page, including the cover. Image credit stays on the image.
-  wrapEditorial(content, slide, slideIndex, totalSlides, { dark = false, background = EDITORIAL.paper, photo = null } = {}) {
+  wrapEditorial(content, slide, slideIndex, totalSlides, { dark = false, background = EDITORIAL.paper, photo = null, bar = false } = {}) {
     const ink = dark ? '#FFFFFF' : EDITORIAL.navy;
     const accent = dark ? EDITORIAL.mint : EDITORIAL.teal;
     const line = dark ? EDITORIAL.darkLine : EDITORIAL.line;
@@ -460,35 +501,93 @@ export class RenderEngine {
         ]),
         editorialText(`${String(slideIndex).padStart(2, '0')} / ${String(totalSlides).padStart(2, '0')}`, { fontWeight: 700, fontSize: '16px', letterSpacing: '2px', color: dark ? EDITORIAL.light : EDITORIAL.muted }),
       ]),
-      editorialNode({ position: 'relative', flex: 1, minHeight: 0, width: '100%', flexDirection: 'column', justifyContent: 'flex-start', paddingTop: '56px', paddingBottom: '40px' }, [content]),
-      editorialNode({ position: 'relative', width: '100%', alignItems: 'center', gap: '24px', paddingTop: '20px', borderTop: `1px solid ${line}` }, [
+      editorialNode({ position: 'relative', flex: 1, minHeight: 0, width: '100%', flexDirection: 'column', justifyContent: 'flex-start', paddingTop: '56px', paddingBottom: bar ? '124px' : '40px' }, [content]),
+      ...(bar ? [editorialBottomBar()] : [editorialNode({ position: 'relative', width: '100%', alignItems: 'center', gap: '24px', paddingTop: '20px', borderTop: `1px solid ${line}` }, [
         editorialText(source, { flex: 1, flexShrink: 1, maxWidth: '700px', fontSize: `${fitFontSize(source, { max: 16, min: 10, width: 700, ratio: CHAR_RATIO.body, maxLines: 3, step: 1 })}px`, lineHeight: '1.4', color: dark ? EDITORIAL.light : EDITORIAL.muted }),
         editorialText(this.tokens.brand.handle || '@gapuramedia', { fontSize: '15px', fontWeight: 700, color: accent, marginLeft: 'auto' }),
+      ])]),
+    ]);
+  }
+
+  // Sampul gaya media berita (photo-led): visual full-bleed dengan scrim
+  // navy, masthead + pil tanggal di atas, judul putih besar di kiri bawah,
+  // dan strip bawah berisi alamat situs + ajakan geser. Kredit foto atau
+  // disclosure ilustrasi tampil mikro di atas strip bawah.
+  renderEditorialCover(slide, slideIndex, totalSlides) {
+    const { data } = slide;
+    const photo = data.image_data ? this.renderImage(data, { width: 1080, height: 1350, cover: true, bare: true }) : null;
+    const headlineSize = fitDisplaySize(data.title, { max: 76, min: 34, width: CONTENT_WIDTH, maxLines: 4 });
+    const coverSource = String(slide.source || '').trim();
+    const supporting = slide.teks && slide.teks !== data.title ? slide.teks : '';
+    const manual = data.image_kind === 'editor_upload';
+    const creditLabel = isMediaImage(data)
+      ? (manual ? (data.credit ? `Gambar: ${data.credit}` : '') : AI_IMAGE_DISCLOSURE)
+      : '';
+    const dateLabel = typeof data.date_label === 'string' && data.date_label.trim().length > 0 && data.date_label.trim().length <= 30
+      ? data.date_label.trim() : '';
+    return editorialNode({
+      position: 'relative', width: '1080px', height: '1350px', backgroundColor: EDITORIAL.navy,
+      flexDirection: 'column', overflow: 'hidden', fontFamily: 'Inter', color: '#FFFFFF',
+    }, [
+      ...(photo ? [editorialNode({ position: 'absolute', top: 0, left: 0 }, [photo])] : []),
+      editorialNode({ position: 'absolute', top: 0, left: 0, width: '1080px', height: '1350px', backgroundImage: 'linear-gradient(to top, rgba(6,17,28,0.95) 0%, rgba(6,17,28,0.62) 36%, rgba(6,17,28,0.05) 60%, rgba(6,17,28,0.40) 100%)' }),
+      editorialNode({ position: 'relative', flex: 1, flexDirection: 'column', justifyContent: 'space-between', padding: '72px' }, [
+        editorialNode({ justifyContent: 'space-between', alignItems: 'center' }, [
+          editorialLockup(),
+          ...(dateLabel ? [editorialNode({ backgroundColor: '#FFFFFF', borderRadius: '999px', padding: '9px 16px' }, [
+            editorialText(dateLabel, { fontSize: '15px', fontWeight: 700, letterSpacing: '1px', color: EDITORIAL.navy }),
+          ])] : [editorialNode({ width: '1px', height: '1px' })]),
+        ]),
+        editorialNode({ flexDirection: 'column' }, [
+          ...(data.kicker ? [editorialNode({ alignItems: 'center', gap: '14px' }, [
+            editorialNode({ width: '38px', height: '5px', backgroundColor: EDITORIAL.mint }),
+            editorialText(data.kicker, { fontSize: '17px', fontWeight: 700, letterSpacing: '3px', textTransform: 'uppercase', color: EDITORIAL.mint }),
+          ])] : []),
+          editorialText(data.title, {
+            fontFamily: 'Archivo Black', fontSize: `${headlineSize}px`,
+            lineHeight: '1.1', letterSpacing: '-1px', color: '#FFFFFF', marginTop: '24px', maxWidth: `${CONTENT_WIDTH}px`,
+          }),
+          ...(supporting ? [editorialText(supporting, {
+            fontSize: `${fitFontSize(supporting, { max: 24, min: 19, width: 900, ratio: CHAR_RATIO.body, maxLines: 3, step: 1 })}px`,
+            lineHeight: '1.45', color: EDITORIAL.light, marginTop: '20px', maxWidth: '900px',
+          })] : []),
+          ...(creditLabel ? [editorialText(creditLabel, { fontSize: '13px', color: 'rgba(255,255,255,0.72)', marginTop: '18px' })] : []),
+          ...(coverSource ? [editorialText(coverSource, {
+            fontSize: `${fitFontSize(coverSource, { max: 13, min: 11, width: CONTENT_WIDTH, ratio: CHAR_RATIO.body, maxLines: 2, step: 1 })}px`,
+            lineHeight: '1.4', color: 'rgba(255,255,255,0.78)', marginTop: '26px', maxWidth: `${CONTENT_WIDTH}px`,
+          })] : []),
+          editorialNode({ justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.35)', paddingTop: '20px', marginTop: '26px' }, [
+            editorialText(SITE_URL_LABEL, { fontSize: '14px', fontWeight: 700, letterSpacing: '2px', color: 'rgba(255,255,255,0.85)' }),
+            editorialText('GESER →', { fontSize: '18px', fontWeight: 700, letterSpacing: '1px', color: EDITORIAL.mint }),
+          ]),
+        ]),
       ]),
     ]);
   }
 
   renderEditorial(slide, slideIndex, totalSlides) {
     const { layout, data } = slide;
-    const cover = layout === 'editorial-cover';
+    if (layout === 'editorial-cover') return this.renderEditorialCover(slide, slideIndex, totalSlides);
     const quote = layout === 'editorial-quote';
     const close = layout === 'editorial-close';
-    const dark = cover || quote || close;
+    const dark = quote || close;
     const accent = dark ? EDITORIAL.mint : EDITORIAL.teal;
     const secondary = dark ? EDITORIAL.light : EDITORIAL.muted;
-    const photo = cover && data.image_data ? this.renderImage(data, { width: 1080, height: 720, cover: true }) : null;
-    const headlineMax = cover ? 96 : layout === 'editorial-lead' ? 88 : quote || close ? 44 : 68;
-    const headlineSize = fitFontSize(data.title, { max: headlineMax, min: 34, maxLines: cover ? 4 : 3 });
-    const children = data.kicker ? [
-      editorialNode({ alignItems: 'center', gap: '14px' }, [
+    const headlineMax = quote || close ? 44 : 68;
+    const headlineSize = fitFontSize(data.title, { max: headlineMax, min: 34, maxLines: 3 });
+    const children = [];
+    // Halaman artikel menata judul beritanya sendiri dan halaman penutup
+    // memakai label + pertanyaan; layout lain memakai kicker + judul di sini.
+    if (layout !== 'editorial-lead' && layout !== 'editorial-close') {
+      if (data.kicker) children.push(editorialNode({ alignItems: 'center', gap: '14px' }, [
         editorialNode({ width: '38px', height: '5px', backgroundColor: EDITORIAL.amber }),
         editorialText(data.kicker, { fontSize: '19px', fontWeight: 700, letterSpacing: '2px', textTransform: 'uppercase', color: accent }),
-      ]),
-    ] : [];
-    children.push(editorialText(data.title, {
-      fontFamily: 'Archivo Black', fontSize: `${headlineSize}px`,
-      lineHeight: '1.12', letterSpacing: '-1.5px', marginTop: '28px',
-    }));
+      ]));
+      children.push(editorialText(data.title, {
+        fontFamily: 'Archivo Black', fontSize: `${headlineSize}px`,
+        lineHeight: '1.12', letterSpacing: '-1.5px', marginTop: '28px', maxWidth: `${CONTENT_WIDTH}px`,
+      }));
+    }
     const supporting = slide.teks && slide.teks !== data.title && slide.teks !== data.quote && slide.teks !== data.question ? slide.teks : '';
     const body = (size = 36, width = CONTENT_WIDTH) => supporting ? editorialText(supporting, {
       fontSize: `${fitFontSize(supporting, { max: size, min: 24, width, ratio: CHAR_RATIO.body, maxLines: 5, step: 1 })}px`,
@@ -496,23 +595,44 @@ export class RenderEngine {
     }) : null;
 
     switch (layout) {
-      case 'editorial-cover':
-        children.push(body(34, 860), editorialNode({ alignItems: 'center', gap: '18px', marginTop: '42px' }, [
-          editorialText('Geser →', { fontSize: '22px', fontWeight: 700, color: EDITORIAL.amber }),
-          editorialNode({ width: '90px', height: '2px', backgroundColor: EDITORIAL.darkLine }),
-        ]));
-        break;
-
-      case 'editorial-lead':
-        children.push(editorialNode({ width: '120px', height: '8px', backgroundColor: EDITORIAL.teal, marginTop: '44px' }), body(42, 870));
-        if (data.paragraphs?.length) {
-          children.push(editorialNode({ flexDirection: 'column', gap: '22px', marginTop: '30px' }, data.paragraphs.map((paragraph) =>
-            editorialText(paragraph.text, {
-              fontSize: `${fitFontSize(paragraph.text, { max: 30, min: 21, width: CONTENT_WIDTH, ratio: CHAR_RATIO.body, maxLines: 4, step: 1 })}px`,
-              lineHeight: '1.45', color: secondary, maxWidth: `${CONTENT_WIDTH}px`,
-            }))));
+      case 'editorial-lead': {
+        // Halaman isi gaya media berita: judul asli tampil tebal navy di
+        // atas, garis aksen teal, lalu isi artikel lengkap dalam SATU
+        // ukuran font seragam yang diturunkan sampai total tinggi
+        // perkiraan muat di area konten — tidak ada blok beda ukuran dan
+        // tidak ada teks yang menabrak bar bawah. Baris sumber menutup
+        // halaman tepat di atas bar.
+        const leadHeadlineSize = fitDisplaySize(data.title, { max: 52, min: 30, maxLines: 3 });
+        const leadHeadlineLines = estimateLineCount(data.title, leadHeadlineSize, CONTENT_WIDTH, 0.8);
+        const blocks = [supporting, ...(data.paragraphs || []).map((paragraph) => paragraph.text)]
+          .map((text) => String(text || '').trim()).filter(Boolean);
+        const sourceLine = String(slide.source || '').trim();
+        // Wilayah anak: 1350 - padding akar 144 - header 51 - paddingTop
+        // konten 56 - ruang bar bawah 124 = 975.
+        const headlineBlock = leadHeadlineLines * leadHeadlineSize * 1.12 + 24 + 6 + 28;
+        const articleBudget = Math.max(300, 975 - headlineBlock - (sourceLine ? 49 : 0));
+        const articleHeight = (size) => blocks.reduce((total, text, index) =>
+          total + (index ? 22 : 0) + estimateLineCount(text, size, CONTENT_WIDTH, 0.56) * size * 1.45, 8);
+        let articleSize = 20;
+        for (let size = 32; size >= 20; size -= 1) {
+          if (articleHeight(size) <= articleBudget) { articleSize = size; break; }
         }
+        children.push(
+          editorialText(data.title, {
+            fontFamily: 'Archivo Black', fontSize: `${leadHeadlineSize}px`,
+            lineHeight: '1.12', letterSpacing: '-1px', color: EDITORIAL.navy, maxWidth: `${CONTENT_WIDTH}px`,
+          }),
+          editorialNode({ width: '64px', height: '6px', backgroundColor: EDITORIAL.teal, marginTop: '24px' }),
+          editorialNode({ flexDirection: 'column', gap: '22px', marginTop: '28px' }, blocks.map((text) => editorialText(text, {
+            fontSize: `${articleSize}px`, lineHeight: '1.45', color: '#2B3A47', maxWidth: `${CONTENT_WIDTH}px`,
+          }))),
+        );
+        if (sourceLine) children.push(
+          editorialNode({ flex: 1 }),
+          editorialText(sourceLine, { fontSize: '15px', lineHeight: '1.4', color: EDITORIAL.muted, marginTop: '28px', maxWidth: `${CONTENT_WIDTH}px` }),
+        );
         break;
+      }
 
       case 'editorial-breakdown':
         children.push(body(30), editorialNode({ flexDirection: 'column', marginTop: '38px' }, data.items.map((item, index) =>
@@ -573,25 +693,45 @@ export class RenderEngine {
         break;
       }
 
-      case 'editorial-close':
+      case 'editorial-close': {
+        // Satori tidak memenggal baris pada token yang diawali '@' (handle
+        // akun), sehingga pertanyaan sepanjang apa pun akan digambar satu
+        // baris dan tumpah keluar kanvas. Karena itu pertanyaan ditata
+        // manual menjadi baris berimbang pada ukuran terpilih lebih dulu.
+        const questionSize = fitDisplaySize(data.question, { max: 84, min: 30, maxLines: 3 });
+        const balancedQuestion = balanceLines(data.question, { fontSize: questionSize, ratio: 0.8, maxLines: 3 });
+        const questionLines = balancedQuestion ? balancedQuestion.split('\n') : [data.question];
+        const closeLabel = data.kicker?.trim() || 'TETAP TERHUBUNG';
+        // Judul slide tetap digambar sebagai tajuk kecil di bawah label,
+        // kecuali bila isinya sama dengan label (menghindari pengulangan).
+        const closeTitle = data.title?.trim() && data.title.trim().toUpperCase() !== closeLabel.toUpperCase()
+          ? editorialText(data.title, {
+            fontFamily: 'Archivo Black', fontSize: `${fitFontSize(data.title, { max: 30, min: 24, maxLines: 2 })}px`,
+            lineHeight: '1.15', letterSpacing: '-0.5px', color: '#FFFFFF', marginTop: '20px', maxWidth: `${CONTENT_WIDTH}px`,
+          })
+          : null;
+        const closeSource = String(slide.source || '').trim();
         children.push(
-          editorialText(data.question, { fontFamily: 'Archivo Black', fontSize: `${fitFontSize(data.question, { max: 78, min: 34, maxLines: 5 })}px`, lineHeight: '1.15', letterSpacing: '-1px', color: EDITORIAL.mint, marginTop: '48px' }),
+          editorialText(closeLabel, { fontSize: '17px', fontWeight: 700, letterSpacing: '3px', textTransform: 'uppercase', color: EDITORIAL.mint, marginTop: '16px' }),
+          closeTitle,
+          editorialNode({ flexDirection: 'column', marginTop: '30px' }, questionLines.map((line) =>
+            editorialText(line, { fontFamily: 'Archivo Black', fontSize: `${questionSize}px`, lineHeight: '1.15', letterSpacing: '-1px', color: EDITORIAL.mint, maxWidth: `${CONTENT_WIDTH}px` }))),
           body(34),
           editorialNode({ gap: '20px', alignItems: 'center', paddingTop: '30px', borderTop: `1px solid ${EDITORIAL.darkLine}`, marginTop: '56px' }, [
             { type: 'svg', props: { width: 28, height: 34, viewBox: '0 0 28 34', children: { type: 'path', props: { d: 'M4 2H24V31L14 24L4 31Z', fill: 'none', stroke: EDITORIAL.amber, strokeWidth: 2.5 } } } },
             editorialText(data.cta?.trim() || 'Simpan untuk dibaca lagi', { flex: 1, fontSize: '24px', fontWeight: 700, color: EDITORIAL.amber }),
           ]),
+          ...(closeSource ? [
+            editorialNode({ flex: 1 }),
+            editorialText(closeSource, { fontSize: '15px', lineHeight: '1.4', color: EDITORIAL.light, marginTop: '20px', maxWidth: `${CONTENT_WIDTH}px` }),
+          ] : []),
         );
         break;
+      }
     }
-    // Reserve the headline, supporting copy and swipe cue before allocating
-    // photo space. A longer short headline must never push the source off-page.
-    const supportingSize = fitFontSize(supporting, { max: 34, min: 24, width: 860, ratio: CHAR_RATIO.body, maxLines: 5, step: 1 });
-    const coverCopyHeight = 128 + estimateLineCount(data.title, headlineSize, CONTENT_WIDTH) * headlineSize * 1.12
-      + (supporting ? 28 + estimateLineCount(supporting, supportingSize, 860, CHAR_RATIO.body) * supportingSize * 1.5 : 0);
-    const coverOffset = cover ? Math.max(0, Math.min(photo ? 430 : 100, 990 - coverCopyHeight)) : 0;
-    return this.wrapEditorial(editorialNode({ flexDirection: 'column', width: '100%', paddingTop: `${coverOffset}px` }, children.filter(Boolean)), slide, slideIndex, totalSlides, {
-      dark, photo, background: layout === 'editorial-lead' || layout === 'editorial-timeline' ? EDITORIAL.mist : EDITORIAL.paper,
+    return this.wrapEditorial(editorialNode({ flexDirection: 'column', width: '100%', flex: 1 }, children.filter(Boolean)), slide, slideIndex, totalSlides, {
+      dark, background: layout === 'editorial-timeline' ? EDITORIAL.mist : EDITORIAL.paper,
+      bar: layout === 'editorial-lead' || layout === 'editorial-close',
     });
   }
 

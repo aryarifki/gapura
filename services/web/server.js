@@ -54,6 +54,7 @@ import { normalizeDesk } from '../common/discovery.js';
 import { assertNewsEditorialInput, createTopicEditorialInputLoader, resolveTopicEditorialInput } from '../copywriter/source-input.js';
 import { computeNextPublishSlot, loadOccupiedPublishDates, loadPublishingScheduleConfig } from '../common/publish-schedule.js';
 import { publishDraftNow } from './publish-now.js';
+import { createIntakeGuard } from './intake-guard.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -61,6 +62,7 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const accessGuardOptions = { publicOrigin: process.env.GAPURA_PUBLIC_ORIGIN || '' };
+const intakeGuard = createIntakeGuard({ token: process.env.GAPURA_INTAKE_TOKEN || '' });
 const app = express();
 app.use('/api', createOriginGuard(accessGuardOptions));
 // Manual uploads embed one bounded base64 raster, so this route parses its own
@@ -459,7 +461,7 @@ app.post('/api/designer/generate-slides', async (req, res) => {
 });
 
 // 2e. Create Draft & Slides from Custom Studio Design
-app.post('/api/drafts/create-from-custom', async (req, res) => {
+app.post('/api/drafts/create-from-custom', intakeGuard, async (req, res) => {
   const { title, summary, primary_source, source_url, slides, caption, hashtags, format } = req.body || {};
   if (typeof title !== 'string' || !title.trim() || title.length > 240 || !Array.isArray(slides) || slides.length === 0) {
     return res.status(400).json({ error: 'Data draf tidak lengkap atau slide kosong.' });
@@ -543,8 +545,8 @@ app.post('/api/drafts/create-from-custom', async (req, res) => {
 
     // 5. Catat audit_log
     await client.query(
-      `INSERT INTO audit_log (entity, entity_id, action, actor, payload) VALUES ('draft', $1, 'created_custom_studio', 'studio_editor', $2)`,
-      [draftId, JSON.stringify({ topic_id: topicId, slides_count: slides.length })]
+      `INSERT INTO audit_log (entity, entity_id, action, actor, payload) VALUES ('draft', $1, 'created_custom_studio', $3, $2)`,
+      [draftId, JSON.stringify({ topic_id: topicId, slides_count: slides.length }), req.gapuraIntake ? 'claude_intake' : 'studio_editor']
     );
 
     await client.query('COMMIT');
