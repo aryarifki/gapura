@@ -2,7 +2,14 @@
 Description=Run Gapura news intake, scoring, production and scheduling at optimal WIB windows
 
 [Timer]
-OnCalendar=*-*-* 06:45,09:15,11:30,13:30,14:45,16:45,18:15,20:15:00
+OnCalendar=*-*-* 06:45:00
+OnCalendar=*-*-* 09:15:00
+OnCalendar=*-*-* 11:30:00
+OnCalendar=*-*-* 13:30:00
+OnCalendar=*-*-* 14:45:00
+OnCalendar=*-*-* 16:45:00
+OnCalendar=*-*-* 18:15:00
+OnCalendar=*-*-* 20:15:00
 Persistent=false
 RandomizedDelaySec=60
 Unit=gapura-pipeline.service
