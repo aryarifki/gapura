@@ -11,7 +11,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { loadAgentsConfig, callAgentLLM } from '../common/llm.js';
 import { projectDiscoveryTopic } from '../common/discovery.js';
-import { normalizeScoreResult, normalizeWeights, parseFastFailRules } from './scoring.js';
+import { checkEkonomiPolicy, normalizeScoreResult, normalizeWeights, parseFastFailRules } from './scoring.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -50,7 +50,7 @@ const DESK_LABELS = Object.freeze({
   lingkungan: 'lingkungan', ekonomi: 'ekonomi nasional', bursa: 'bursa',
 });
 
-function calculateHeuristicScore(title, primarySource, weights = {}, desk = null) {
+function calculateHeuristicScore(title, primarySource, weights = {}, desk = null, priorityDesks = []) {
   const text = String(title || '').toLowerCase();
   const maxRel = weights.relevance ?? 30;
   const maxCred = weights.credibility ?? 25;
@@ -65,8 +65,9 @@ function calculateHeuristicScore(title, primarySource, weights = {}, desk = null
   let comp = maxComp;
 
   // Relevansi: salah satu dari enam desk mendapat porsi utama; isu publik,
-  // kebijakan dan dampak menambah sedikit bobot.
+  // kebijakan dan dampak menambah sedikit bobot. Desk prioritas mendapat dorongan tambahan.
   if (desk && DESK_LABELS[desk]) rel += Math.round(maxRel * 0.45);
+  if (desk && priorityDesks.includes(desk)) rel += Math.min(4, Math.round(maxRel * 0.15));
   if (/kebijakan|regulasi|undang-undang|ruu|perppu|putusan|anggaran|layanan publik|warga|masyarakat|dampak|krisis|bencana/i.test(text)) rel += Math.round(maxRel * 0.15);
   rel = Math.min(maxRel, rel);
 
@@ -124,6 +125,9 @@ export async function runAnalis({ client: suppliedClient, config = loadAgentsCon
 
   // Muat konfigurasi dinamis agen analis
   const fastFailRules = getFastFailRules(analisCfg);
+  const priorityDesks = Array.isArray(analisCfg.priority_desks)
+    ? analisCfg.priority_desks.map((d) => String(d).trim().toLowerCase()).filter((d) => Object.hasOwn(DESK_LABELS, d))
+    : [];
 
   let evaluated = 0;
   let passed = 0;
@@ -140,9 +144,12 @@ export async function runAnalis({ client: suppliedClient, config = loadAgentsCon
     if (!Number.isInteger(minThreshold) || minThreshold < 0 || minThreshold > 100) throw new Error('Ambang skor harus bilangan bulat 0-100.');
     console.log(`[Analis] Ambang batas kelulusan (threshold): ${minThreshold}`);
 
-    // Bound each scheduled run and prioritize fresh topics over the old backlog.
+    // Bound each scheduled run and prioritize fresh topics over the old backlog, placing priority desks first when configured.
+    const topicOrder = priorityDesks.length > 0
+      ? `CASE WHEN desk IN (${priorityDesks.map((d) => `'${d}'`).join(',')}) THEN 0 ELSE 1 END ASC, created_at DESC, id DESC`
+      : 'created_at DESC, id DESC';
     const { rows: newTopics } = await client.query(
-      "SELECT * FROM topics WHERE status = 'new' ORDER BY created_at DESC, id DESC LIMIT $1", [maxTopics]
+      `SELECT * FROM topics WHERE status = 'new' ORDER BY ${topicOrder} LIMIT $1`, [maxTopics]
     );
     console.log(`[Analis] Ditemukan ${newTopics.length} topik untuk dievaluasi.`);
 
@@ -173,6 +180,15 @@ export async function runAnalis({ client: suppliedClient, config = loadAgentsCon
         continue;
       }
 
+      const ekonomiPolicy = checkEkonomiPolicy(topic, discovery, analisCfg);
+      if (ekonomiPolicy.rejected) {
+        fastFailed++;
+        console.log(`[Analis] [POLICY-REJECT] #${topic.id}: "${title}" -> ${ekonomiPolicy.reason}`);
+
+        await saveScore(client, topic.id, { scores: { relevance: 0, credibility: 0, momentum: 0, engagement: 0, compliance: 0 }, score_total: 0, verdict: 'fast_failed', reasoning: ekonomiPolicy.reason }, 'ekonomi-policy-gate', discovery?.desk ?? null);
+        continue;
+      }
+
       // --- GATE 2: SCORING (0-100) ---
       let scoreResult = null;
       let modelUsed = analisCfg.model || 'heuristic-analis-v2';
@@ -181,7 +197,10 @@ export async function runAnalis({ client: suppliedClient, config = loadAgentsCon
       const apiKey = analisCfg.api_key || process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY;
       if (apiKey && apiKey.length > 5) {
         try {
-          const promptText = `Evaluasi berita ini untuk akun Instagram @gapuramedia. Fokus editorial adalah isu nasional Indonesia pada enam desk: politik, sosial, hukum, lingkungan, ekonomi nasional, dan bursa. Nilai kepentingan publik, relevansi desk, kredibilitas atribusi, momentum, potensi interaksi dan kepatuhan hanya dari metadata discovery berikut. Jangan mengarang fakta, angka, kutipan, ringkasan, atau isi artikel yang tidak ada pada payload.
+          const policyGuidance = analisCfg.ekonomi_requires_bursa_or_ojk
+            ? ' Prioritas utama: desk bursa dan politik. Desk ekonomi tanpa kaitan bursa/pasar modal atau OJK wajib ditolak (rejected).'
+            : '';
+          const promptText = `Evaluasi berita ini untuk akun Instagram @gapuramedia. Fokus editorial adalah isu nasional Indonesia pada enam desk: politik, sosial, hukum, lingkungan, ekonomi nasional, dan bursa.${policyGuidance} Nilai kepentingan publik, relevansi desk, kredibilitas atribusi, momentum, potensi interaksi dan kepatuhan hanya dari metadata discovery berikut. Jangan mengarang fakta, angka, kutipan, ringkasan, atau isi artikel yang tidak ada pada payload.
 DATA_DISCOVERY_JSON: ${JSON.stringify(discovery)}
 
 Bobot penilaian:
@@ -215,7 +234,7 @@ Kembalikan HANYA JSON:
 
       // Fallback ke Heuristik jika LLM tidak tersedia
       if (!scoreResult || typeof scoreResult.score_total !== 'number') {
-        const h = calculateHeuristicScore(title, discovery?.source_name || topic.primary_source, weights, discovery?.desk ?? null);
+        const h = calculateHeuristicScore(title, discovery?.source_name || topic.primary_source, weights, discovery?.desk ?? null, priorityDesks);
         scoreResult = {
           scores: h.scores,
           score_total: h.total,

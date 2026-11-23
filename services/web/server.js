@@ -52,6 +52,8 @@ import { randomUUID } from 'node:crypto';
 import { createTopicClusterHandler } from './clusters.js';
 import { normalizeDesk } from '../common/discovery.js';
 import { assertNewsEditorialInput, createTopicEditorialInputLoader, resolveTopicEditorialInput } from '../copywriter/source-input.js';
+import { computeNextPublishSlot, loadOccupiedPublishDates, loadPublishingScheduleConfig } from '../common/publish-schedule.js';
+import { publishDraftNow } from './publish-now.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -386,6 +388,19 @@ app.get('/api/drafts/:id', async (req, res) => {
       image_url: `/storage/drafts/${d.id}/slide_${s.slide_no}.png`,
     }));
 
+    const { rows: publicationTargets } = await pool.query(
+      `SELECT id, platform, account_id, status, remote_id, container_id, permalink, error_message, attempts, published_at
+       FROM publication_targets WHERE draft_id = $1 ORDER BY id ASC`,
+      [d.id],
+    );
+    const { rows: [latestSchedule] } = await pool.query(
+      `SELECT id, status, scheduled_at, published_at FROM scheduled_posts
+       WHERE draft_id = $1 ORDER BY id DESC LIMIT 1`,
+      [d.id],
+    );
+    d.publication_targets = publicationTargets;
+    d.latest_schedule = latestSchedule || null;
+
     res.json(d);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -609,7 +624,17 @@ app.post('/api/drafts/:id/approve', async (req, res) => {
       }
 
       if (mode === 'auto') {
-        const scheduledAt = new Date(Date.now() + 3 * 3600 * 1000);
+        let scheduledAt;
+        let slotWib = null;
+        try {
+          const schedCfg = await loadPublishingScheduleConfig(client);
+          const occupied = await loadOccupiedPublishDates(client);
+          const slot = computeNextPublishSlot({ hoursWib: schedCfg.hoursWib, occupiedDates: occupied, dailyLimit: schedCfg.dailyLimit });
+          scheduledAt = slot.scheduledAt;
+          slotWib = slot.slotWib;
+        } catch {
+          scheduledAt = new Date(Date.now() + 3 * 3600 * 1000);
+        }
         await client.query("UPDATE drafts SET status = 'scheduled', needs_review=FALSE, updated_at = NOW() WHERE id = $1", [draftId]);
         await client.query(
           "INSERT INTO scheduled_posts (draft_id, mode, scheduled_at, status) VALUES ($1, 'auto', $2, 'pending')",
@@ -617,7 +642,7 @@ app.post('/api/drafts/:id/approve', async (req, res) => {
         );
         await client.query(
           "INSERT INTO audit_log (entity, entity_id, action, actor, payload) VALUES ('draft', $1, 'approved_auto', 'web_admin', $2)",
-          [draftId, JSON.stringify({ scheduled_at: scheduledAt, content_hash: contentHash })]
+          [draftId, JSON.stringify({ scheduled_at: scheduledAt, ...(slotWib ? { slot_wib: slotWib } : {}), content_hash: contentHash })]
         );
       } else {
         await client.query("UPDATE drafts SET status = 'published', updated_at = NOW() WHERE id = $1", [draftId]);
@@ -637,6 +662,18 @@ app.post('/api/drafts/:id/approve', async (req, res) => {
     res.json({ status: 'success', draftId, mode, published: mode === 'manual' });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// 3b. Publish Draft Immediately Across Active Meta Platforms
+app.post('/api/drafts/:id/publish-now', async (req, res) => {
+  const draftId = parseInt(req.params.id, 10);
+  try {
+    const result = await publishDraftNow({ pool, draftId, body: req.body || {} });
+    return res.status(result.httpStatus).json(result.body);
+  } catch (err) {
+    console.error('[Web API] Error publishing draft now:', err);
+    return res.status(500).json({ error: err.message });
   }
 });
 

@@ -167,3 +167,30 @@ test('analyst persists an inferred desk when the topic has none', async () => {
   const update = db.calls.find((call) => call.sql.includes('UPDATE topics'));
   assert.equal(update.params[2], 'politik');
 });
+
+test('ekonomi policy gate rejects non-Bursa/OJK ekonomi topics before LLM scoring and prioritizes bursa/politik order', async () => {
+  const db = transactionDb([
+    { id: 1, title: 'Daftar Lengkap UMP 2027 dan Inflasi Pangan', primary_source: 'CNN Indonesia Ekonomi', desk: 'ekonomi', created_at: '2026-11-23T01:00:00Z' },
+    { id: 2, title: 'OJK Terbitkan POJK Pengawasan Emiten di Pasar Modal', primary_source: 'OJK', desk: 'ekonomi', created_at: '2026-11-23T02:00:00Z' },
+    { id: 3, title: 'DPR Gelar Paripurna RUU Pemilu', primary_source: 'ANTARA Politik', desk: 'politik', created_at: '2026-11-23T03:00:00Z' },
+  ]);
+  const { runAnalis } = await loadService('analis/analis.js', {
+    client: db,
+    config: {
+      analis: {
+        min_score_threshold: 60,
+        priority_desks: ['bursa', 'politik'],
+        ekonomi_requires_bursa_or_ojk: true,
+      },
+    },
+  });
+  const result = await runAnalis();
+  assert.equal(result.evaluated, 3);
+  assert.equal(result.fastFailed, 1);
+  assert.equal(result.passed, 2);
+  const selectCall = db.calls.find((call) => call.sql.includes('SELECT * FROM topics'));
+  assert.match(selectCall.sql, /CASE WHEN desk IN \('bursa','politik'\)/);
+  const policyScore = db.scores().find((row) => row[0] === 1);
+  assert.equal(policyScore[7], 'fast_failed');
+  assert.equal(policyScore[9], 'ekonomi-policy-gate');
+});

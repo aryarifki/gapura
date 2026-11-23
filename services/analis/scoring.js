@@ -1,4 +1,48 @@
 const SCORE_LIMITS = { relevance: 30, credibility: 25, momentum: 20, engagement: 15, compliance: 10 };
+export const PRIORITY_DESKS_DEFAULT = Object.freeze(['bursa', 'politik']);
+
+const OJK_TOPIC_REGEX = /\b(ojk|otoritas jasa keuangan|pojk|seojk|satgas pasti|dewan komisioner ojk)\b/iu;
+const BURSA_TOPIC_REGEX = /\b(ihsg|bei|idx|bursa efek|pasar modal|saham|emiten|ipo|right issue|rights issue|stock split|reverse split|buyback|dividen|rups|rupst|rupslb|sekuritas|reksa dana|reksadana|obligasi|sukuk korporasi|ksei|kpei|lq45|idx30|msci|ftse|kapitalisasi pasar|delisting|suspensi saham|unusual market activity|aksi korporasi|tender offer|corporate action|papan pemantauan|waran|warant|indeks saham|investor pasar modal|bursa saham)\b/iu;
+
+export function isBursaOrOjkTopic(topic, discovery = null) {
+  if (!topic || typeof topic !== 'object') return false;
+  const category = String(topic.category || '').trim().toLowerCase();
+  if (category === 'news_pasar' || category === 'ojk_regulasi') return true;
+  const keywords = Array.isArray(discovery?.topic_keywords)
+    ? discovery.topic_keywords.join(' ')
+    : Array.isArray(topic.topic_keywords)
+      ? topic.topic_keywords.join(' ')
+      : '';
+  const metadataText = [
+    discovery?.normalized_title,
+    discovery?.raw_title,
+    topic.normalized_title,
+    topic.raw_title,
+    topic.title,
+    discovery?.source_name,
+    topic.primary_source,
+    keywords,
+    topic.url,
+  ].filter(Boolean).join(' ');
+  return OJK_TOPIC_REGEX.test(metadataText) || BURSA_TOPIC_REGEX.test(metadataText);
+}
+
+export function checkEkonomiPolicy(topic, discovery = null, analisCfg = {}) {
+  if (analisCfg?.ekonomi_requires_bursa_or_ojk !== true) {
+    return { rejected: false, reason: null };
+  }
+  const desk = String(discovery?.desk || topic?.desk || '').trim().toLowerCase();
+  if (desk !== 'ekonomi') {
+    return { rejected: false, reason: null };
+  }
+  if (isBursaOrOjkTopic(topic, discovery)) {
+    return { rejected: false, reason: null };
+  }
+  return {
+    rejected: true,
+    reason: 'Kebijakan Desk Ekonomi: Topik ekonomi tanpa kaitan langsung dengan bursa/pasar modal atau OJK ditolak.',
+  };
+}
 
 export function normalizeWeights(weights = SCORE_LIMITS) {
   const normalized = {};

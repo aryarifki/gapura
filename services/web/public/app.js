@@ -470,6 +470,7 @@ function setupNavigation() {
   // Decision Buttons in Editor
   bindClick('btn-action-post-now', () => approveCurrentDraft('auto'));
   bindClick('btn-action-approve-auto', () => approveCurrentDraft('auto'));
+  bindClick('btn-action-publish-now', publishCurrentDraftNow);
   bindClick('btn-action-approve-manual', () => approveCurrentDraft('manual'));
   bindClick('btn-action-reject', rejectCurrentDraft);
 
@@ -694,7 +695,38 @@ function renderDraftEditor(draft) {
   // Populate caption & hashtags
   document.getElementById('editor-input-caption').value = activeDraft.caption || '';
   document.getElementById('editor-input-hashtags').value = (activeDraft.hashtags || []).join(' ');
+  renderDraftPublishStatus(activeDraft);
+  const publishNowBtn = document.getElementById('btn-action-publish-now');
+  if (publishNowBtn) publishNowBtn.disabled = activeDraft.status === 'published' || activeDraft.status === 'rejected';
   renderOriginalReview();
+}
+
+function renderDraftPublishStatus(draft) {
+  const container = document.getElementById('editor-publish-status');
+  if (!container) return;
+  const targets = Array.isArray(draft?.publication_targets) ? draft.publication_targets : [];
+  const sched = draft?.latest_schedule;
+  if (!targets.length && !sched) {
+    container.style.display = 'none';
+    container.innerHTML = '';
+    return;
+  }
+  const parts = [];
+  if (sched?.scheduled_at) {
+    const dt = new Date(sched.scheduled_at);
+    const formatted = Number.isFinite(dt.getTime()) ? dt.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'medium', timeStyle: 'short' }) : String(sched.scheduled_at);
+    parts.push(`<div style="margin-bottom:6px;"><b>Jadwal:</b> ${escapeHtml(sched.status || 'pending')} · ${escapeHtml(formatted)} WIB</div>`);
+  }
+  if (targets.length) {
+    const items = targets.map((t) => {
+      const link = t.permalink ? ` — <a href="${escapeHtml(t.permalink)}" target="_blank" rel="noopener noreferrer">${escapeHtml(t.permalink)}</a>` : '';
+      const err = t.error_message && t.status !== 'published' ? ` (${escapeHtml(t.error_message)})` : '';
+      return `<li><b>${escapeHtml(String(t.platform || '').toUpperCase())}:</b> ${escapeHtml(t.status || '')}${link}${err}</li>`;
+    }).join('');
+    parts.push(`<ul style="margin:0;padding-left:18px;">${items}</ul>`);
+  }
+  container.innerHTML = parts.join('');
+  container.style.display = 'block';
 }
 
 function invalidateDraftReview() {
@@ -1592,6 +1624,43 @@ async function rejectCurrentDraft() {
     }
   } catch (err) {
     showToast(`Error: ${err.message}`);
+  }
+}
+
+async function publishCurrentDraftNow() {
+  if (!activeDraft) return;
+  if (!activeDraft.revision) {
+    showToast('Muat ulang atau buka kembali draf dari galeri sebelum publish langsung.');
+    return;
+  }
+  const reviewed = document.getElementById('editor-reviewed')?.checked === true;
+  if (activeDraft.status === 'draft' && !reviewed) {
+    showToast('Centang konfirmasi review editorial terlebih dahulu sebelum publish lintas platform.');
+    return;
+  }
+  if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
+    if (!window.confirm(`Publish draf #${activeDraft.id} sekarang ke seluruh platform Meta aktif (Instagram & Facebook)?`)) return;
+  }
+  const btn = document.getElementById('btn-action-publish-now');
+  if (btn) btn.disabled = true;
+  showToast(`Mengirim draf #${activeDraft.id} ke Instagram & Facebook...`);
+  try {
+    const res = await fetch(`/api/drafts/${activeDraft.id}/publish-now`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reviewed, expected_revision: activeDraft.revision }),
+    });
+    const result = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(result.error || `HTTP ${res.status}`);
+    const publishedPlatforms = (result.targets || [])
+      .filter((t) => t.status === 'published')
+      .map((t) => String(t.platform || '').toUpperCase());
+    showToast(`Draf #${activeDraft.id} berhasil dipublish (${publishedPlatforms.join(', ') || 'Meta'}).`);
+    showGalleryView();
+  } catch (err) {
+    showToast(`Gagal publish langsung: ${err.message}`);
+  } finally {
+    if (btn) btn.disabled = activeDraft?.status === 'published' || activeDraft?.status === 'rejected';
   }
 }
 

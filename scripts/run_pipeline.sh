@@ -57,12 +57,18 @@ echo ""
 echo ">>> [4/5] Menjalankan Agen Copywriter & Render Service..."
 node services/copywriter/copywriter.js
 
+if [[ "${GAPURA_AUTOPILOT_PUBLISH:-false}" == "true" ]]; then
+  echo ""
+  echo ">>> [5/5] Menjadwalkan draf siap tayang ke slot optimal WIB..."
+  node services/publisher/autopilot-scheduler.js
+fi
+
 if [[ "${GAPURA_ENABLE_DELIVERY:-false}" == "true" ]]; then
-  echo '>>> [5/5] Mengirim draf review ke Telegram...'
+  echo '>>> Mengirim draf review ke Telegram...'
   node -e "import('./services/telegram/bot.js').then(m => m.dispatchPendingDrafts().then(() => process.exit(0)))"
   echo '[Gapura] Publikasi terjadwal ditangani gapura-publisher.timer.'
 else
-  echo '[Gapura] Paket draf siap direview; pengiriman eksternal tidak diaktifkan.'
+  echo '[Gapura] Paket draf siap; publikasi otomatis mengikuti jadwal slot dan gapura-publisher.timer.'
 fi
 
 echo ""

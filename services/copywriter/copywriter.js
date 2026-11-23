@@ -11,9 +11,11 @@ import { isDraftComplete } from './editorial.js';
 import { runtimeSecret } from '../common/runtime-secret.js';
 import { loadIllustration, selectedIllustration, illustrationDescriptor, pinIllustrationSlides } from '../designer/illustration-store.js';
 import { loadManualMedia, manualMediaDescriptor } from '../designer/manual-media.js';
-import { assertNewsEditorialInput, createTopicEditorialInputLoader, loadTopicNewsEditorialInput } from './source-input.js';
+import { loadTopicNewsEditorialInput, createTopicEditorialInputLoader, assertNewsEditorialInput } from './source-input.js';
 import { buildStagedStory, checkStoryClaims } from './storytelling.js';
 import { produceStagedTopic } from './staged-production.js';
+import { checkEkonomiPolicy } from '../analis/scoring.js';
+import { projectDiscoveryTopic } from '../common/discovery.js';
 
 const { Pool } = pkg;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -374,22 +376,66 @@ export async function regenerateDraft(draftId, dbPool = pool, options = {}) {
   return produceSingleTopicDraft(rows[0].topic_id, dbPool, next);
 }
 
-export async function runCopywriter(maxDrafts = 3) {
+export async function runCopywriter(maxDrafts = 3, options = {}) {
   const start = Date.now();
+  const cfg = loadAgentsConfig();
+  const analisCfg = cfg.analis || {};
+  const minThreshold = analisCfg.min_score_threshold ?? 76;
+  const candidateLimit = options.candidateLimit ?? maxDrafts;
+  const allowedDesks = ['politik', 'sosial', 'hukum', 'lingkungan', 'ekonomi', 'bursa'];
+  const priorityDesks = Array.isArray(analisCfg.priority_desks)
+    ? analisCfg.priority_desks.map((d) => String(d).trim().toLowerCase()).filter((d) => allowedDesks.includes(d))
+    : [];
+  const priorityCase = priorityDesks.length
+    ? `CASE ${priorityDesks.map((desk, idx) => `WHEN t.desk = '${desk}' THEN ${idx}`).join(' ')} ELSE ${priorityDesks.length} END ASC, `
+    : '';
   const { rows: topics } = await pool.query(
     `SELECT t.* FROM topics t JOIN LATERAL (SELECT score_total, verdict FROM topic_scores
      WHERE topic_id = t.id ORDER BY created_at DESC, id DESC LIMIT 1) ts ON TRUE
      WHERE t.status = 'scored' AND ts.verdict = 'passed' AND ts.score_total >= $2
-     ORDER BY ts.score_total DESC, t.id ASC LIMIT $1`, [maxDrafts, loadAgentsConfig().analis?.min_score_threshold ?? 76]);
+     ORDER BY ${priorityCase}ts.score_total DESC, t.id ASC LIMIT $1`, [candidateLimit, minThreshold]);
   let produced = 0;
+  let rejectedPolicy = 0;
   for (const topic of topics) {
-    const result = await produceSingleTopicDraft(topic);
-    if (!result.is_existing) produced++;
+    if (produced >= maxDrafts) break;
+    const policy = checkEkonomiPolicy(topic, projectDiscoveryTopic(topic), analisCfg);
+    if (policy.rejected) {
+      rejectedPolicy++;
+      if (options.rejectDisallowedEkonomi) {
+        await pool.query("UPDATE topics SET status = 'rejected', updated_at = NOW() WHERE id = $1 AND status = 'scored'", [topic.id]);
+      }
+      continue;
+    }
+    try {
+      const result = await produceSingleTopicDraft(topic);
+      if (!result.is_existing) produced++;
+    } catch (error) {
+      if (!options.continueOnError) throw error;
+      console.warn(`[Copywriter] Topik #${topic.id} gagal diproduksi: ${error.message}`);
+    }
   }
-  return { produced, durationMs: Date.now() - start };
+  return { produced, rejectedPolicy, durationMs: Date.now() - start };
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  runCopywriter(3).then((result) => console.log('Copywriter run complete:', result))
-    .catch((error) => { console.error('Copywriter run error:', error); process.exitCode = 1; }).finally(() => pool.end());
+  (async () => {
+    const autopilot = process.env.GAPURA_AUTOPILOT_PUBLISH === 'true';
+    const maxDrafts = Math.max(1, Number.parseInt(process.env.GAPURA_COPYWRITER_MAX_DRAFTS || (autopilot ? '2' : '3'), 10) || 2);
+    if (autopilot) {
+      const queueSize = Math.max(1, Number.parseInt(process.env.GAPURA_AUTOPILOT_QUEUE_SIZE || '6', 10) || 6);
+      const { rows } = await pool.query("SELECT COUNT(*)::int AS cnt FROM scheduled_posts WHERE status = 'pending' AND mode = 'auto'");
+      if ((rows[0]?.cnt || 0) >= queueSize) {
+        console.log(`[Copywriter] Antrean terjadwal sudah terisi (${rows[0].cnt}/${queueSize}); produksi AI dilewati untuk hemat kuota.`);
+        return;
+      }
+    }
+    const result = await runCopywriter(maxDrafts, {
+      candidateLimit: Math.max(maxDrafts * 6, 18),
+      continueOnError: true,
+      rejectDisallowedEkonomi: true,
+    });
+    console.log('Copywriter run complete:', result);
+  })()
+    .catch((error) => { console.error('Copywriter run error:', error); process.exitCode = 1; })
+    .finally(() => pool.end());
 }

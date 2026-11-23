@@ -740,3 +740,46 @@ test('runOnce forwards draftId filter to resetShadow, syncTargets and CLAIM_NEXT
   await assert.rejects(() => badWorker.runOnce({ draftId: 'not-a-number' }), /draft_id/i);
   assert.equal(badPool.state.queryCalls.length, 0);
 });
+
+test('autopilotPublish flag is forwarded safely and dailyPublishLimit stops claiming additional drafts', async () => {
+  const defaultConfig = publicationConfigFromEnv(baseEnv);
+  assert.equal(defaultConfig.autopilotPublish, false);
+  assert.equal(defaultConfig.dailyPublishLimit, 0);
+
+  const autopilotConfig = publicationConfigFromEnv({
+    ...baseEnv,
+    META_PUBLISH_MODE: 'live',
+    GAPURA_AUTOPILOT_PUBLISH: 'true',
+    GAPURA_DAILY_PUBLISH_LIMIT: '6',
+  });
+  assert.equal(autopilotConfig.autopilotPublish, true);
+  assert.equal(autopilotConfig.dailyPublishLimit, 6);
+
+  const todayPublished = [{ draft_id: 11 }, { draft_id: 12 }, { draft_id: 13 }, { draft_id: 14 }, { draft_id: 15 }, { draft_id: 16 }];
+  const limitQueries = [];
+  const capPool = {
+    async connect() {
+      return {
+        release() {},
+        async query(sql, values = []) {
+          const q = sql.replace(/\s+/g, ' ').trim();
+          limitQueries.push({ q, values });
+          if (/SELECT DISTINCT draft_id FROM publication_targets/i.test(q)) {
+            return { rows: todayPublished, rowCount: todayPublished.length };
+          }
+          if (/^INSERT INTO publication_targets/i.test(q)) return { rows: [], rowCount: 0 };
+          if (/^WITH candidate/i.test(q)) {
+            assert.equal(values[3], true);
+            assert.deepEqual(values[4], [11, 12, 13, 14, 15, 16]);
+            return { rows: [], rowCount: 0 };
+          }
+          throw new Error(`Unexpected SQL: ${q}`);
+        },
+      };
+    },
+  };
+  const result = await createMetaPublisherWorker({ pool: capPool, config: autopilotConfig, fetchImpl: async () => { throw new Error('no calls'); } }).runOnce();
+  assert.equal(result.daily_limit_reached, true);
+  assert.equal(result.published, 0);
+  assert.ok(limitQueries.some(({ q }) => /^WITH candidate/i.test(q)));
+});

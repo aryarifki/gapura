@@ -66,6 +66,8 @@ export function publicationConfigFromEnv(env = process.env) {
     threadsVersion: env.THREADS_GRAPH_VERSION || 'v1.0',
     httpTimeoutMs: Math.max(1000, Math.min(Number(env.META_HTTP_TIMEOUT_MS) || 30000, 60000)),
     maxAttempts: Math.max(1, Math.min(Number(env.META_PUBLISH_MAX_ATTEMPTS) || 3, 5)),
+    autopilotPublish: env.GAPURA_AUTOPILOT_PUBLISH === 'true',
+    dailyPublishLimit: Math.max(0, Number.parseInt(env.GAPURA_DAILY_PUBLISH_LIMIT || '0', 10) || 0),
     platforms,
   };
 }
@@ -124,20 +126,22 @@ function gateAllows(row) {
   }).allowed;
 }
 
-const DRAFT_EVIDENCE = `
+function draftEvidenceSql(autopilotParam) {
+  return `
     (SELECT topic.url FROM topics topic WHERE topic.id = d.topic_id) AS source_url,
     (SELECT scores.verdict = 'passed' FROM topic_scores scores WHERE scores.topic_id = d.topic_id
       ORDER BY scores.created_at DESC NULLS LAST, scores.id DESC LIMIT 1) AS analyst_passed,
     EXISTS (
       SELECT 1 FROM audit_log a WHERE a.entity = 'draft' AND a.entity_id = d.id
         AND a.action = 'approved_auto' AND a.created_at >= d.updated_at
-        AND (a.actor = 'web_admin' OR a.actor ~ '^telegram:[0-9]+$')
+        AND (a.actor = 'web_admin' OR a.actor ~ '^telegram:[0-9]+$' OR (${autopilotParam}::boolean AND a.actor = 'owner_autopilot'))
     ) AS human_approved,
     (SELECT a.payload->>'content_hash' FROM audit_log a
       WHERE a.entity = 'draft' AND a.entity_id = d.id AND a.action = 'approved_auto'
         AND a.created_at >= d.updated_at
-        AND (a.actor = 'web_admin' OR a.actor ~ '^telegram:[0-9]+$')
+        AND (a.actor = 'web_admin' OR a.actor ~ '^telegram:[0-9]+$' OR (${autopilotParam}::boolean AND a.actor = 'owner_autopilot'))
       ORDER BY a.created_at DESC, a.id DESC LIMIT 1) AS approved_content_hash`;
+}
 
 const DUE_SCHEDULE = `EXISTS (
   SELECT 1 FROM scheduled_posts sp WHERE sp.draft_id = d.id
@@ -155,7 +159,8 @@ const CLAIM_NEXT = `
     JOIN jsonb_to_recordset($1::jsonb) active(platform text, account_id text)
       ON active.platform = t.platform AND active.account_id = t.account_id
     WHERE t.status = 'pending' AND d.status = 'scheduled'
-      AND NOT (t.id = ANY($2::bigint[])) AND ($3::bigint IS NULL OR t.draft_id = $3::bigint) AND ${DUE_SCHEDULE}
+      AND NOT (t.id = ANY($2::bigint[])) AND ($3::bigint IS NULL OR t.draft_id = $3::bigint)
+      AND ($5::bigint[] IS NULL OR t.draft_id = ANY($5::bigint[])) AND ${DUE_SCHEDULE}
       AND EXISTS (SELECT 1 FROM scheduled_posts due WHERE due.id = t.schedule_id
         AND due.draft_id = d.id AND due.status = 'pending' AND due.mode = 'auto' AND due.scheduled_at <= NOW())
     ORDER BY t.created_at ASC, t.id ASC
@@ -167,7 +172,7 @@ const CLAIM_NEXT = `
   WHERE t.id = c.id AND d.id = t.draft_id AND t.status = 'pending'
   RETURNING t.*, d.caption, d.hashtags, d.slides, d.content_format, d.needs_review,
     d.editorial_input, d.editorial_mode, d.caption_body, d.threads_caption, d.angle, d.scope_note, d.editorial_references, d.article_body, d.article_references, d.article_facts, d.article_metadata,
-    d.status AS draft_status, ${DRAFT_EVIDENCE}`;
+    d.status AS draft_status, ${draftEvidenceSql('$4')}`;
 
 export function createMetaPublisherWorker({ pool, config, fetchImpl = globalThis.fetch, logger = console }) {
   const adapters = new Map();
@@ -245,10 +250,21 @@ export function createMetaPublisherWorker({ pool, config, fetchImpl = globalThis
 
   async function runOnce({ resetShadow = false, draftId = null } = {}) {
     const targetDraftId = normalizeDraftId(draftId);
+    const autopilotAllowed = Boolean(config.autopilotPublish);
+    const enforceDailyCap = targetDraftId === null && config.mode === 'live' && Number.isInteger(config.dailyPublishLimit) && config.dailyPublishLimit > 0;
     const result = { inserted: 0, shadow: 0, published: 0, failed: 0, blocked: 0, unknown: 0, retried: 0 };
     const client = await pool.connect();
     const attempted = [];
     try {
+      let publishedTodayDraftIds = null;
+      if (enforceDailyCap) {
+        const { rows: todayRows } = await client.query(
+          `SELECT DISTINCT draft_id FROM publication_targets
+           WHERE status = 'published'
+             AND (published_at AT TIME ZONE 'Asia/Jakarta')::date = (NOW() AT TIME ZONE 'Asia/Jakarta')::date`,
+        );
+        publishedTodayDraftIds = new Set(todayRows.map((entry) => Number(entry.draft_id)).filter(Number.isFinite));
+      }
       if (resetShadow) {
         const { rowCount } = await client.query(
           `UPDATE publication_targets SET status = 'pending', updated_at = NOW() WHERE status = 'shadow' AND ($1::bigint IS NULL OR draft_id = $1::bigint)`,
@@ -258,8 +274,20 @@ export function createMetaPublisherWorker({ pool, config, fetchImpl = globalThis
       }
       result.inserted = await syncTargets(client, { draftId: targetDraftId });
       while (true) {
-        const { rows } = await client.query(CLAIM_NEXT, [JSON.stringify(activeAccounts), attempted, targetDraftId]);
-        if (!rows.length) break;
+        const allowedDraftIds = enforceDailyCap && publishedTodayDraftIds.size >= config.dailyPublishLimit
+          ? [...publishedTodayDraftIds]
+          : null;
+        if (allowedDraftIds && !allowedDraftIds.length) {
+          result.daily_limit_reached = true;
+          break;
+        }
+        const { rows } = await client.query(CLAIM_NEXT, [JSON.stringify(activeAccounts), attempted, targetDraftId, autopilotAllowed, allowedDraftIds]);
+        if (!rows.length) {
+          if (enforceDailyCap && publishedTodayDraftIds.size >= config.dailyPublishLimit) {
+            result.daily_limit_reached = true;
+          }
+          break;
+        }
         const row = rows[0];
         attempted.push(row.id);
         let transactionOpen = false;
@@ -310,12 +338,12 @@ export function createMetaPublisherWorker({ pool, config, fetchImpl = globalThis
             const { rows: [current] } = await client.query(
               `SELECT t.*, d.caption, d.hashtags, d.slides, d.content_format, d.needs_review,
                   d.editorial_input, d.editorial_mode, d.caption_body, d.threads_caption, d.angle, d.scope_note, d.editorial_references, d.article_body, d.article_references, d.article_facts, d.article_metadata,
-                  d.status AS draft_status, ${DRAFT_EVIDENCE}
+                  d.status AS draft_status, ${draftEvidenceSql('$2')}
                FROM publication_targets t JOIN drafts d ON d.id = t.draft_id
                WHERE t.id = $1 AND t.status = 'publishing' AND ${DUE_SCHEDULE}
                  AND EXISTS (SELECT 1 FROM scheduled_posts due WHERE due.id = t.schedule_id
                    AND due.status = 'pending' AND due.mode = 'auto' AND due.scheduled_at <= NOW())
-               FOR UPDATE OF t, d`, [row.id],
+               FOR UPDATE OF t, d`, [row.id, autopilotAllowed],
             );
             if (!current || !gateAllows(current) || current.account_id !== adapter.accountId ||
                 current.caption !== row.caption || current.content_format !== row.content_format ||
@@ -356,6 +384,7 @@ export function createMetaPublisherWorker({ pool, config, fetchImpl = globalThis
           );
           await client.query('COMMIT');
           transactionOpen = false;
+          if (publishedTodayDraftIds) publishedTodayDraftIds.add(Number(row.draft_id));
           result.published++;
         } catch (error) {
           if (transactionOpen) {
