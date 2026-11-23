@@ -116,7 +116,7 @@ export function captionHash(caption) {
 
 function gateAllows(row) {
   if (row.draft_status !== 'scheduled' || row.human_approved !== true ||
-      row.approved_content_hash !== draftContentHash(row) || row.content_hash !== row.approved_content_hash || row.analyst_passed !== true ||
+      row.approved_content_hash !== draftContentHash(row) || row.content_hash !== row.approved_content_hash ||
       validatePublicSourceUrl(row.source_url) || !hasEditorialCover(row.slides)) return false;
   return validateDraftApproval({
     status: 'draft',
@@ -129,8 +129,6 @@ function gateAllows(row) {
 function draftEvidenceSql(autopilotParam) {
   return `
     (SELECT topic.url FROM topics topic WHERE topic.id = d.topic_id) AS source_url,
-    (SELECT scores.verdict = 'passed' FROM topic_scores scores WHERE scores.topic_id = d.topic_id
-      ORDER BY scores.created_at DESC NULLS LAST, scores.id DESC LIMIT 1) AS analyst_passed,
     EXISTS (
       SELECT 1 FROM audit_log a WHERE a.entity = 'draft' AND a.entity_id = d.id
         AND a.action = 'approved_auto' AND a.created_at >= d.updated_at

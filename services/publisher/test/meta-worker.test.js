@@ -84,8 +84,6 @@ function assertReviewEvidence(q) {
   assert.match(q, /a\.actor = 'web_admin'/);
   assert.ok(q.includes('^telegram:[0-9]+$'));
   assert.match(q, /ORDER BY a\.created_at DESC, a\.id DESC LIMIT 1/);
-  assert.match(q, /scores\.verdict = 'passed'/);
-  assert.match(q, /ORDER BY scores\.created_at DESC NULLS LAST, scores\.id DESC LIMIT 1/);
   assert.match(q, /SELECT topic\.url FROM topics topic WHERE topic\.id = d\.topic_id/);
   assert.match(q, /d\.hashtags/);
   for (const field of ['editorial_input', 'editorial_mode', 'caption_body', 'threads_caption', 'angle', 'scope_note', 'editorial_references', 'article_body', 'article_references', 'article_facts']) assert.match(q, new RegExp(`d\\.${field}\\b`));
@@ -479,7 +477,6 @@ test('revoked approval, a changed revision or lost schedule during preparation p
     state => { state.current.draft_status = 'rejected'; },
     state => { state.current.draft_status = 'published'; },
     state => { state.current.account_id = 'different-account'; },
-    state => { state.current.analyst_passed = false; },
     state => { state.current.source_url = 'http://127.0.0.1/article'; },
     state => { state.scheduleActive = false; },
     state => { state.current = null; },
@@ -528,9 +525,8 @@ test('database failure after remote success preserves the known remote id as unk
   assert.equal(pool.state.updates.at(-1).remoteId, 'known-media');
 });
 
-test('publication still requires a public source and the latest passed analyst result', async () => {
+test('publication still requires a public source', async () => {
   for (const overrides of [
-    ...[false, null, undefined, 'true', 1].map(analyst_passed => ({ analyst_passed })),
     { source_url: '' }, { source_url: null }, { source_url: 'http://127.0.0.1/article' },
   ]) {
     const pool = fakePool([claimRow(overrides)]);

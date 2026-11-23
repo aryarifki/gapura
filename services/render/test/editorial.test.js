@@ -54,3 +54,49 @@ test('ordinary news paragraphs never become attributed official quotations', () 
   assert.equal(JSON.stringify(vdom).includes('PERNYATAAN RESMI'), false);
   assert.equal(JSON.stringify(vdom).includes('“Inflasi'), false);
 });
+
+test('editorial-lead draws the real headline and the article in one uniform size, inside the frame', async () => {
+  const paragraphs = [
+    'Indeks ditutup menguat 69,52 poin atau 1,35 persen ke level 5.215,85 pada perdagangan Senin, 23 November 2026. Penguatan ini berbalik dari penurunan mingguan 3,71 persen yang tercatat pada pekan sebelumnya.',
+    'Indeks dibuka di level 5.134,06, lalu sempat turun menyentuh level terendah 5.062,09 sebelum berbalik naik hingga 5.244,35 dan ditutup menguat di 5.215,85.',
+    'Total nilai transaksi di bursa mencapai Rp 10,96 triliun, dengan 398 saham menguat, 278 saham melemah, dan 269 saham stagnan sepanjang sesi perdagangan.',
+    'Penguatan berlangsung di tengah kabar pembicaraan mengenai klasifikasi pasar saham Indonesia. Sektor bahan baku melonjak 4,42 persen dan memimpin penguatan sektor pada penutupan perdagangan.',
+  ].map((text) => ({ text, fact_ids: [] }));
+  const slide = {
+    layout: 'editorial-lead', role: 'lead', source: 'FXStreet Indonesia · Investor.id · StockWatch',
+    teks: 'IHSG ditutup menguat 69,52 poin ke level 5.215,85 pada Senin, 23 November 2026.',
+    data: { title: 'IHSG rebound 1,35 persen ke 5.215,85 di tengah kabar dialog Prabowo dan MSCI', paragraphs },
+  };
+  const view = JSON.stringify(engine.resolveLayout(slide, 2, 3));
+  assert.ok(view.includes(slide.data.title), 'lead slide must draw the real headline');
+  assert.ok(view.includes('GAPURAMEDIA.MY.ID'), 'lead slide must carry the bottom bar site label');
+  const articleBlocks = new Set([slide.teks, ...paragraphs.map((paragraph) => paragraph.text)]);
+  const sizes = new Set();
+  const walk = (node) => {
+    if (!node || typeof node !== 'object') return;
+    const kids = node.props?.children;
+    if (typeof kids === 'string' && node.props?.style?.fontSize && articleBlocks.has(kids)) sizes.add(node.props.style.fontSize);
+    if (Array.isArray(kids)) kids.forEach(walk);
+    else if (kids && typeof kids === 'object') walk(kids);
+  };
+  walk(engine.resolveLayout(slide, 2, 3));
+  assert.equal(sizes.size, 1, `article blocks must share one font size, got ${[...sizes].join(', ')}`);
+  const png = await engine.renderSlideToBuffer(slide, 2, 3);
+  const bottom = await sharp(await sharp(png).extract({ left: 0, top: 1320, width: 1080, height: 30 }).toBuffer()).stats();
+  assert.ok(bottom.channels.every((channel) => channel.mean < 60), 'the bottom band must be the dark bottom bar, free of article text');
+});
+
+test('editorial-close question fits inside the right safe margin', async () => {
+  const slide = {
+    layout: 'editorial-close', role: 'close', source: 'FXStreet Indonesia · Investor.id · StockWatch',
+    teks: 'Ikuti Gapura Media untuk kabar terverifikasi setiap hari. Bagikan berita ini agar makin banyak yang terbantu, dan dukung kami terus berkarya.',
+    data: { title: 'Tetap Terhubung', question: 'Sudah follow @gapuramedia?' },
+  };
+  const png = await engine.renderSlideToBuffer(slide, 3, 3);
+  const strip = await sharp(png).extract({ left: 1010, top: 150, width: 70, height: 500 }).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  let mint = 0;
+  for (let pixel = 0; pixel < strip.data.length; pixel += strip.info.channels) {
+    if (strip.data[pixel] < 170 && strip.data[pixel + 1] > 150 && strip.data[pixel + 2] > 140) mint++;
+  }
+  assert.equal(mint, 0, 'question text must not overflow past the right content margin');
+});

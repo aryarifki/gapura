@@ -5,7 +5,7 @@
   "main": "server.js",
   "type": "module",
   "scripts": {
-    "test": "node --test test/access.test.js test/config-redaction.test.js test/editorial-gates.test.js test/icon-map.test.js test/navigation.test.js",
+    "test": "node --test test/access.test.js test/config-redaction.test.js test/editorial-gates.test.js test/icon-map.test.js test/navigation.test.js test/intake-guard.test.js",
     "test:integration": "bash test/run-server-tests.sh"
   },
   "dependencies": {
