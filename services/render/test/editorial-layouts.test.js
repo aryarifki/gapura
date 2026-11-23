@@ -15,7 +15,10 @@ const source = 'Dokumen uji lingkungan · Pernyataan forum warga';
 const assetId = '2d30e364-b95d-4d49-82ed-43c548270944';
 const slides = [
   { layout: 'editorial-cover', teks: 'Warga membutuhkan pemantauan terbuka dan tindak lanjut konsisten.', data: { title: 'Udara bersih masih jadi pekerjaan rumah', kicker: 'Lingkungan' } },
-  { layout: 'editorial-lead', teks: 'Laporan kualitas udara membantu warga memahami perubahan dan memilih langkah perlindungan yang sesuai.', data: { title: 'Data terbuka jadi pintu awal', kicker: 'Perkembangan utama' } },
+  { layout: 'editorial-lead', teks: 'Laporan kualitas udara membantu warga memahami perubahan dan memilih langkah perlindungan yang sesuai.', data: { title: 'Data terbuka jadi pintu awal', kicker: 'Perkembangan utama', paragraphs: [
+    { text: 'Data konsentrasi partikulat yang diterbitkan berkala membantu warga membaca pola harian, membandingkan antar titik ukur, dan menentukan kapan aktivitas luar ruang perlu disesuaikan.', fact_ids: [] },
+    { text: 'Pemantauan yang terbuka juga memberi dasar bagi tindak lanjut bersama, mulai dari pembatasan sumber emisi di tingkat lingkungan sampai evaluasi kebijakan udara bersih oleh pemerintah daerah.', fact_ids: [] },
+  ] } },
   { layout: 'editorial-breakdown', teks: 'Lihat informasi ini.', data: { title: 'Tiga fokus pemantauan', kicker: 'Yang perlu dibaca', items: [
     { label: 'Lokasi', value: 'Titik ukur tersedia.' }, { label: 'Waktu', value: 'Pembaruan dicatat berkala.' }, { label: 'Tindak lanjut', value: 'Warga bisa bertanya.' },
   ] } },
@@ -68,16 +71,27 @@ test('the seven semantic layouts preserve supplied copy and paint distinct offli
     const original = structuredClone(slide);
     const tree = engine.resolveLayout(slide, slide.no, slides.length);
     const rendered = texts(tree);
-    for (const copy of [slide.teks, slide.data.title, slide.data.kicker, source]) assert.ok(rendered.includes(copy), `${slide.layout}: missing ${copy}`);
+    // Halaman artikel (editorial-lead) hanya memuat isi berita: judul dan
+    // kicker adalah metadata kontrak dan sengaja tidak digambar di slide.
+    const expectedCopy = slide.layout === 'editorial-lead'
+      ? [slide.teks, source]
+      : [slide.teks, slide.data.title, slide.data.kicker, source];
+    for (const copy of expectedCopy) assert.ok(rendered.includes(copy), `${slide.layout}: missing ${copy}`);
+    if (slide.layout === 'editorial-lead') assert.ok(!rendered.includes(slide.data.title), 'editorial-lead: title must stay metadata only');
     assert.doesNotMatch(rendered.join(' '), /KONTEKS|BULLISH|fact-data|fact-forum|fact-meeting/u);
     const image = await engine.renderSlideToBuffer(slide, slide.no, slides.length);
     const { data, info } = await inspect(image);
     hashes.add(createHash('sha256').update(image).digest('hex'));
     let dark = 0;
     let light = 0;
+    // Halaman artikel tidak memiliki judul navy; tinta tubuhnya adalah
+    // muted #546A7B di atas mist #EDF4F4, jadi ambang tinta lead disesuaikan.
+    const isInk = slide.layout === 'editorial-lead'
+      ? (r, g, b) => r < 110 && g < 135 && b < 155
+      : (r, g, b) => r < 70 && g < 100 && b < 130;
     for (let y = 190; y < 1150; y++) for (let x = 72; x < 1008; x++) {
       const offset = (y * info.width + x) * info.channels;
-      if (data[offset] < 70 && data[offset + 1] < 100 && data[offset + 2] < 130) dark++;
+      if (isInk(data[offset], data[offset + 1], data[offset + 2])) dark++;
       if (data[offset] > 200 && data[offset + 1] > 200 && data[offset + 2] > 200) light++;
     }
     assert.ok(dark > 5000 && light > 5000, `${slide.layout}: headline and body must paint with contrast`);
@@ -89,7 +103,7 @@ test('the seven semantic layouts preserve supplied copy and paint distinct offli
       assert.ok(box.top >= 70 && box.top + box.height <= 1280, `${slide.layout}: vertical overflow for ${box.textContent}`);
       if (![source, '@gapuramedia'].includes(box.textContent)) assert.ok(box.top + box.height < footer.top - 24, `${slide.layout}: content overlaps factual provenance`);
     }
-    if (slide.layout !== 'editorial-cover') {
+    if (slide.layout !== 'editorial-cover' && slide.layout !== 'editorial-lead') {
       assert.ok(boxes.find((box) => box.textContent === slide.data.title).top < 270, `${slide.layout}: headline must start near the top`);
     }
     const bottom = await sharp(await sharp(image).extract({ left: 0, top: 1310, width: 1080, height: 40 }).toBuffer()).stats();
@@ -103,7 +117,8 @@ test('standalone body previews use the chosen semantic layout even at slide 1', 
   for (const slide of slides.slice(1)) {
     const tree = engine.resolveLayout({ ...slide, no: 1 }, 1, 1);
     const rendered = texts(tree);
-    assert.ok(rendered.includes(slide.data.title));
+    if (slide.layout === 'editorial-lead') assert.ok(!rendered.includes(slide.data.title), 'editorial-lead: title must stay metadata only');
+    else assert.ok(rendered.includes(slide.data.title));
     assert.ok(rendered.includes(source));
     assert.ok(!rendered.includes('Geser →'));
     if (slide.data.items) {
@@ -115,7 +130,12 @@ test('standalone body previews use the chosen semantic layout even at slide 1', 
       assert.ok(rendered.includes(event.text));
     }
     if (slide.data.quote) for (const key of ['quote', 'author', 'role_label']) assert.ok(rendered.includes(slide.data[key]));
-    if (slide.data.question) for (const key of ['question', 'cta']) assert.ok(rendered.includes(slide.data[key]));
+    if (slide.data.question) {
+      // Pertanyaan penutup digambar sebagai baris-baris terpisah agar token
+      // '@' tidak tumpah; gabungan barisnya harus membentuk teks aslinya.
+      assert.ok(rendered.join(' ').replace(/\s+/g, ' ').includes(slide.data.question), 'close question copy must be preserved across its lines');
+      assert.ok(rendered.includes(slide.data.cta));
+    }
   }
 });
 

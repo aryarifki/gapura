@@ -115,6 +115,19 @@ function fitFontSize(text, { max = 72, min = 22, width = CONTENT_WIDTH, ratio = 
   return min;
 }
 
+// Archivo Black jauh lebih lebar daripada rasio display rata-rata, dan kata
+// terpanjang tidak dapat dipenggal Satori: ukuran font display harus lolos
+// uji kata terpanjang juga, bukan hanya perkiraan jumlah baris.
+function fitDisplaySize(text, { max = 78, min = 30, width = CONTENT_WIDTH, maxLines = 3 } = {}) {
+  const clean = String(text || '').replace(/\s+/g, ' ').trim();
+  const longest = clean.split(' ').reduce((acc, word) => Math.max(acc, word.length), 0);
+  for (let size = max; size > min; size -= 1) {
+    if (longest * size * 0.8 > width) continue;
+    if (estimateLineCount(clean, size, width, 0.8) <= maxLines) return size;
+  }
+  return min;
+}
+
 // Pemenggalan baris berimbang (dynamic programming) untuk headline cover.
 // Tujuan: hindari baris terakhir yang hanya berisi satu kata (widow), yang
 // membuat cover terlihat tidak rapi. Mengembalikan null bila tidak feasible.
@@ -479,16 +492,19 @@ export class RenderEngine {
     const photo = cover && data.image_data ? this.renderImage(data, { width: 1080, height: 720, cover: true }) : null;
     const headlineMax = cover ? 96 : layout === 'editorial-lead' ? 88 : quote || close ? 44 : 68;
     const headlineSize = fitFontSize(data.title, { max: headlineMax, min: 34, maxLines: cover ? 4 : 3 });
-    const children = data.kicker ? [
-      editorialNode({ alignItems: 'center', gap: '14px' }, [
+    const children = [];
+    // Halaman artikel (editorial-lead) hanya memuat isi berita: kicker dan
+    // judul data.title adalah metadata kontrak, tidak digambar di slide.
+    if (layout !== 'editorial-lead') {
+      if (data.kicker) children.push(editorialNode({ alignItems: 'center', gap: '14px' }, [
         editorialNode({ width: '38px', height: '5px', backgroundColor: EDITORIAL.amber }),
         editorialText(data.kicker, { fontSize: '19px', fontWeight: 700, letterSpacing: '2px', textTransform: 'uppercase', color: accent }),
-      ]),
-    ] : [];
-    children.push(editorialText(data.title, {
-      fontFamily: 'Archivo Black', fontSize: `${headlineSize}px`,
-      lineHeight: '1.12', letterSpacing: '-1.5px', marginTop: '28px',
-    }));
+      ]));
+      children.push(editorialText(data.title, {
+        fontFamily: 'Archivo Black', fontSize: `${headlineSize}px`,
+        lineHeight: '1.12', letterSpacing: '-1.5px', marginTop: '28px', maxWidth: `${CONTENT_WIDTH}px`,
+      }));
+    }
     const supporting = slide.teks && slide.teks !== data.title && slide.teks !== data.quote && slide.teks !== data.question ? slide.teks : '';
     const body = (size = 36, width = CONTENT_WIDTH) => supporting ? editorialText(supporting, {
       fontSize: `${fitFontSize(supporting, { max: size, min: 24, width, ratio: CHAR_RATIO.body, maxLines: 5, step: 1 })}px`,
@@ -503,16 +519,28 @@ export class RenderEngine {
         ]));
         break;
 
-      case 'editorial-lead':
-        children.push(editorialNode({ width: '120px', height: '8px', backgroundColor: EDITORIAL.teal, marginTop: '44px' }), body(42, 870));
-        if (data.paragraphs?.length) {
-          children.push(editorialNode({ flexDirection: 'column', gap: '22px', marginTop: '30px' }, data.paragraphs.map((paragraph) =>
-            editorialText(paragraph.text, {
-              fontSize: `${fitFontSize(paragraph.text, { max: 30, min: 21, width: CONTENT_WIDTH, ratio: CHAR_RATIO.body, maxLines: 4, step: 1 })}px`,
-              lineHeight: '1.45', color: secondary, maxWidth: `${CONTENT_WIDTH}px`,
-            }))));
+      case 'editorial-lead': {
+        // Satu alur baca seragam: teks pembuka dan semua paragraf memakai
+        // SATU ukuran font yang diturunkan sampai total tinggi perkiraan
+        // muat di area konten, sehingga tidak ada blok yang berbeda ukuran
+        // dan tidak ada teks yang menabrak garis batas/footer.
+        const blocks = [supporting, ...(data.paragraphs || []).map((paragraph) => paragraph.text)]
+          .map((text) => String(text || '').trim()).filter(Boolean);
+        const ARTICLE_HEIGHT_BUDGET = 940;
+        const articleHeight = (size) => blocks.reduce((total, text, index) =>
+          total + (index ? 22 : 0) + estimateLineCount(text, size, CONTENT_WIDTH, 0.56) * size * 1.45, 8);
+        let articleSize = 20;
+        for (let size = 32; size >= 20; size -= 1) {
+          if (articleHeight(size) <= ARTICLE_HEIGHT_BUDGET) { articleSize = size; break; }
         }
+        children.push(editorialNode({ flexDirection: 'column', gap: '22px' }, [
+          editorialNode({ width: '120px', height: '8px', backgroundColor: EDITORIAL.teal }),
+          ...blocks.map((text) => editorialText(text, {
+            fontSize: `${articleSize}px`, lineHeight: '1.45', color: secondary, maxWidth: `${CONTENT_WIDTH}px`,
+          })),
+        ]));
         break;
+      }
 
       case 'editorial-breakdown':
         children.push(body(30), editorialNode({ flexDirection: 'column', marginTop: '38px' }, data.items.map((item, index) =>
@@ -573,9 +601,17 @@ export class RenderEngine {
         break;
       }
 
-      case 'editorial-close':
+      case 'editorial-close': {
+        // Satori tidak memenggal baris pada token yang diawali '@' (handle
+        // akun), sehingga pertanyaan sepanjang apa pun akan digambar satu
+        // baris dan tumpah keluar kanvas. Karena itu pertanyaan ditata
+        // manual menjadi baris berimbang pada ukuran terpilih lebih dulu.
+        const questionSize = fitDisplaySize(data.question, { max: 78, min: 30, maxLines: 3 });
+        const balancedQuestion = balanceLines(data.question, { fontSize: questionSize, ratio: 0.8, maxLines: 3 });
+        const questionLines = balancedQuestion ? balancedQuestion.split('\n') : [data.question];
         children.push(
-          editorialText(data.question, { fontFamily: 'Archivo Black', fontSize: `${fitFontSize(data.question, { max: 78, min: 34, maxLines: 5 })}px`, lineHeight: '1.15', letterSpacing: '-1px', color: EDITORIAL.mint, marginTop: '48px' }),
+          editorialNode({ flexDirection: 'column', marginTop: '48px' }, questionLines.map((line) =>
+            editorialText(line, { fontFamily: 'Archivo Black', fontSize: `${questionSize}px`, lineHeight: '1.15', letterSpacing: '-1px', color: EDITORIAL.mint, maxWidth: `${CONTENT_WIDTH}px` }))),
           body(34),
           editorialNode({ gap: '20px', alignItems: 'center', paddingTop: '30px', borderTop: `1px solid ${EDITORIAL.darkLine}`, marginTop: '56px' }, [
             { type: 'svg', props: { width: 28, height: 34, viewBox: '0 0 28 34', children: { type: 'path', props: { d: 'M4 2H24V31L14 24L4 31Z', fill: 'none', stroke: EDITORIAL.amber, strokeWidth: 2.5 } } } },
@@ -583,6 +619,7 @@ export class RenderEngine {
           ]),
         );
         break;
+      }
     }
     // Reserve the headline, supporting copy and swipe cue before allocating
     // photo space. A longer short headline must never push the source off-page.
