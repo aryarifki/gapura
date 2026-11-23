@@ -777,15 +777,15 @@ export async function buildStagedStory(brief, {
               return onAttempt?.({ ...safe, stage, validation_attempt: attempt });
             },
           });
-          // A provider/transport error is not a content problem. Retry it once
-          // so a transient Gemini UNAVAILABLE burst rotates onto the next keys
+          // A provider/transport error is not a content problem. Retry it twice
+          // so a transient Gemini UNAVAILABLE burst rotates through more keys
           // instead of aborting the stage; content (gate) failures keep their
           // own two-attempt budget and are not retried here.
           let response;
           for (let transportAttempt = 1; ; transportAttempt += 1) {
             try { response = await request(); break; }
             catch (error) {
-              if (error instanceof EditorialValidationError || transportAttempt >= 2) throw error;
+              if (error instanceof EditorialValidationError || transportAttempt >= 3) throw error;
               record.transport_retries = (record.transport_retries || 0) + 1;
               // Free-tier Gemini allows only 20 requests/minute/key, so a 429
               // means the minute window is spent. Retrying immediately would

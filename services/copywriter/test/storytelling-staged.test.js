@@ -381,26 +381,26 @@ test('carousel close repair preserves its question and uses a neutral non-questi
   assert.equal(result.teks, close.text);
 });
 
-test('a provider error retries the stage once with fresh keys before failing', async () => {
+test('a provider error retries the stage transport twice with fresh keys before failing', async () => {
   let articleCalls = 0;
   const story = await buildStagedStory(brief, { documents, invoke: async (_a, _p, _s, _j, options) => {
     if (options.stage !== S2) return response(options.stage);
     articleCalls += 1;
-    if (articleCalls === 1) throw new Error('Gemini could not be reached (timeout).');
+    if (articleCalls <= 2) throw new Error('Gemini could not be reached (timeout).');
     return JSON.stringify({ rows: article });
   } });
-  assert.equal(articleCalls, 2);
+  assert.equal(articleCalls, 3);
   assert.equal(story.checkpoint.stages[S2].receipt.status, 'complete');
 });
 
-test('a provider error on both stage attempts surfaces as a stage failure', async () => {
+test('a provider error across all stage transport attempts surfaces as a stage failure', async () => {
   let articleCalls = 0;
   await assert.rejects(buildStagedStory(brief, { documents, invoke: async (_a, _p, _s, _j, options) => {
     if (options.stage !== S2) return response(options.stage);
     articleCalls += 1;
     throw new Error('OpenRouter API (402, PROVIDER_ERROR).');
   } }), /stage2_article: OpenRouter API \(402/u);
-  assert.equal(articleCalls, 2);
+  assert.equal(articleCalls, 3);
 });
 
 test('Gemini stage budget allows two keys per validation attempt (the fallbacks cannot serve large staged prompts)', async () => {
