@@ -309,7 +309,7 @@ async function requestWithAdaptation(attempt, { promptText, policy, jsonMode, fe
     error.code = code;
     error.retryable = true;
     if (attempt.poolKey && (code === 'API_KEY_INVALID' || [401, 403].includes(response.status))) error.quarantine = true;
-    if (response.status === 400 || response.status === 422) {
+    if ((response.status === 400 || response.status === 422) && !error.quarantine) {
       const adapted = attempt.kind === 'gemini' || attempt.kind === 'openai' ? adaptChatBody(request.body, raw) : null;
       if (adapted) {
         request = { ...request, body: adapted };
@@ -400,6 +400,12 @@ export async function callAgentLLM(agentKey, promptText, systemPrompt = '', json
   const skipProvider = (providerId) => {
     while (attempts[index + 1]?.providerId === providerId) index++;
   };
+  const skipModel = (providerId, model) => {
+    while (attempts[index + 1]?.providerId === providerId && attempts[index + 1]?.model === model) index++;
+  };
+  const skipCurrent = (attempt) => (attempt.providerId === 'gemini'
+    ? skipModel(attempt.providerId, attempt.model)
+    : skipProvider(attempt.providerId));
   const fail = () => {
     if (lastError) {
       lastError.rateLimited = rateLimited;
@@ -439,16 +445,17 @@ export async function callAgentLLM(agentKey, promptText, systemPrompt = '', json
         ...(safeCode ? { error_code: safeCode } : {}),
       });
       if (!error.retryable && !error.skipProvider) fail();
-      if (error.skipProvider) skipProvider(attempt.providerId);
+      if (error.skipProvider) skipCurrent(attempt);
       else if (attempt.poolKey && (error.quarantine || [401, 403, 429].includes(error.status))) {
         // Rotate this unhealthy credential only; leave later pool slots eligible.
       }
       else if (error.status === 408 || [500, 502, 503, 504].includes(error.status) || error.status === 0) {
-        const count = (transientFailures.get(attempt.providerId) || 0) + 1;
-        transientFailures.set(attempt.providerId, count);
-        if (count >= 2) skipProvider(attempt.providerId);
+        const failureKey = attempt.providerId === 'gemini' ? `${attempt.providerId}:${attempt.model}` : attempt.providerId;
+        const count = (transientFailures.get(failureKey) || 0) + 1;
+        transientFailures.set(failureKey, count);
+        if (count >= 2) skipCurrent(attempt);
         else if (!attempt.poolKey) index--;
-      } else skipProvider(attempt.providerId);
+      } else skipCurrent(attempt);
       if (index >= attempts.length - 1) fail();
     }
     index++;

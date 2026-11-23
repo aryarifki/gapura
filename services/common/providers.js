@@ -320,7 +320,7 @@ export function buildChatRequest(attempt, { prompt, policy = '', jsonMode = true
           // Exact extraction does not benefit from hidden reasoning, and a
           // thinking budget can consume the whole output window before any
           // JSON is emitted (observed as MAX_TOKENS on stage 1).
-          ...(stage && /^stage[123]/u.test(stage) ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+          ...(stage && /^stage[123]/u.test(stage) && attempt.model !== 'gemini-3.5-flash-lite' ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
           ...(jsonMode ? { responseMimeType: 'application/json' } : {}), ...(strictSchema ? { responseJsonSchema: strictSchema } : {}) },
       },
     };
@@ -371,6 +371,9 @@ export function adaptChatBody(body, errorText) {
   }
   if ((text.includes('responsemimetype') || text.includes('response_mime_type')) && body.generationConfig?.responseMimeType) {
     const next = { ...body, generationConfig: { ...body.generationConfig } }; delete next.generationConfig.responseMimeType; return next;
+  }
+  if ((text.includes('thinking') || text.includes('invalid_argument') || text.includes('invalid argument')) && body.generationConfig?.thinkingConfig !== undefined) {
+    const next = { ...body, generationConfig: { ...body.generationConfig } }; delete next.generationConfig.thinkingConfig; return next;
   }
   return null;
 }

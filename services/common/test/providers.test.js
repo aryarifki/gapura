@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  adaptChatBody,
   buildAttempts,
   buildChatRequest,
   normalizeModelList,
@@ -174,4 +175,17 @@ test('GEMINI_FALLBACK_MODELS skips a cooled primary Gemini model and free-only m
     'groq/qwen/qwen3.8-27b',
   ]);
   assert.equal(attempts.some((a) => a.providerId === 'openrouter'), false);
+});
+
+test('omits thinkingConfig on gemini-3.5-flash-lite and adaptChatBody strips thinkingConfig on INVALID_ARGUMENT', () => {
+  const liteReq = buildChatRequest({ kind: 'gemini', baseUrl: 'https://example.com', model: 'gemini-3.5-flash-lite', maxTokens: 256 }, {
+    prompt: 'S1', stream: true, stage: 'stage1_synthesis',
+  });
+  assert.equal(liteReq.body.generationConfig.thinkingConfig, undefined);
+  const stdReq = buildChatRequest({ kind: 'gemini', baseUrl: 'https://example.com', model: 'gemini-3.1-flash-lite', maxTokens: 256 }, {
+    prompt: 'S1', stream: true, stage: 'stage1_synthesis',
+  });
+  assert.deepEqual(stdReq.body.generationConfig.thinkingConfig, { thinkingBudget: 0 });
+  const adapted = adaptChatBody(stdReq.body, '{"error":{"status":"INVALID_ARGUMENT","message":"Request contains an invalid argument."}}');
+  assert.equal(adapted.generationConfig.thinkingConfig, undefined);
 });

@@ -589,3 +589,31 @@ test('callAgentLLM fails over directly from a daily-exhausted primary Gemini mod
   assert.equal(calledUrls.filter((u) => u.includes('gemini-3.5-flash')).length, 1);
   assert.equal(calledUrls.some((u) => u.includes('openrouter.ai')), false);
 });
+
+test('Gemini 400 INVALID_ARGUMENT or MAX_TOKENS skips only the failing Gemini model and fails over to the next free Gemini model', async () => {
+  resetGeminiPool();
+  const calledUrls = [];
+  const result = await callAgentLLM('copywriter', 'Return JSON', '', true, {
+    config: { copywriter: { provider: 'gemini', model: 'gemini-3-flash-preview' } },
+    providers: routerProviders(),
+    env: {
+      GEMINI_API_KEY_1: 'g1',
+      GEMINI_API_KEY_2: 'g2',
+      GEMINI_FALLBACK_MODELS: 'gemini-3.1-flash-lite',
+      GROQ_API_KEY: 'groq-key',
+      GAPURA_FREE_MODELS_ONLY: 'true',
+    },
+    secrets: {},
+    stage: 'stage1_synthesis',
+    geminiAttemptLimit: 4,
+    fetchImpl: async (url) => {
+      calledUrls.push(url);
+      if (url.includes('gemini-3-flash-preview')) return new Response('{"error":{"code":400,"status":"INVALID_ARGUMENT"}}', { status: 400 });
+      return Response.json({ candidates: [{ content: { parts: [{ text: '{"rows":[{"kind":"summary","title":"ok"}]}' }] } }] });
+    },
+  });
+  assert.equal(result, '{"rows":[{"kind":"summary","title":"ok"}]}');
+  assert.equal(calledUrls.filter((u) => u.includes('gemini-3-flash-preview')).length, 2);
+  assert.equal(calledUrls.filter((u) => u.includes('gemini-3.1-flash-lite')).length, 1);
+  assert.equal(calledUrls.some((u) => u.includes('api.groq.com')), false);
+});
