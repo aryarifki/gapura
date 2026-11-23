@@ -211,6 +211,17 @@ function attemptFrom(providerId, model, config, { env, secrets, endpoint, apiKey
   };
 }
 
+export function geminiStageModels(agent, { env = process.env, secrets = {}, stage = '' } = {}) {
+  const primaryStageModel = stage === 'stage1_synthesis'
+    ? env.GEMINI_MODEL_SYNTHESIS || secrets.GEMINI_MODEL_SYNTHESIS || agent?.model
+    : /^stage[23]/u.test(stage)
+      ? env.GEMINI_MODEL_ADAPTER || secrets.GEMINI_MODEL_ADAPTER || agent?.model
+      : agent?.model;
+  const rawFallbacks = env.GEMINI_FALLBACK_MODELS ?? secrets.GEMINI_FALLBACK_MODELS ?? '';
+  const extra = String(rawFallbacks).split(',').map((value) => value.trim()).filter(Boolean);
+  return [...new Set([primaryStageModel, ...extra].map((value) => String(value || '').trim()).filter(Boolean))];
+}
+
 export function buildAttempts(agent, config, { env = process.env, secrets = {}, stage = '' } = {}) {
   if (!agent || typeof agent !== 'object') throw new Error('Konfigurasi agen tidak valid.');
   const primaryProvider = String(agent.provider || 'gemini').toLowerCase();
@@ -227,24 +238,24 @@ export function buildAttempts(agent, config, { env = process.env, secrets = {}, 
   };
   if (primaryProvider === 'gemini') {
     const keys = configuredGeminiKeys({ env, secrets, inlineKey: agent.api_key });
-    const model = stage === 'stage1_synthesis'
-      ? env.GEMINI_MODEL_SYNTHESIS || secrets.GEMINI_MODEL_SYNTHESIS || agent.model
-      : /^stage[23]/u.test(stage)
-        ? env.GEMINI_MODEL_ADAPTER || secrets.GEMINI_MODEL_ADAPTER || agent.model
-        : agent.model;
-    const selected = selectGeminiKeys(keys, /^stage[1-4]/u.test(stage) ? 2 : keys.length, Date.now(), { model });
     const indexedSlots = Object.keys({ ...secrets, ...env })
       .filter((name) => /^GEMINI_API_KEY_\d+$/u.test(name))
       .sort((a, b) => Number(a.slice(15)) - Number(b.slice(15)))
       .map((name, index) => ({ key: secrets[name] || env[name], slot: Number(name.slice(15)) || index + 1 }));
-    selected.forEach((key) => push({ ...attemptFrom('gemini', model, config, { env, secrets, endpoint: agent.endpoint, apiKey: key, fallback: false }),
-      poolKey: key, keySlot: indexedSlots.find((item) => item.key === key)?.slot }));
+    const models = geminiStageModels(agent, { env, secrets, stage });
+    const keyLimit = /^stage[1-4]/u.test(stage) ? 2 : keys.length;
+    models.forEach((model, modelIndex) => {
+      const selected = selectGeminiKeys(keys, keyLimit, Date.now(), { model });
+      selected.forEach((key) => push({ ...attemptFrom('gemini', model, config, { env, secrets, endpoint: agent.endpoint, apiKey: key, fallback: modelIndex > 0 }),
+        poolKey: key, keySlot: indexedSlots.find((item) => item.key === key)?.slot }));
+    });
   } else push(attemptFrom(primaryProvider, primaryModel, config, { env, secrets, endpoint: agent.endpoint, apiKey: agent.api_key, fallback: false }));
 
+  const freeOnly = String(env.GAPURA_FREE_MODELS_ONLY ?? secrets.GAPURA_FREE_MODELS_ONLY ?? '').toLowerCase() === 'true';
   const fallbacks = [];
   if (primaryProvider === 'gemini') {
     fallbacks.push(`groq/${env.GROQ_MODEL || secrets.GROQ_MODEL || 'qwen/qwen3.8-27b'}`);
-    fallbacks.push(`openrouter/${env.OPENROUTER_MODEL || secrets.OPENROUTER_MODEL || 'google/gemini-2.5-flash'}`);
+    if (!freeOnly) fallbacks.push(`openrouter/${env.OPENROUTER_MODEL || secrets.OPENROUTER_MODEL || 'google/gemini-2.5-flash'}`);
   } else {
     if (Array.isArray(agent.fallback_models)) fallbacks.push(...agent.fallback_models);
     else if (typeof agent.fallback_models === 'string' && agent.fallback_models.trim()) fallbacks.push(...agent.fallback_models.split(',').map((item) => item.trim()).filter(Boolean));
@@ -255,6 +266,7 @@ export function buildAttempts(agent, config, { env = process.env, secrets = {}, 
   for (const value of fallbacks) {
     const parsed = parseFallback(value, primaryProvider);
     if (!parsed?.provider || !parsed.model) continue;
+    if (freeOnly && parsed.provider === 'openrouter') continue;
     if (primaryProvider === 'gemini' && !['groq', 'openrouter'].includes(parsed.provider)) continue;
     try {
       push(attemptFrom(parsed.provider, parsed.model, config, {

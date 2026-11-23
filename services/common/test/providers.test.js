@@ -7,7 +7,7 @@ import {
   parseChatResponse,
   validateProvidersConfig,
 } from '../providers.js';
-import { configuredGeminiKeys, resetGeminiPool } from '../llm-pool.js';
+import { configuredGeminiKeys, markGeminiKey, resetGeminiPool } from '../llm-pool.js';
 
 const providers = {
   providers: {
@@ -150,4 +150,28 @@ test('rejects unsafe provider URLs, missing keys, and dangling fallback referenc
   assert.match(errors.join(' '), /HTTPS/);
   assert.match(errors.join(' '), /api_key_env/);
   assert.match(errors.join(' '), /tidak dikenal/);
+});
+
+test('GEMINI_FALLBACK_MODELS skips a cooled primary Gemini model and free-only mode drops paid OpenRouter', () => {
+  resetGeminiPool();
+  const poolEnv = {
+    GEMINI_API_KEY_1: 'k1',
+    GEMINI_API_KEY_2: 'k2',
+    GEMINI_MODEL_ADAPTER: 'gemini-3-flash-preview',
+    GEMINI_FALLBACK_MODELS: 'gemini-3.5-flash,gemini-3.5-flash-lite',
+    GROQ_API_KEY: 'groq-k',
+    OPENROUTER_API_KEY: 'or-k',
+    GAPURA_FREE_MODELS_ONLY: 'true',
+  };
+  markGeminiKey('k1', 429, Date.now(), { model: 'gemini-3-flash-preview', cooldownMs: 3_600_000 });
+  markGeminiKey('k2', 429, Date.now(), { model: 'gemini-3-flash-preview', cooldownMs: 3_600_000 });
+  const attempts = buildAttempts({ provider: 'gemini', model: 'gemini-3.5-flash-lite' }, providers, { env: poolEnv, stage: 'stage2_article' });
+  assert.deepEqual(attempts.map((a) => `${a.providerId}/${a.model}`), [
+    'gemini/gemini-3.5-flash',
+    'gemini/gemini-3.5-flash',
+    'gemini/gemini-3.5-flash-lite',
+    'gemini/gemini-3.5-flash-lite',
+    'groq/qwen/qwen3.8-27b',
+  ]);
+  assert.equal(attempts.some((a) => a.providerId === 'openrouter'), false);
 });

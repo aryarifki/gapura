@@ -55,6 +55,10 @@ if (!process.env.GAPURA_ENV_FILE_MARKER) {
     if (error.code !== 'ENOENT') throw error;
   }
 }
+if (process.env.GAPURA_FREE_MODELS_ONLY === undefined) process.env.GAPURA_FREE_MODELS_ONLY = 'true';
+if (process.env.GEMINI_FALLBACK_MODELS === undefined) {
+  process.env.GEMINI_FALLBACK_MODELS = 'gemini-3.5-flash,gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-3.1-flash-lite-preview';
+}
 
 const { pool, produceSingleTopicDraft } = await import('../services/copywriter/copywriter.js');
 const { loadAgentsConfig } = await import('../services/common/llm.js');
@@ -141,6 +145,8 @@ const report = {
   pass_delay_ms: PASS_DELAY_MS,
   max_topic_attempts: MAX_TOPIC_ATTEMPTS,
   ...(INITIAL_EXCLUDED.length ? { initial_excluded: INITIAL_EXCLUDED } : {}),
+  free_models_only: process.env.GAPURA_FREE_MODELS_ONLY === 'true',
+  gemini_fallback_models: String(process.env.GEMINI_FALLBACK_MODELS || '').split(',').map((v) => v.trim()).filter(Boolean),
   threshold,
   dry_run: DRY_RUN,
   publishing: { mode: process.env.META_PUBLISH_MODE || 'shadow', live_calls_made: 0, approval_performed: false },

@@ -550,3 +550,42 @@ test('daily Gemini RPD exhaustion skips the 70s dead wait, marks dailyQuotaExhau
   assert.equal(err2.rateLimited, true);
   assert.equal(err2.dailyQuotaExhausted, true);
 });
+
+test('callAgentLLM fails over directly from a daily-exhausted primary Gemini model to the next free Gemini model without sleeping or calling OpenRouter', async () => {
+  resetGeminiPool();
+  const dailyBody = JSON.stringify({
+    error: {
+      code: 429,
+      status: 'RESOURCE_EXHAUSTED',
+      message: 'Generate content requests per day limit exceeded on Free Tier.',
+      details: [{ '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay: '74825s' }],
+    },
+  });
+  let slept = false;
+  const calledUrls = [];
+  const result = await callAgentLLM('copywriter', 'Return JSON', '', true, {
+    config: { copywriter: { provider: 'gemini', model: 'gemini-3-flash-preview' } },
+    providers: routerProviders(),
+    env: {
+      GEMINI_API_KEY_1: 'g1',
+      GEMINI_API_KEY_2: 'g2',
+      GEMINI_FALLBACK_MODELS: 'gemini-3.5-flash',
+      OPENROUTER_API_KEY: 'or-key',
+      GAPURA_FREE_MODELS_ONLY: 'true',
+    },
+    secrets: {},
+    stage: 'stage2_article',
+    geminiAttemptLimit: 4,
+    sleepImpl: async () => { slept = true; },
+    fetchImpl: async (url) => {
+      calledUrls.push(url);
+      if (url.includes('gemini-3-flash-preview')) return new Response(dailyBody, { status: 429 });
+      return Response.json({ candidates: [{ content: { parts: [{ text: '{"rows":[{"kind":"lead","text":"ok"}]}' }] } }] });
+    },
+  });
+  assert.equal(slept, false);
+  assert.equal(result, '{"rows":[{"kind":"lead","text":"ok"}]}');
+  assert.equal(calledUrls.filter((u) => u.includes('gemini-3-flash-preview')).length, 2);
+  assert.equal(calledUrls.filter((u) => u.includes('gemini-3.5-flash')).length, 1);
+  assert.equal(calledUrls.some((u) => u.includes('openrouter.ai')), false);
+});

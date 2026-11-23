@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildAttempts, buildChatRequest, parseChatResponse, adaptChatBody, loadProvidersConfig } from './providers.js';
+import { buildAttempts, buildChatRequest, parseChatResponse, adaptChatBody, loadProvidersConfig, geminiStageModels } from './providers.js';
 import { loadProviderSecrets } from './secret-store.js';
 import { markGeminiKey, configuredGeminiKeys, geminiCooldownMs, markProviderCooldown, isProviderCooled } from './llm-pool.js';
 import { normalizeJsonResponse } from './json-repair.js';
@@ -358,14 +358,13 @@ export async function callAgentLLM(agentKey, promptText, systemPrompt = '', json
   // For staged editorial calls, wait out a short RPM cooldown once, but skip
   // dead waits when every key hit its daily RPD limit.
   let dailyBlocked = false;
-  if (options.stage && String(agent.provider || '').toLowerCase() === 'gemini' && !attempts.some((attempt) => attempt.poolKey)) {
+  if (geminiLimit > 0 && options.stage && String(agent.provider || '').toLowerCase() === 'gemini' && !attempts.some((attempt) => attempt.poolKey)) {
     const poolKeys = configuredGeminiKeys({ env, secrets, inlineKey: agent.api_key });
-    const stageModel = options.stage === 'stage1_synthesis'
-      ? env.GEMINI_MODEL_SYNTHESIS || secrets.GEMINI_MODEL_SYNTHESIS || agent.model
-      : /^stage[23]/u.test(options.stage)
-        ? env.GEMINI_MODEL_ADAPTER || secrets.GEMINI_MODEL_ADAPTER || agent.model
-        : agent.model;
-    const rawWaitMs = geminiCooldownMs(poolKeys, Date.now(), { model: stageModel });
+    const candidateModels = geminiStageModels(agent, { env, secrets, stage: options.stage || '' });
+    const rawWaits = candidateModels
+      .map((model) => geminiCooldownMs(poolKeys, Date.now(), { model }))
+      .filter((ms) => ms > 0);
+    const rawWaitMs = rawWaits.length ? Math.min(...rawWaits) : 0;
     const maxWaitMs = Number(options.maxPoolWaitMs ?? 70000);
     if (rawWaitMs > maxWaitMs) dailyBlocked = true;
     else if (rawWaitMs > 0) {
