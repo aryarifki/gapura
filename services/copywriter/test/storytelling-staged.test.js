@@ -730,3 +730,22 @@ test('a non-rate-limited transport failure retries without sleeping', async () =
   assert.equal(articleCalls, 2);
   assert.deepEqual(waits, []);
 });
+
+test('a daily quota exhaustion transport failure fails fast without sleeping or retrying', async () => {
+  const waits = [];
+  let articleCalls = 0;
+  await assert.rejects(buildStagedStory(brief, {
+    documents,
+    sleep: async (ms) => { waits.push(ms); },
+    invoke: async (_a, _p, _s, _j, options) => {
+      if (options.stage !== S2) return response(options.stage);
+      articleCalls += 1;
+      const error = new Error('Gemini API (429, RESOURCE_EXHAUSTED): PerDay limit exceeded');
+      error.rateLimited = true;
+      error.dailyQuotaExhausted = true;
+      throw error;
+    },
+  }), /stage2_article: Gemini API \(429/u);
+  assert.equal(articleCalls, 1);
+  assert.deepEqual(waits, []);
+});

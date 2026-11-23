@@ -507,3 +507,46 @@ test('an exhausted chain marks the thrown error as rate limited when any provide
   assert.match(error.message, /\(429,/u);
   assert.equal(error.rateLimited, true);
 });
+
+test('daily Gemini RPD exhaustion skips the 70s dead wait, marks dailyQuotaExhausted, and cools down OpenRouter 402', async () => {
+  resetGeminiPool();
+  const dailyBody = JSON.stringify({
+    error: {
+      code: 429,
+      status: 'RESOURCE_EXHAUSTED',
+      message: 'Generate content requests per day limit exceeded on Free Tier.',
+      details: [
+        { '@type': 'type.googleapis.com/google.rpc.QuotaFailure', violations: [{ quotaId: 'GenerateRequestsPerDayPerProjectPerModel-FreeTier' }] },
+        { '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay: '74825s' },
+      ],
+    },
+  });
+  let slept = false;
+  let openrouterCalls = 0;
+  const cfg = { copywriter: { provider: 'gemini', model: 'gemini-3-flash-preview' } };
+  const cred = { GEMINI_API_KEY_1: 'daily-one', GEMINI_API_KEY_2: 'daily-two', OPENROUTER_API_KEY: 'or-key' };
+  const err1 = await callAgentLLM('copywriter', 'Return JSON', '', true, {
+    config: cfg, providers: routerProviders(), env: cred, secrets: {}, stage: 'stage2_article',
+    sleepImpl: async () => { slept = true; },
+    fetchImpl: async (url) => {
+      if (url.includes('openrouter.ai')) { openrouterCalls += 1; return new Response('credits exhausted', { status: 402 }); }
+      return new Response(dailyBody, { status: 429 });
+    },
+  }).catch((failure) => failure);
+  assert.equal(slept, false);
+  assert.equal(openrouterCalls, 1);
+  assert.match(err1.message, /429|402/u);
+
+  const err2 = await callAgentLLM('copywriter', 'Return JSON', '', true, {
+    config: cfg, providers: routerProviders(), env: cred, secrets: {}, stage: 'stage2_article',
+    sleepImpl: async () => { slept = true; },
+    fetchImpl: async (url) => {
+      if (url.includes('openrouter.ai')) openrouterCalls += 1;
+      return new Response(dailyBody, { status: 429 });
+    },
+  }).catch((failure) => failure);
+  assert.equal(slept, false);
+  assert.equal(openrouterCalls, 1);
+  assert.equal(err2.rateLimited, true);
+  assert.equal(err2.dailyQuotaExhausted, true);
+});

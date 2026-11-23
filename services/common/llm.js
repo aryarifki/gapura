@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildAttempts, buildChatRequest, parseChatResponse, adaptChatBody, loadProvidersConfig } from './providers.js';
 import { loadProviderSecrets } from './secret-store.js';
-import { markGeminiKey, configuredGeminiKeys, geminiCooldownMs } from './llm-pool.js';
+import { markGeminiKey, configuredGeminiKeys, geminiCooldownMs, markProviderCooldown, isProviderCooled } from './llm-pool.js';
 import { normalizeJsonResponse } from './json-repair.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -158,6 +158,17 @@ function responseErrorCode(body) {
   return /^[A-Z][A-Z0-9_]{1,63}$/u.test(String(code)) ? String(code) : 'PROVIDER_ERROR';
 }
 
+function parseGeminiRateLimit(rawBody = '') {
+  const text = String(rawBody || '');
+  const daily = /PerDay|requests per day/iu.test(text);
+  const match = text.match(/"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"/u);
+  const retryMs = match ? Math.ceil(Number(match[1]) * 1000) : 0;
+  if (daily || retryMs > 300_000) {
+    return { daily: true, cooldownMs: Math.min(Math.max(retryMs || 3_600_000, 3_600_000), 24 * 3_600_000) };
+  }
+  return { daily: false, cooldownMs: retryMs > 0 ? Math.min(Math.max(retryMs, 5_000), 70_000) : 65_000 };
+}
+
 async function readGeminiStream(response, signal) {
   if (!String(response.headers?.get?.('content-type') || '').includes('text/event-stream') || !response.body?.getReader) {
     return { streamed: false, payload: await response.json() };
@@ -306,7 +317,14 @@ async function requestWithAdaptation(attempt, { promptText, policy, jsonMode, fe
       }
     }
     if ([401, 403].includes(response.status) && !attempt.poolKey) error.skipProvider = true;
-    if (response.status === 429) error.retryable = true;
+    if (response.status === 429) {
+      error.retryable = true;
+      if (attempt.kind === 'gemini') {
+        const rate = parseGeminiRateLimit(raw);
+        error.dailyQuota = rate.daily;
+        error.cooldownMs = rate.cooldownMs;
+      }
+    }
     if (![408, 429, 500, 502, 503, 504, 401, 403].includes(response.status) && !error.quarantine) {
       error.retryable = true;
       error.skipProvider = true;
@@ -331,23 +349,36 @@ export async function callAgentLLM(agentKey, promptText, systemPrompt = '', json
   const buildChain = () => {
     let geminiCount = 0;
     return buildAttempts(agent, providers, { env, secrets, stage: options.stage || '' })
-      .filter((attempt) => attempt.providerId !== 'gemini' || geminiCount++ < geminiLimit);
+      .filter((attempt) => (attempt.providerId === 'gemini' ? geminiCount++ < geminiLimit : !isProviderCooled(attempt.providerId)));
   };
   let attempts = buildChain();
   // A 429 burst can put every pooled Gemini key into its 65s cooldown, so the
   // chain would be built without any Gemini attempt and fall straight through
   // to Groq/OpenRouter — which cannot serve a ~9k-token staged prompt (413/402).
-  // For staged editoral calls, wait out the shortest cooldown and rebuild once.
+  // For staged editorial calls, wait out a short RPM cooldown once, but skip
+  // dead waits when every key hit its daily RPD limit.
+  let dailyBlocked = false;
   if (options.stage && String(agent.provider || '').toLowerCase() === 'gemini' && !attempts.some((attempt) => attempt.poolKey)) {
     const poolKeys = configuredGeminiKeys({ env, secrets, inlineKey: agent.api_key });
-    const waitMs = Math.min(geminiCooldownMs(poolKeys), Number(options.maxPoolWaitMs ?? 70000));
-    if (waitMs > 0) {
+    const stageModel = options.stage === 'stage1_synthesis'
+      ? env.GEMINI_MODEL_SYNTHESIS || secrets.GEMINI_MODEL_SYNTHESIS || agent.model
+      : /^stage[23]/u.test(options.stage)
+        ? env.GEMINI_MODEL_ADAPTER || secrets.GEMINI_MODEL_ADAPTER || agent.model
+        : agent.model;
+    const rawWaitMs = geminiCooldownMs(poolKeys, Date.now(), { model: stageModel });
+    const maxWaitMs = Number(options.maxPoolWaitMs ?? 70000);
+    if (rawWaitMs > maxWaitMs) dailyBlocked = true;
+    else if (rawWaitMs > 0) {
       const sleep = options.sleepImpl || ((ms) => new Promise((resolve) => { setTimeout(resolve, ms); }));
-      await sleep(waitMs);
+      await sleep(rawWaitMs);
       attempts = buildChain();
     }
   }
-  if (!attempts.length) throw new Error(`Tidak ada provider yang dapat dipakai untuk agen ${agentKey}.`);
+  if (!attempts.length) {
+    const emptyError = new Error(`Tidak ada provider yang dapat dipakai untuk agen ${agentKey}.`);
+    if (dailyBlocked) { emptyError.rateLimited = true; emptyError.dailyQuotaExhausted = true; }
+    throw emptyError;
+  }
   const skills = options.skills ?? loadAgentSkills(agentKey);
   const policy = [...new Set([
     options.includeAgentPolicy === false ? '' : agent.system_prompt,
@@ -364,12 +395,17 @@ export async function callAgentLLM(agentKey, promptText, systemPrompt = '', json
   let lastError;
   let index = 0;
   let rateLimited = false;
+  let sawDailyQuota = dailyBlocked;
+  let sawShortRateLimit = false;
   const transientFailures = new Map();
   const skipProvider = (providerId) => {
     while (attempts[index + 1]?.providerId === providerId) index++;
   };
   const fail = () => {
-    if (lastError) lastError.rateLimited = rateLimited;
+    if (lastError) {
+      lastError.rateLimited = rateLimited;
+      lastError.dailyQuotaExhausted = sawDailyQuota && !sawShortRateLimit;
+    }
     throw lastError;
   };
   while (index < attempts.length) {
@@ -387,9 +423,14 @@ export async function callAgentLLM(agentKey, promptText, systemPrompt = '', json
       return result.value;
     } catch (error) {
       const safeCode = /^[A-Z][A-Z0-9_]{1,63}$/u.test(String(error.code || '')) ? error.code : null;
-      if (error.status === 429) rateLimited = true;
+      if (error.status === 429) {
+        rateLimited = true;
+        if (error.dailyQuota) sawDailyQuota = true;
+        else sawShortRateLimit = true;
+      }
       if (attempt.poolKey && (error.quarantine || [401, 403].includes(error.status))) markGeminiKey(attempt.poolKey, error.quarantine ? 'API_KEY_INVALID' : error.status);
-      else if (attempt.poolKey && error.status === 429) markGeminiKey(attempt.poolKey, 429);
+      else if (attempt.poolKey && error.status === 429) markGeminiKey(attempt.poolKey, 429, Date.now(), { model: attempt.model, cooldownMs: error.cooldownMs || 65_000 });
+      else if (!attempt.poolKey && error.status === 402 && attempt.providerId !== 'gemini') markProviderCooldown(attempt.providerId, 3_600_000);
       lastError = new Error(redactProviderError(error.message, secretsToRedact));
       options.onAttempt?.({ stage: options.stage || '', provider: attempt.providerId, model: attempt.model,
         key_slot: attempt.keySlot, fallback: Boolean(attempt.fallback), elapsed_ms: Date.now() - startedAt,

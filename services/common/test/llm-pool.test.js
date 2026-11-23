@@ -57,3 +57,17 @@ test('reports how long until the first pooled key leaves its 429 cooldown', () =
   assert.equal(geminiCooldownMs(keys, 66_000), 0);
   assert.equal(geminiCooldownMs(['fresh'], 2_000), 0);
 });
+
+test('model-scoped 429 cooldown does not block another Gemini model on the same key while auth quarantine stays global', () => {
+  resetGeminiPool();
+  const keys = ['key-1', 'key-2'];
+  markGeminiKey('key-1', 429, 10_000, { model: 'gemini-3-flash-preview', cooldownMs: 3_600_000 });
+  assert.deepEqual(selectGeminiKeys(keys, 2, 10_001, { model: 'gemini-3-flash-preview' }), ['key-2']);
+  assert.deepEqual(selectGeminiKeys(keys, 2, 10_001, { model: 'gemini-3.5-flash' }), ['key-2', 'key-1']);
+  assert.equal(geminiCooldownMs(keys, 10_001, { model: 'gemini-3-flash-preview' }), 0);
+  markGeminiKey('key-2', 429, 10_000, { model: 'gemini-3-flash-preview', cooldownMs: 3_600_000 });
+  assert.equal(geminiCooldownMs(keys, 10_001, { model: 'gemini-3-flash-preview' }), 3_599_999);
+  assert.equal(geminiCooldownMs(keys, 10_001, { model: 'gemini-3.5-flash' }), 0);
+  markGeminiKey('key-1', 403, 10_000);
+  assert.deepEqual(selectGeminiKeys(keys, 2, 10_001, { model: 'gemini-3.5-flash' }), ['key-2']);
+});

@@ -227,16 +227,16 @@ export function buildAttempts(agent, config, { env = process.env, secrets = {}, 
   };
   if (primaryProvider === 'gemini') {
     const keys = configuredGeminiKeys({ env, secrets, inlineKey: agent.api_key });
-    const selected = selectGeminiKeys(keys, /^stage[1-4]/u.test(stage) ? 2 : keys.length);
-    const indexedSlots = Object.keys({ ...secrets, ...env })
-      .filter((name) => /^GEMINI_API_KEY_\d+$/u.test(name))
-      .sort((a, b) => Number(a.slice(15)) - Number(b.slice(15)))
-      .map((name, index) => ({ key: secrets[name] || env[name], slot: Number(name.slice(15)) || index + 1 }));
     const model = stage === 'stage1_synthesis'
       ? env.GEMINI_MODEL_SYNTHESIS || secrets.GEMINI_MODEL_SYNTHESIS || agent.model
       : /^stage[23]/u.test(stage)
         ? env.GEMINI_MODEL_ADAPTER || secrets.GEMINI_MODEL_ADAPTER || agent.model
         : agent.model;
+    const selected = selectGeminiKeys(keys, /^stage[1-4]/u.test(stage) ? 2 : keys.length, Date.now(), { model });
+    const indexedSlots = Object.keys({ ...secrets, ...env })
+      .filter((name) => /^GEMINI_API_KEY_\d+$/u.test(name))
+      .sort((a, b) => Number(a.slice(15)) - Number(b.slice(15)))
+      .map((name, index) => ({ key: secrets[name] || env[name], slot: Number(name.slice(15)) || index + 1 }));
     selected.forEach((key) => push({ ...attemptFrom('gemini', model, config, { env, secrets, endpoint: agent.endpoint, apiKey: key, fallback: false }),
       poolKey: key, keySlot: indexedSlots.find((item) => item.key === key)?.slot }));
   } else push(attemptFrom(primaryProvider, primaryModel, config, { env, secrets, endpoint: agent.endpoint, apiKey: agent.api_key, fallback: false }));
