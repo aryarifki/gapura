@@ -58,3 +58,46 @@ test('changing the evidence starts a new checkpoint instead of resuming a stale 
   assert.equal(f.drafts.length, 2);
   assert.notEqual(f.drafts[0].article_metadata.pipeline.input_hash, f.drafts[1].article_metadata.pipeline.input_hash);
 });
+
+test('attaches the latest manual upload to topic.cover_illustration without AI quota', async () => {
+  const manualRow = {
+    id: '2d30e364-b95d-4d49-82ed-43c548270944',
+    topic_id: 71,
+    kind: 'editor_upload',
+    rights_basis: 'own_work',
+    credit: 'Dokumentasi Redaksi',
+    sha256: 'a'.repeat(64),
+  };
+  const baseClient = await fixture().pool.connect();
+  const customPool = {
+    async connect() {
+      return {
+        release: () => baseClient.release(),
+        async query(sql, values = []) {
+          if (sql.includes('FROM manual_media_assets')) return { rows: [manualRow], rowCount: 1 };
+          return baseClient.query(sql, values);
+        },
+      };
+    },
+  };
+  let seenCover = null;
+  await assert.rejects(
+    produceStagedTopic(71, {
+      pool: customPool,
+      editorialInput,
+      buildContent: async (topic) => {
+        seenCover = topic.cover_illustration || null;
+        throw new Error('stop_after_cover_check');
+      },
+      renderContent: async () => assert.fail('render must not run'),
+    }),
+    /stop_after_cover_check/,
+  );
+  assert.deepEqual(seenCover, {
+    asset_id: manualRow.id,
+    asset_sha256: manualRow.sha256,
+    image_kind: 'editor_upload',
+    credit: manualRow.credit,
+    rights_basis: manualRow.rights_basis,
+  });
+});

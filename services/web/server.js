@@ -312,9 +312,7 @@ app.get('/api/drafts', async (req, res) => {
       FROM drafts d
       JOIN topics t ON d.topic_id = t.id
       LEFT JOIN LATERAL (SELECT * FROM topic_scores WHERE topic_id=t.id ORDER BY created_at DESC,id DESC LIMIT 1) ts ON TRUE
-      ORDER BY 
-        CASE WHEN d.status = 'draft' THEN 1 WHEN d.status = 'scheduled' THEN 2 WHEN d.status = 'approved' THEN 3 ELSE 4 END,
-        d.id DESC
+      ORDER BY COALESCE(d.updated_at, d.created_at) DESC, d.id DESC
     `);
 
     // Fetch slides for each draft

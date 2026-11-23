@@ -603,12 +603,18 @@ async function loadDrafts() {
     // Update filter counts
     const pendingCount = currentDrafts.filter((d) => d.status === 'draft').length;
     const scheduledCount = currentDrafts.filter((d) => d.status === 'scheduled').length;
+    const publishedCount = currentDrafts.filter((d) => d.status === 'published').length;
+    const failedCount = currentDrafts.filter((d) => d.status === 'failed').length;
     const approvedCount = currentDrafts.filter((d) => d.status === 'approved').length;
     const rejectedCount = currentDrafts.filter((d) => d.status === 'rejected').length;
 
     document.getElementById('count-all').textContent = currentDrafts.length;
     document.getElementById('count-pending').textContent = pendingCount;
     document.getElementById('count-scheduled').textContent = scheduledCount;
+    const publishedEl = document.getElementById('count-published');
+    if (publishedEl) publishedEl.textContent = publishedCount;
+    const failedEl = document.getElementById('count-failed');
+    if (failedEl) failedEl.textContent = failedCount;
     document.getElementById('count-approved').textContent = approvedCount;
     document.getElementById('count-rejected').textContent = rejectedCount;
 
@@ -618,15 +624,34 @@ async function loadDrafts() {
   }
 }
 
+function draftStatusBadgeLabel(draft) {
+  if (draft.status === 'draft') return 'Perlu review';
+  if (draft.status === 'scheduled') return 'Terjadwal';
+  if (draft.status === 'published') return 'Tayang';
+  if (draft.status === 'approved') return 'Disetujui';
+  if (draft.status === 'rejected') return 'Ditolak';
+  if (draft.status === 'failed') {
+    return draft.article_metadata?.pipeline?.status === 'STARTED' ? 'Sedang diproses' : 'Checkpoint / Gagal';
+  }
+  return String(draft.status || 'draf');
+}
+
 function renderGalleryCards() {
   const container = document.getElementById('gallery-cards-container');
   if (!container) return;
   container.innerHTML = '';
 
-  const filtered = currentDrafts.filter((d) => {
-    if (currentFilter === 'all') return true;
-    return d.status === currentFilter;
-  });
+  const filtered = currentDrafts
+    .filter((d) => {
+      if (currentFilter === 'all') return true;
+      return d.status === currentFilter;
+    })
+    .slice()
+    .sort((a, b) => {
+      const tb = Date.parse(b.updated_at || b.created_at) || 0;
+      const ta = Date.parse(a.updated_at || a.created_at) || 0;
+      return (tb - ta) || (Number(b.id) - Number(a.id));
+    });
 
   if (filtered.length === 0) {
     container.innerHTML = `
@@ -640,6 +665,10 @@ function renderGalleryCards() {
   filtered.forEach((d) => {
     const slides = d.rendered_slides || [];
     const coverImg = slides[0] ? `${slides[0].image_url}?t=${Date.now()}` : '';
+    const statusLabel = draftStatusBadgeLabel(d);
+    const thumbContent = coverImg
+      ? `<img class="gallery-card-img" src="${coverImg}" alt="${escapeHtml(d.topic_title)}" loading="lazy">`
+      : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;padding:16px;text-align:center;color:var(--muted);font-size:12px;background:rgba(255,255,255,0.03);">${escapeHtml(statusLabel)}</div>`;
 
     const card = document.createElement('div');
     card.className = 'gallery-card';
@@ -647,16 +676,20 @@ function renderGalleryCards() {
 
     card.innerHTML = `
       <div class="gallery-card-thumb-wrap">
-        <img class="gallery-card-img" src="${coverImg}" alt="${escapeHtml(d.topic_title)}" loading="lazy">
-        <span class="gallery-card-slide-count">1/${slides.length || 5}</span>
+        ${thumbContent}
+        <span class="gallery-card-slide-count">${slides.length ? `1/${slides.length}` : '0 slide'}</span>
         <span class="gallery-card-score-badge">${d.score_total || 80}</span>
       </div>
       <div class="gallery-card-content">
         <h4 class="gallery-card-title">${escapeHtml(d.topic_title)}</h4>
         <div class="gallery-card-meta">
+          <span>#${escapeHtml(String(d.id))}</span>
+          <span>·</span>
+          <span>${escapeHtml(statusLabel)}</span>
+          <span>·</span>
           <span>${escapeHtml(d.primary_source || 'Sumber Resmi')}</span>
           <span>·</span>
-          <span>${formatTimeAgo(d.created_at)}</span>
+          <span>${formatTimeAgo(d.updated_at || d.created_at)}</span>
         </div>
       </div>
     `;
@@ -1775,7 +1808,24 @@ const topicIllustrationStates = new Map();
 
 function topicIllustrationState(topicId) {
   const key = String(topicId);
-  if (!topicIllustrationStates.has(key)) topicIllustrationStates.set(key, { open: false, assets: [], selected: null, configured: undefined, loading: false, generating: false, error: '', request: null });
+  if (!topicIllustrationStates.has(key)) {
+    topicIllustrationStates.set(key, {
+      open: false,
+      assets: [],
+      selected: null,
+      configured: undefined,
+      loading: false,
+      generating: false,
+      error: '',
+      request: null,
+      manualOpen: false,
+      manualAssets: [],
+      manualLoading: false,
+      manualUploading: false,
+      manualError: '',
+      manualNotice: '',
+    });
+  }
   return topicIllustrationStates.get(key);
 }
 
@@ -1787,22 +1837,52 @@ function renderTopicIllustration(topicId) {
   const preview = selected?.status === 'ready' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(selected.id));
   let status = selected?.status === 'ready' ? 'Ilustrasi terpilih siap.' : 'Belum ada ilustrasi AI.';
   if (latest && latest.status !== 'ready') status += ` Status pembuatan terakhir: ${latest.status || 'belum tersedia'}${latest.error_code ? ` (${latest.error_code})` : ''}.`;
-  if (state.configured === false) status = 'Ilustrasi AI belum dikonfigurasi. Periksa pengaturan Agen Designer.';
+  if (state.configured === false) status = 'Ilustrasi AI belum dikonfigurasi. Periksa pengaturan Agen Designer atau gunakan unggah gambar manual.';
   if (state.loading) status = 'Memuat ilustrasi...';
   if (state.generating) status = 'Membuat ilustrasi AI...';
+  const manualListHtml = (state.manualAssets || []).slice(0, 3).map((asset) => `
+    <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
+      <img src="${escapeHtml(asset.url)}" alt="Gambar manual topik" loading="lazy" style="width:52px;height:40px;object-fit:cover;border-radius:4px;">
+      <span style="font-size:11px;color:var(--muted);overflow-wrap:anywhere;">${escapeHtml(asset.credit || 'Media manual')} (${asset.width}×${asset.height}) · dipakai otomatis di cover</span>
+    </div>
+  `).join('');
   for (const panel of document.querySelectorAll('[data-topic-illustration]')) {
     if (panel.dataset.topicIllustration !== String(topicId)) continue;
-    panel.setAttribute('aria-busy', String(busy));
+    panel.setAttribute('aria-busy', String(busy || state.manualUploading));
     panel.innerHTML = `
       <div class="radar-card-actions">
         <button type="button" class="btn btn-outline" data-illustration-action="generate" ${busy || state.configured === false ? 'disabled' : ''}><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#sparkles"></use></svg> Buat ilustrasi AI</button>
         <button type="button" class="btn btn-outline" data-illustration-action="open" ${busy ? 'disabled' : ''}><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#eye"></use></svg> Lihat ilustrasi</button>
+        <button type="button" class="btn btn-outline" data-illustration-action="manual-toggle" ${state.manualUploading ? 'disabled' : ''}><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#camera"></use></svg> Unggah gambar manual</button>
         ${state.open && (state.assets.length || selected) ? `<button type="button" class="btn btn-outline" data-illustration-action="regenerate" ${busy || state.configured === false ? 'disabled' : ''}><svg class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="/lucide-sprite.svg#refresh-cw"></use></svg> Buat ulang ilustrasi AI</button>` : ''}
       </div>
       ${state.open ? `<div role="region" aria-label="Ilustrasi AI topik" style="margin-top: 10px;">
         <p role="status" style="color: var(--muted); font-size: 12px;">${escapeHtml(status)}</p>
         ${state.error ? `<p role="alert" style="color: var(--down); font-size: 12px;">${escapeHtml(state.error)}</p>` : ''}
         ${preview ? `<figure style="margin: 10px 0 0;"><img src="/api/media/assets/${encodeURIComponent(selected.id)}" alt="Ilustrasi AI terpilih untuk topik ini" loading="lazy" style="display: block; max-width: 100%; width: 240px; height: auto; border-radius: 8px;"><figcaption style="color: var(--muted); font-size: 11px; margin-top: 6px;">Ilustrasi AI · Perlu tinjauan editorial.</figcaption></figure>` : ''}
+      </div>` : ''}
+      ${state.manualOpen ? `<div data-topic-manual-panel style="margin-top:10px;padding:10px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,0.02);display:grid;gap:8px;">
+        <div style="font-size:12px;color:var(--muted);">Tanpa kuota AI: unggah gambar manual (otomatis dipakai di cover saat <b>Buat draf review</b>) atau langsung klik <b>Buat draf review</b> untuk cover tipografi editorial.</div>
+        <input type="file" data-manual-file accept="image/jpeg,image/png,image/webp" class="form-input-dark" style="font-size:12px;">
+        <input type="text" data-manual-credit placeholder="Credit / sumber gambar (wajib, mis. Dokumentasi Gapura)" class="form-input-dark" style="font-size:12px;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <select data-manual-rights class="form-input-dark" style="font-size:12px;flex:1;">
+            <option value="own_work">Karya sendiri / dokumentasi internal</option>
+            <option value="licensed_stock">Stok berlisensi</option>
+            <option value="agency_license">Lisensi agensi / resmi</option>
+          </select>
+          <input type="text" data-manual-ref placeholder="Link / catatan lisensi (opsional)" class="form-input-dark" style="font-size:12px;flex:1;">
+        </div>
+        <label style="display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted);">
+          <input type="checkbox" data-manual-attested> Saya memastikan hak pakai gambar ini sah untuk publikasi.
+        </label>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button type="button" class="btn btn-lime" data-illustration-action="manual-upload" ${state.manualUploading ? 'disabled' : ''}>${state.manualUploading ? 'Mengunggah...' : 'Simpan gambar manual'}</button>
+          ${state.manualLoading ? '<span style="font-size:11px;color:var(--muted);">Memuat daftar media...</span>' : ''}
+        </div>
+        ${state.manualNotice ? `<p role="status" style="font-size:12px;color:var(--lime);margin:0;">${escapeHtml(state.manualNotice)}</p>` : ''}
+        ${state.manualError ? `<p role="alert" style="font-size:12px;color:var(--down);margin:0;">${escapeHtml(state.manualError)}</p>` : ''}
+        ${manualListHtml}
       </div>` : ''}`;
   }
 }
@@ -1814,8 +1894,69 @@ function bindTopicIllustration(topicId, panel) {
     const action = event.target.closest('[data-illustration-action]')?.dataset.illustrationAction;
     if (action === 'open') loadTopicIllustration(topicId);
     else if (action === 'generate' || action === 'regenerate') generateTopicIllustration(topicId, action === 'regenerate');
+    else if (action === 'manual-toggle') toggleTopicManualPanel(topicId);
+    else if (action === 'manual-upload') uploadTopicManualMedia(topicId, panel);
   });
   renderTopicIllustration(topicId);
+}
+
+async function toggleTopicManualPanel(topicId) {
+  const state = topicIllustrationState(topicId);
+  state.manualOpen = !state.manualOpen;
+  state.manualError = '';
+  renderTopicIllustration(topicId);
+  if (state.manualOpen && !state.manualLoading) {
+    state.manualLoading = true;
+    renderTopicIllustration(topicId);
+    try {
+      const response = await fetch(`/api/topics/${encodeURIComponent(topicId)}/media`);
+      const data = await response.json().catch(() => ({}));
+      if (response.ok && Array.isArray(data.assets)) state.manualAssets = data.assets;
+    } catch {
+      // Ignore transient read error on initial toggle
+    } finally {
+      state.manualLoading = false;
+      renderTopicIllustration(topicId);
+    }
+  }
+}
+
+async function uploadTopicManualMedia(topicId, panel) {
+  const state = topicIllustrationState(topicId);
+  if (state.manualUploading) return;
+  const fileInput = panel.querySelector('[data-manual-file]');
+  const file = fileInput?.files?.[0];
+  const credit = (panel.querySelector('[data-manual-credit]')?.value || '').trim();
+  const rightsBasis = panel.querySelector('[data-manual-rights]')?.value || 'own_work';
+  const rightsReference = (panel.querySelector('[data-manual-ref]')?.value || '').trim();
+  const attested = panel.querySelector('[data-manual-attested]')?.checked === true;
+  state.manualError = '';
+  state.manualNotice = '';
+  if (!file) { state.manualError = 'Pilih berkas gambar terlebih dahulu.'; renderTopicIllustration(topicId); return; }
+  if (file.size > 12 * 1024 * 1024) { state.manualError = 'Gambar melebihi batas 12 MB sebelum diproses.'; renderTopicIllustration(topicId); return; }
+  if (!credit) { state.manualError = 'Credit / sumber gambar wajib diisi.'; renderTopicIllustration(topicId); return; }
+  if (!attested) { state.manualError = 'Centang atestasi hak pakai gambar terlebih dahulu.'; renderTopicIllustration(topicId); return; }
+
+  state.manualUploading = true;
+  renderTopicIllustration(topicId);
+  try {
+    const dataUri = await readManualFileAsDataUrl(file);
+    const body = { filename: file.name, data_uri: dataUri, credit, rights_basis: rightsBasis, rights_attested: true };
+    if (rightsReference) body.rights_reference = rightsReference;
+    const response = await fetch(`/api/topics/${encodeURIComponent(topicId)}/media`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const packet = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(packet.error || `HTTP ${response.status}`);
+    state.manualAssets = [packet.asset, ...(state.manualAssets || []).filter((a) => a.id !== packet.asset.id)];
+    state.manualNotice = `Gambar manual (${packet.asset.width}×${packet.asset.height}) tersimpan & otomatis dipasang di cover saat Buat draf review.`;
+    showToast('Gambar manual topik berhasil diunggah tanpa kuota AI.');
+  } catch (error) {
+    state.manualError = `Gagal mengunggah gambar: ${error.message}`;
+  } finally {
+    state.manualUploading = false;
+    renderTopicIllustration(topicId);
+  }
 }
 
 async function loadTopicIllustration(topicId) {
@@ -1862,7 +2003,7 @@ async function generateTopicIllustration(topicId, regenerate = false) {
     if (data.asset.status === 'ready') state.selected = data.asset;
     state.request = null;
   } catch (error) {
-    state.error = `Ilustrasi gagal dibuat: ${error.message}`;
+    state.error = `Ilustrasi gagal dibuat: ${error.message}. Anda tetap dapat klik "Unggah gambar manual" tanpa kuota AI atau langsung "Buat draf review" dengan cover tipografi.`;
   } finally {
     state.generating = false;
     renderTopicIllustration(topicId);

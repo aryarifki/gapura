@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import { isDraftComplete } from './editorial.js';
 import { validateStudioTopic } from '../studio/validation.js';
 import { loadAgentsConfig } from '../common/llm.js';
+import { selectedIllustration, illustrationDescriptor } from '../designer/illustration-store.js';
+import { manualMediaDescriptor } from '../designer/manual-media.js';
 
 const hash = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
@@ -41,6 +43,18 @@ export async function produceStagedTopic(topicId, { pool, editorialInput, source
         status='failed',needs_review=TRUE,updated_at=NOW() WHERE id=$1 AND status='failed'`, [draftId, JSON.stringify(pipeline)]);
       await options.saveCheckpoint?.(pipeline);
     };
+    if (!topic.cover_illustration) {
+      const { rows: manualRows } = await client.query(
+        'SELECT * FROM manual_media_assets WHERE topic_id = $1 ORDER BY created_at DESC, id DESC LIMIT 1',
+        [topicId],
+      );
+      if (manualRows[0]) {
+        topic.cover_illustration = manualMediaDescriptor(manualRows[0]);
+      } else {
+        const aiAsset = await selectedIllustration(client, topicId);
+        if (aiAsset) topic.cover_illustration = illustrationDescriptor(aiAsset);
+      }
+    }
     const content = await buildContent(topic, { ...options, storytelling: true, editorialInput, sourceDocuments, checkpoint, saveCheckpoint });
     content.article_metadata.pipeline = { ...content.article_metadata.pipeline, input_hash: inputHash, status: 'VALIDATED', source_documents: sourceDocuments || null };
     if (options.legalContext) content.article_metadata.legal_context = options.legalContext;
