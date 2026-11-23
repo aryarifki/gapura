@@ -40,6 +40,7 @@ const PASSES = intArg('--passes', 3, 1, 10);
 const TOPIC_DELAY_MS = intArg('--topic-delay-ms', 10000, 0, 120000);
 const PASS_DELAY_MS = intArg('--pass-delay-ms', 65000, 0, 600000);
 const MAX_TOPIC_ATTEMPTS = intArg('--max-topic-attempts', 2, 1, 5);
+const INITIAL_EXCLUDED = (arg('--exclude', '') || '').split(',').map((v) => v.trim()).filter((v) => /^\d+$/.test(v));
 const REPORT = path.resolve(arg('--report', path.join(root, 'storage/r8-batch-20261121/RUN_REPORT.json')));
 
 // Operators run this manually. Background workers stay paused and the pipeline
@@ -89,7 +90,10 @@ async function selectCandidates(limit, excludedIds = []) {
            WHERE d.topic_id = t.id AND d.status NOT IN ('failed', 'rejected')
         )
         AND NOT (t.id = ANY($3::bigint[]))
-      ORDER BY s.score_total DESC, t.id ASC
+      ORDER BY (
+        SELECT count(*) FROM drafts df
+         WHERE df.topic_id = t.id AND df.status IN ('failed', 'rejected')
+      ) ASC, s.score_total DESC, t.id ASC
       LIMIT $1`,
     [limit, threshold, excludedIds],
   );
@@ -136,6 +140,7 @@ const report = {
   topic_delay_ms: TOPIC_DELAY_MS,
   pass_delay_ms: PASS_DELAY_MS,
   max_topic_attempts: MAX_TOPIC_ATTEMPTS,
+  ...(INITIAL_EXCLUDED.length ? { initial_excluded: INITIAL_EXCLUDED } : {}),
   threshold,
   dry_run: DRY_RUN,
   publishing: { mode: process.env.META_PUBLISH_MODE || 'shadow', live_calls_made: 0, approval_performed: false },
@@ -147,7 +152,7 @@ const report = {
 
 try {
   if (DRY_RUN) {
-    const candidates = await selectCandidates(LIMIT);
+    const candidates = await selectCandidates(LIMIT, INITIAL_EXCLUDED);
     report.candidates_selected = candidates.length;
     report.candidate_ids = candidates.map((row) => row.id);
     report.candidates = candidates;
@@ -162,9 +167,10 @@ try {
         await new Promise((resolve) => { setTimeout(resolve, PASS_DELAY_MS); });
       }
       const remaining = LIMIT - report.summary.succeeded;
-      const excludedIds = [...failedAttemptsByTopic.entries()]
+      const failedExhausted = [...failedAttemptsByTopic.entries()]
         .filter(([, count]) => count >= MAX_TOPIC_ATTEMPTS)
         .map(([topicId]) => topicId);
+      const excludedIds = [...new Set([...INITIAL_EXCLUDED, ...failedExhausted])];
       const candidates = await selectCandidates(remaining, excludedIds);
       if (!candidates.length) {
         report.passes.push({ pass, selected: [], excluded_exhausted: excludedIds, note: 'no_eligible_candidates' });
