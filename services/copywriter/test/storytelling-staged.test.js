@@ -690,3 +690,43 @@ test('caption preparation strips extraneous fields from hashtag rows before gate
   assert.equal(story.checkpoint.stages[S3B].receipt.status, 'complete');
   assert.ok(story.raw.hashtags.length >= 5);
 });
+
+test('a rate-limited transport failure waits out the minute window before retrying', async () => {
+  const waits = [];
+  let articleCalls = 0;
+  const story = await buildStagedStory(brief, {
+    documents,
+    sleep: async (ms) => { waits.push(ms); },
+    rateLimitWaitMs: 45000,
+    invoke: async (_a, _p, _s, _j, options) => {
+      if (options.stage !== S2) return response(options.stage);
+      articleCalls += 1;
+      if (articleCalls === 1) {
+        const error = new Error('Gemini API (429, RESOURCE_EXHAUSTED): quota');
+        error.rateLimited = true;
+        throw error;
+      }
+      return JSON.stringify({ rows: article });
+    },
+  });
+  assert.equal(articleCalls, 2);
+  assert.deepEqual(waits, [45000]);
+  assert.equal(story.checkpoint.stages[S2].receipt.status, 'complete');
+});
+
+test('a non-rate-limited transport failure retries without sleeping', async () => {
+  const waits = [];
+  let articleCalls = 0;
+  await buildStagedStory(brief, {
+    documents,
+    sleep: async (ms) => { waits.push(ms); },
+    invoke: async (_a, _p, _s, _j, options) => {
+      if (options.stage !== S2) return response(options.stage);
+      articleCalls += 1;
+      if (articleCalls === 1) throw new Error('Gemini API (503, UNAVAILABLE).');
+      return JSON.stringify({ rows: article });
+    },
+  });
+  assert.equal(articleCalls, 2);
+  assert.deepEqual(waits, []);
+});
