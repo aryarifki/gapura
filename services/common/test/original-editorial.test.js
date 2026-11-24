@@ -172,6 +172,30 @@ test('data-bearing layouts require actual provided labels, values and references
   }
 });
 
+test('editorial breakdown accepts six items on one slide while stat-grid keeps its four-item cap', () => {
+  const brief = buildEditorialBrief(topic);
+  const items = [
+    { label: 'Kewenangan', value: 'Pembaca dapat melihat lembaga yang berwenang dan cara kewenangan itu dijalankan dalam prosedur.' },
+    { label: 'Prosedur', value: 'Langkah dan syarat dijelaskan dengan bahasa yang mudah dipahami oleh warga yang membutuhkan.' },
+    { label: 'Akses informasi', value: 'Saluran pertanyaan tersedia agar warga bisa menelusuri penjelasan yang diterbitkan lembaga.' },
+    { label: 'Kebutuhan warga', value: 'Kebutuhan kelompok yang berbeda dapat dibaca sebagai konteks sebelum menarik kesimpulan.' },
+    { label: 'Konteks pilihan', value: 'Hubungan antarpilihan dapat dibahas secara bersyarat sesuai bahan yang tersedia bagi pembaca.' },
+    { label: 'Batas penjelasan', value: 'Mekanisme umum dapat dijelaskan tanpa menambahkan rincian kejadian yang belum tersedia.' },
+  ];
+  const raw = originalFixture(brief);
+  raw.slides[1] = { ...raw.slides[1], layout: 'editorial-breakdown', data: { title: 'Hal yang perlu dibaca warga', items } };
+  const content = validateOriginalContent(raw, brief);
+  assert.equal(content.slides[1].data.items.length, 6);
+  const seven = structuredClone(raw);
+  seven.slides[1].data.items = [...items, { label: 'Penutup', value: 'Pembaca dapat memeriksa kembali batas penjelasan sebelum berbagi.' }];
+  assert.throws(() => validateOriginalContent(seven, brief), /original_stat_grid_data_missing/);
+
+  const statBrief = current();
+  const statRaw = originalFixture(statBrief);
+  statRaw.slides[1] = { ...statRaw.slides[1], claim_type: 'fact', fact_ids: ['f1'], teks: 'Menurut BPS, inflasi tahunan sebesar 2,1%.', layout: 'stat-grid', data: { items: Array(5).fill({ label: 'Inflasi tahunan', value: '2,1%' }) } };
+  assert.throws(() => validateOriginalContent(statRaw, statBrief), /original_stat_grid_data_missing/);
+});
+
 test('current output needs at least one factual contribution and a source URL alone is not a fact note', () => {
   const brief = current();
   const raw = originalFixture({ mode: 'explainer' }); raw.mode = 'current';

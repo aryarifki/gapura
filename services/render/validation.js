@@ -105,9 +105,9 @@ export function validateLayoutData(layout, data = {}) {
   if (EDITORIAL_LAYOUTS.includes(layout)) {
     object(data, 'slide.data');
     if (!hasText(data.title)) invalid(`${layout} requires non-empty slide.data.title`);
-    if (layout === 'editorial-breakdown' && (!Array.isArray(data.items) || !data.items.length || data.items.length > 4
+    if (layout === 'editorial-breakdown' && (!Array.isArray(data.items) || !data.items.length || data.items.length > 6
       || data.items.some((item) => !hasText(item?.label) || !hasText(item?.value)))) {
-      invalid('editorial-breakdown requires 1-4 slide.data.items with a non-empty label and narrative value');
+      invalid('editorial-breakdown requires 1-6 slide.data.items with a non-empty label and narrative value');
     }
     if (layout === 'editorial-timeline' && (!Array.isArray(data.events) || !data.events.length || data.events.length > 5
       || data.events.some((event) => !hasText(event?.date) || !hasText(event?.text) || !Array.isArray(event?.fact_ids)
@@ -118,9 +118,9 @@ export function validateLayoutData(layout, data = {}) {
       invalid('editorial-quote requires non-empty slide.data.quote, author and role_label');
     }
     if (layout === 'editorial-close' && !hasText(data.question)) invalid('editorial-close requires non-empty slide.data.question');
-    if (layout === 'editorial-impact' && data.items !== undefined && (!Array.isArray(data.items) || !data.items.length || data.items.length > 4
+    if (layout === 'editorial-impact' && data.items !== undefined && (!Array.isArray(data.items) || !data.items.length || data.items.length > 6
       || data.items.some((item) => !hasText(item?.label) || !(hasText(item?.value) || (typeof item?.value === 'number' && Number.isFinite(item.value)))))) {
-      invalid('editorial-impact requires 1-4 slide.data.items with a non-empty label and value when items are supplied');
+      invalid('editorial-impact requires 1-6 slide.data.items with a non-empty label and value when items are supplied');
     }
   }
   if (layout === 'stat-grid' && (!Array.isArray(data.items) || !data.items.length || data.items.some((item) =>
