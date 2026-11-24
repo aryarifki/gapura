@@ -31,9 +31,7 @@ export async function publishDraftNow({
     await client.query('BEGIN');
     transaction = true;
     const { rows } = await client.query(
-      `SELECT d.*, t.url AS source_url,
-              (SELECT ts.verdict FROM topic_scores ts WHERE ts.topic_id = t.id
-               ORDER BY ts.created_at DESC NULLS LAST, ts.id DESC LIMIT 1) AS analyst_verdict
+      `SELECT d.*, t.url AS source_url
        FROM drafts d
        JOIN topics t ON t.id = d.topic_id
        WHERE d.id = $1 FOR UPDATE OF d`,
@@ -94,12 +92,6 @@ export async function publishDraftNow({
       transaction = false;
       return httpResult(409, { error: 'Sumber topik harus berupa URL HTTPS publik yang valid.' });
     }
-    if (draft.analyst_verdict !== 'passed') {
-      await client.query('ROLLBACK');
-      transaction = false;
-      return httpResult(409, { error: 'Topik harus memiliki verdict Analis passed sebelum publish.' });
-    }
-
     if (draft.status === 'draft') {
       if (body?.reviewed !== true) {
         await client.query('ROLLBACK');

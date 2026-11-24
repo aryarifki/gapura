@@ -197,3 +197,52 @@ test('publishDraftNow retries transient platform errors automatically so partial
   assert.equal(res.body.status, 'published');
   assert.equal(res.body.summary.published, 2);
 });
+
+test('publishDraftNow no longer requires an analyst verdict', async () => {
+  // Aturan verdict Analis dihapus dari jalur publish: draf dengan verdict
+  // rejected (atau tanpa verdict sama sekali) tetap dapat dipublish selama
+  // gerbang lain lolos.
+  for (const draftOverride of [{ analyst_verdict: 'rejected' }, { analyst_verdict: undefined }]) {
+    const draft = { ...baseDraft, ...draftOverride };
+    const revision = draftContentHash(draft);
+    const targetsAfter = [
+      { id: 10, platform: 'instagram', account_id: '17841471438781611', status: 'published', remote_id: 'ig-1', container_id: 'c-1', permalink: 'https://instagram.com/p/1', error_message: null, attempts: 1, published_at: '2026-11-23T12:00:00Z' },
+    ];
+    const pool = {
+      async connect() {
+        return {
+          release() {},
+          async query(sql) {
+            const q = sql.replace(/\s+/g, ' ').trim();
+            if (q === 'BEGIN' || q === 'COMMIT' || q === 'ROLLBACK') return { rows: [] };
+            if (q.includes('FROM drafts d JOIN topics t')) return { rows: [draft] };
+            if (q.includes('FROM publication_targets WHERE draft_id = $1')) return { rows: [] };
+            if (q.startsWith("UPDATE drafts SET status = 'scheduled'")) return { rowCount: 1 };
+            if (q.startsWith('INSERT INTO scheduled_posts')) return { rowCount: 1 };
+            if (q.startsWith('INSERT INTO audit_log')) return { rowCount: 1 };
+            throw new Error(`Unexpected SQL: ${q}`);
+          },
+        };
+      },
+      async query(sql) {
+        const q = sql.replace(/\s+/g, ' ').trim();
+        if (q.includes('FROM publication_targets WHERE draft_id = $1 ORDER BY')) return { rows: targetsAfter };
+        if (q === 'SELECT status FROM drafts WHERE id = $1') return { rows: [{ status: 'published' }] };
+        throw new Error(`Unexpected Pool SQL: ${q}`);
+      },
+    };
+    const res = await publishDraftNow({
+      pool,
+      draftId: 301,
+      body: { reviewed: true, expected_revision: revision },
+      env: activeEnv,
+      createWorker: () => ({
+        async runOnce() {
+          return { inserted: 1, shadow: 0, published: 1, failed: 0, blocked: 0, unknown: 0, retried: 0, reset: 0 };
+        },
+      }),
+    });
+    assert.equal(res.httpStatus, 200);
+    assert.equal(res.body.status, 'published');
+  }
+});
