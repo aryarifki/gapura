@@ -224,7 +224,10 @@ function validateSlideData(slide, brief, map) {
     Object.assign(result, { quote, author });
   }
   if (data.items !== undefined) {
-    if (!Array.isArray(data.items) || !data.items.length || data.items.length > 4) fail('stat_grid_data_missing');
+    // Daftar editorial (breakdown/impact) boleh sampai 6 item agar daftar utuh
+    // muat dalam satu slide; jalur stat-grid dan layout lain tetap maksimal 4.
+    const itemLimit = ['editorial-breakdown', 'editorial-impact'].includes(slide.layout) ? 6 : 4;
+    if (!Array.isArray(data.items) || !data.items.length || data.items.length > itemLimit) fail('stat_grid_data_missing');
     result.items = data.items.map((item) => {
       exactKeys(item, ['label', 'value', 'fact_ids'], 'stat_grid_item');
       const itemRefs = item.fact_ids === undefined ? refs : normalizeFactIds(item.fact_ids, map, 'list_fact_ids');
@@ -323,11 +326,9 @@ export function validateOriginalContent(raw, brief) {
     if (story) {
       if (!STORY_LAYOUTS.includes(slide.layout)) fail('story_layout_required');
       if (PUBLIC_META_COMMENT.test([teks, ...Object.values(data).filter((value) => typeof value === 'string')].join(' '))) fail('story_public_meta_comment');
-      const words = [data.title, teks, ...(data.items || []).flatMap((item) => [item.label, item.value]), ...(data.events || []).map((event) => event.text),
-        ...(data.paragraphs || []).map((paragraph) => paragraph.text), data.quote, data.question]
-        .filter(Boolean).join(' ').trim().split(/\s+/u).length;
-      const budget = slide.layout === 'editorial-lead' ? 310 : slide.layout === 'editorial-quote' || slide.layout === 'editorial-close' ? 40 : 25; // ponytail: 310 = 300 body + 10 title margin, match gate
-      if (words > budget) fail('story_slide_word_budget');
+      // Anggaran kata per slide (25/40/310) DIHAPUS atas keputusan owner
+      // 2026-11-24: kepadatan slide diatur aturan editorial di README
+      // intake (brief terstruktur, blok ringkas), bukan gerbang keras.
     }
     return { no: index + 1, role: slide.role, purpose, claim_type: slide.claim_type,
       layout: slide.layout, teks, fact_ids: factIds, data, source: story
@@ -352,17 +353,32 @@ export function validateOriginalContent(raw, brief) {
   }
   const captionBody = blocks.map((block) => block.text).join('\n\n');
   if (captionBody.length < (story ? 300 : 1200) || captionBody.length > (story ? 1700 : 1900)) fail('caption_body_length');
-  if (story && blocks[0].text.length > 125) fail('story_caption_hook_length');
+  // Batas hook caption 125 karakter DIHAPUS atas keputusan owner
+  // 2026-11-24; hook singkat tetap dianjurkan aturan editorial intake.
   const hashtags = Array.isArray(raw.hashtags) ? raw.hashtags : [];
-  if (hashtags.length > 12 || hashtags.some((tag) => typeof tag !== 'string' || !/^#[\p{L}\p{N}_]{1,40}$/u.test(tag))) fail('hashtags_invalid');
+  // Batas hashtag disamakan ke maksimum platform Instagram (30) atas
+  // keputusan owner 2026-11-25 (sebelumnya 12 umum / 8 story).
+  if (hashtags.length > 30 || hashtags.some((tag) => typeof tag !== 'string' || !/^#[\p{L}\p{N}_]{1,40}$/u.test(tag))) fail('hashtags_invalid');
   const uniqueTags = [...new Set(hashtags.map((tag) => tag.toLocaleLowerCase('id')))].map((tag) => hashtags.find((item) => item.toLocaleLowerCase('id') === tag));
-  if (story && (uniqueTags.length < 5 || uniqueTags.length > 8)) fail('story_hashtag_count');
+  if (story && (uniqueTags.length < 5 || uniqueTags.length > 30)) fail('story_hashtag_count');
   const caption = [captionBody, uniqueTags.join(' ')].filter(Boolean).join('\n\n');
   if (caption.length > 2200) fail('caption_length');
   const threadsBody = text(story ? stripBodyTags(raw.threads_body) : raw.threads_body, 'threads_body', 1200);
   const threadsFactIds = normalizeFactIds(raw.threads_fact_ids, map, 'threads_fact_ids');
   checkOriginalText(threadsBody, { brief, factIds: threadsFactIds, claimType: threadsFactIds.length ? 'fact' : 'context', field: 'threads' });
-  const threadsCaption = raw.threads_posts ? threadsBody : [threadsBody, uniqueTags.join(' ')].filter(Boolean).join('\n\n');
+  // Caption Threads tetap dibatasi 500 karakter (batas platform Threads):
+  // pakai hashtag sebanyak yang muat menurut urutan prioritas; seluruh
+  // hashtag tetap dipakai di caption Instagram/Facebook.
+  let threadsCaption = threadsBody;
+  if (!raw.threads_posts) {
+    const fittedTags = [];
+    for (const tag of uniqueTags) {
+      const candidate = [threadsBody, [...fittedTags, tag].join(' ')].filter(Boolean).join('\n\n');
+      if (candidate.length > 500) break;
+      fittedTags.push(tag);
+    }
+    threadsCaption = [threadsBody, fittedTags.join(' ')].filter(Boolean).join('\n\n');
+  }
   if (threadsCaption.length > 500) fail('threads_length');
   const articleBlocksRaw = raw.article_blocks;
   if (articleBlocksRaw !== undefined && (!Array.isArray(articleBlocksRaw) || articleBlocksRaw.length < 3 || articleBlocksRaw.length > 24)) fail('article_blocks_invalid');

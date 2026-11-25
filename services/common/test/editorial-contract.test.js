@@ -226,6 +226,9 @@ test('caption assembler handles tags once and enforces the final platform payloa
   assert.throws(() => assemblePublicCaption('x'.repeat(2190), ['#GapuraMedia']), /caption_too_long/);
   assert.throws(() => assemblePublicCaption('x'.repeat(501), [], { platform: 'threads' }), /caption_too_long/);
   assert.throws(() => assemblePublicCaption('Berita', ['not-a-hashtag']), /hashtags_invalid/);
+  const maxTags = Array.from({ length: 30 }, (_, i) => `#Tag${i + 1}`);
+  assert.ok(assemblePublicCaption('Berita', maxTags).includes('#Tag30'));
+  assert.throws(() => assemblePublicCaption('Berita', [...maxTags, '#Tag31']), /hashtags_invalid/);
   assert.equal(validatePublicCaption('Isi\n\n[X/RSSHub] label').valid, false);
   assert.equal(validatePublicCaption('Isi\n\n[X] label').valid, false);
 });

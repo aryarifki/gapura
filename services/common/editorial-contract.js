@@ -178,7 +178,7 @@ export function assemblePublicCaption(body, hashtags = [], { platform = 'instagr
   const caption = validatePublicCaption(body);
   if (!caption.valid) throw new Error(caption.reason);
   if (/#[\p{L}\p{N}_]+/u.test(body)) throw new Error('caption_hashtags_in_body');
-  if (!Array.isArray(hashtags) || hashtags.length > 12 || hashtags.some((tag) => typeof tag !== 'string' || !/^#[\p{L}\p{N}_]{1,40}$/u.test(tag))) throw new Error('hashtags_invalid');
+  if (!Array.isArray(hashtags) || hashtags.length > 30 || hashtags.some((tag) => typeof tag !== 'string' || !/^#[\p{L}\p{N}_]{1,40}$/u.test(tag))) throw new Error('hashtags_invalid');
   const seen = new Set();
   const tags = hashtags.filter((tag) => {
     const key = tag.toLocaleLowerCase('id');

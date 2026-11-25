@@ -41,6 +41,22 @@ test('story cleans body hashtags and assembles one final hashtag group', () => {
   assert.doesNotMatch(c.caption_body, /#/u);
 });
 
+test('story accepts the platform maximum of 30 hashtags and fits the Threads caption by priority order', () => {
+  const raw = storyFixture();
+  const extra = Array.from({ length: 25 }, (_, i) => `#Topik${String(i + 1).padStart(2, '0')}`.padEnd(30, 'a'));
+  raw.hashtags = [...raw.hashtags, ...extra];
+  assert.equal(raw.hashtags.length, 30);
+  const c = validateOriginalContent(raw, brief());
+  assert.equal(c.hashtags.length, 30);
+  assert.ok(c.caption.includes(extra.at(-1)));
+  assert.ok(c.threads_caption.length <= 500);
+  assert.ok(c.threads_caption.includes('#GapuraMedia'));
+  assert.ok(!c.threads_caption.includes(extra.at(-1)));
+  const tooMany = storyFixture();
+  tooMany.hashtags = [...raw.hashtags, '#SatuLagi'];
+  assert.throws(() => validateOriginalContent(tooMany, brief()), /hashtags_invalid/);
+});
+
 test('article, caption, carousel and Threads each expand a person at its first mention', () => {
   const raw = storyFixture(); const b = brief();
   b.facts.push({ id: 'person', text: 'Direktur Transportasi Ari Setiawan mengumumkan pengalihan rute bus kepada warga.', source_url: 'https://city.example.com/rute', source_name: 'Dishub Kota Uji' });
