@@ -1,8 +1,27 @@
 # 📊 Status Fitur, Permasalahan, & Roadmap Pengembangan
-> **Repositori:** `aryarifki/gapura` · **Diperbarui:** 18 November 2026
+> **Repositori:** `aryarifki/gapura` · **Diperbarui:** 25 November 2026
 > **Brand Identity:** `@gapuramedia` · **Portal Live:** [https://gapura.avenia.my.id](https://gapura.avenia.my.id)
 
-**Status terbaru: evaluasi desain/editorial.** Hasil produksi dan antrean lokal
+**Status produksi saat ini (25 November 2026): LIVE.** Publikasi Meta berjalan
+nyata ke Instagram `@gapuramedia` dan Facebook Page "Gapura Media" sejak
+2026-11-23 (Graph API v27.0, izin publish penuh; gerbang verdict analis
+dihapus dari publish-now dan meta-worker). Sejak 2026-11-24 **Muse adalah
+redaksi tunggal** — empat edisi otomatis harian lewat Claude Intake (batas
+total 6 konten/hari, aturan susulan antar-edisi), artikel website di
+gapuramedia.my.id dengan penjaga 30-menitan, dan Space Ruang Produksi
+untuk draf manual owner. Timer `gapura-pipeline` dan `gapura-publisher`
+dinonaktifkan atas keputusan owner (unit dipertahankan, reversibel);
+server hanya menjalankan hme-web, hme-render, worker publish-now,
+PostgreSQL, dan Cloudflare Tunnel. Validator terkini (deploy 2026-11-25,
+branch `fix/validator-hashtag-30`): hashtag tepat 30, item breakdown/impact
+maks 6, linimasa maks 5 peristiwa dan auto-fit, bar gelap lead/penutup
+dihapus; suite server render 128/128 dan common 201/201. Paket pertumbuhan
+30 hari `@gapuramedia` berjalan sejak 2026-11-24 dengan laporan performa
+mingguan tiap Senin. Dokumen rencana/audit bertanggal (termasuk arsip di
+bawah) adalah catatan historis; dokumen hidup yang berlaku adalah README,
+CLAUDE_INTAKE, runbook publikasi, dan panduan penggunaan.
+
+**Arsip status evaluasi (16–19 November 2026, historis).** Hasil produksi dan antrean lokal
 sudah kosong, timer intake/publisher tetap `disabled/inactive`, dan worker
 background tetap `GAPURA_DISABLE_WORKERS=true`. Dashboard, render, n8n manual,
 sumber/config dan koneksi Instagram
@@ -90,8 +109,8 @@ manusia.
 | **Bypass Cache CDN (Cloudflare)** | ✅ **Selesai & Aktif** | Middleware HTTP `no-store, no-cache`, query string bust unik `?t=...`, dan asset versioning `v=3.5.0` mencegah browser/CDN menyajikan file usang. |
 | **Audit Log & Activity Tracker** | ✅ **Selesai & Aktif** | Pencatatan setiap aksi editorial (create, edit_slide, approve, reject, regenerated_ai) ke tabel `audit_log` PostgreSQL. |
 | **Audit skor historis & constraint (P2)** | ✅ **Selesai** | Snapshot 16 November 2026, 18:23:55 WIB: 1.062 baris hingga ID 1062; mismatch/rentang invalid/NULL masing-masing 0. Mapping identitas, 0 `UPDATE`; `convalidated=true` sebelum dan sesudah validasi eksplisit. [Laporan audit](P2_SCORE_INTEGRITY_AUDIT.md). |
-| **Publisher Instagram / Facebook / Threads** | 🟡 **Dijeda untuk evaluasi** | Instagram Unified `@gapuramedia` terhubung; pemeriksaan quota publikasi berhasil sebelum reset. Publisher tetap shadow dengan timer disabled. Facebook Page dan Threads perlu pemeriksaan/koneksi tersendiri. |
-| **Scheduler native (P2)** | 🟡 **Terpasang, sengaja dijeda** | Intake/publisher `disabled/inactive` selama evaluasi hasil baru. Snapshot P2 aktif di bawah tetap historis; unit runtime dan drop-in web adalah acuan keadaan terbaru. n8n tetap canvas/fallback manual. |
+| **Publisher Instagram / Facebook / Threads** | ✅ **LIVE (IG + FB)** | Publikasi nyata sejak 2026-11-23 lewat publish-now (Graph v27.0; app `1123019133826199`, Page `102321216076547`, IG `17841471438781611`). Izin `instagram_content_publish` + `pages_manage_posts` terverifikasi; gerbang verdict analis dihapus. Threads didukung kode, belum aktif (menunggu token/user ID + akses lanjutan). |
+| **Scheduler native (P2)** | ✅ **Terpasang, dinonaktifkan by design** | Intake/publisher `disabled/inactive` sejak 2026-11-24 atas keputusan owner (sentralisasi redaksi ke Muse); unit dipertahankan dan reversibel. Penjadwalan produksi berjalan di sisi Muse (empat edisi harian + penjaga website). Snapshot P2 aktif di bawah tetap historis. |
 | **Reset draf/desain** | ✅ **Selesai** | 142 draf, 269 slide, seluruh jadwal/target/job Studio dan 556 berkas hasil dibersihkan setelah backup restore teruji. Sumber/config/token tetap utuh. |
 | **Blueprint pembaruan editorial** | 🟡 **Implementasi bertahap** | Carousel-first, input topik/judul, angle/naskah orisinal, visual manual/AI, enam desk nasional, serta penghapusan seluruh Verifikator mengikuti R0–R8. R1–R7 selesai sesuai batasnya; R8 (aktivasi) belum dijalankan. |
 | **R1 — Kontrak editorial** | ✅ **Offline tersedia** | Enam desk, normalizer headline, referensi materi unik, kontrak media/rights, carousel 3–9, caption/tag assembler; enam fixture sintetis berisi 36 paragraf/36 slide dan raster lokal. Belum dipasang ke produksi. [Kontrak R1](plans/08_R1_EDITORIAL_CONTRACT.md). |
@@ -102,8 +121,15 @@ manusia.
 | **R6 — Naskah/desain orisinal dua mode** | ✅ **Selesai; gate teknis lulus** | `explainer` vs `current` dengan fakta teratribusi eksplisit, tanpa body/summary/foto penerbit pada payload generasi; carousel 3–9 default enam, caption isi 1.200–1.900 karakter, Threads ≤500. Tujuh kolom baru dan migrasi additive terpasang di produksi setelah backup/restore test. [Laporan R6](plans/14_R6_ORIGINAL_EDITORIAL.md). |
 | **R7 — Gambar manual dan cover wajib** | 🟡 **Gate teknis lulus; keputusan owner/redaktur pending** | Enam sampel pipeline terbaru lintas desk, draf 150–155, sudah memiliki artikel, minimal tiga fakta, referensi, caption, enam slide dan cover orisinal. Revisi operator dan pemeriksaan visual tercatat. Semua `draft/needs_review`; sampel lama 144–149 dipertahankan. [Paket dan keputusan](plans/18_R7_SIX_DESK_REVIEW.md). |
 | **Riset web publik & artikel panjang** | ✅ **Gate teknis dan uji live lulus** | Migrasi dan Firecrawl key tersedia. Tiga kueri, pemilihan petikan Gemini, dan fallback kalimat sumber mempertahankan minimum tiga fakta. Cuplikan pencarian harus diambil dari halaman asal. Artikel selalu menunggu review manusia. [Bukti terkini](plans/17_PUBLIC_RESEARCH_RELIABILITY.md). |
-| **R8 — Aktivasi dan publish uji** | ⏳ **Belum dijalankan** | Memerlukan review redaktur dan persetujuan publish terpisah. Pipeline/publisher timers tetap disabled/inactive. |
-| **Telegram Approval Bot** | ⏳ **Belum Dikonfigurasi** | Engine dan kode notifikasi Telegram telah siap, namun menunggu input token Bot Telegram (`TELEGRAM_BOT_TOKEN`) dan Chat ID admin dari owner agar bot dapat aktif di polling. |
+| **R8 — Aktivasi dan publish uji** | ✅ **Selesai — publikasi LIVE** | Uji live berhasil 2026-11-23; sejak itu penerbitan berjalan harian lewat publish-now. Pipeline/publisher timers dinonaktifkan 2026-11-24 karena redaksi dipusatkan ke Muse, bukan karena jeda evaluasi. |
+| **Claude Intake** | ✅ **LIVE sejak 2026-11-23** | `POST /api/drafts/create-from-custom` membuat draf review-only di balik intake-guard (header token); publish-now dengan `reviewed` + `expected_revision`; render satu kali saat intake, render ulang via `edit-slide`. Lihat [CLAUDE_INTAKE.md](CLAUDE_INTAKE.md). |
+| **Format story ganda & aturan editorial** | ✅ **Aktif sejak 2026-11-24** | Quick News 3 slide / Deep Explainer 5 slide; kontrak ketat (fakta ≥3 penerbit, tanpa tanggal relatif, kutipan terdaftar `fact.quote`, tanggal linimasa persis fakta); aturan sampul multi-elemen + komposit foto realistis; caption berparagraf dan hashtag tepat 30. |
+| **Renderer produksi terkini** | ✅ **Terpasang di produksi** | HEAD `0a7cc43` + perbaikan working tree terdeploy: impact seragam breakdown + auto-fit, penutup terpusat vertikal, breakdown auto-fit sampai 6 item, linimasa auto-fit, bar gelap lead/penutup dihapus, panah hanya bila bukan slide terakhir, scrim sampul 0.62. Suite server: render 128/128, common 201/201. |
+| **Validator hashtag 30** | ✅ **Terpasang 2026-11-25** | Branch `fix/validator-hashtag-30`: story 5–30 unik, umum maks 30; caption Threads maks 500 karakter dengan hashtag menyesuaikan yang muat menurut prioritas; total caption maks 2.200 karakter. |
+| **Website artikel gapuramedia.my.id** | ✅ **Live** | Repo terpisah `aryarifki/Gapura-Media`; artikel dibuat dari draf terbit via `scripts/add-article.mjs`; penjaga website 30-menitan mengisi artikel yang kurang; tema halaman mengikuti gaya berita BBC dengan identitas Gapura. |
+| **Space Ruang Produksi Gapura** | ✅ **Live** | Meja produksi manual owner: Generate dari prompt bebas, Terbitkan, Jadwalkan, edit ilustrasi sampul dengan memori sampul, Pindai Trending, dan hapus draf. |
+| **Edisi harian & paket pertumbuhan** | ✅ **Berjalan sejak 2026-11-24** | Empat edisi otomatis Muse (slot ±07:30/12:15/15:30/19:00 WIB, batas total 6/hari, aturan susulan bila edisi lain gagal health check); paket pertumbuhan 30 hari `@gapuramedia` dengan laporan performa mingguan tiap Senin. |
+| **Telegram Approval Bot** | ⏳ **Di luar model operasi saat ini** | Kode notifikasi Telegram ada di repo, tetapi service-nya tidak terpasang di server produksi dan jalur approval berjalan lewat dashboard/Space serta laporan edisi Muse; bukan bagian operasi berjalan. |
 | **Kalender Konten Interaktif** | ⏳ **Belum Dikerjakan** | Jadwal tersimpan di PostgreSQL; kalender visual dengan drag-and-drop belum tersedia. |
 | **Multi-User Role** | ⏳ **Belum Dikerjakan** | Dashboard dibuka langsung tanpa login/token admin atas permintaan owner. Validasi Origin dan redaksi API key tetap aktif; akun pengguna dan pembagian role belum tersedia. |
 | **Visual Charting Saham Lanjutan** | ⏳ **Belum Dikerjakan** | Grafik bar chart dan bar comparison sudah aktif di Satori, namun grafik teknikal candlestick bursa interaktif belum diintegrasikan. |
@@ -240,15 +266,21 @@ bukti dan batas penerimaan ada di [laporan R5](plans/13_R5_REMOVE_VERIFICATOR.md
 
 Berikut adalah rincian fungsionalitas yang masih dalam antrean pengembangan untuk fase berikutnya:
 
-### 1. Aktivasi Publikasi Meta Live
+### 1. Aktivasi Publikasi Meta Live — SELESAI (2026-11-23)
 
-Adapter berada di `services/publisher/meta.js`; worker terpisah di `services/publisher/meta-worker.js`. Page Gapura Media (`102321216076547`) dan Instagram `@gapuramedia` (`17841471438781611`) dapat dibaca menggunakan Page token yang tersimpan di `/etc/gapura/runtime.env` (mode `0600`). File `.env` proyek merupakan symlink ke berkas runtime tersebut.
+Adapter berada di `services/publisher/meta.js`; worker dipakai publish-now di
+`services/web/publish-now.js`. Page Gapura Media (`102321216076547`) dan
+Instagram `@gapuramedia` (`17841471438781611`) terhubung penuh: izin
+`instagram_content_publish` dan `pages_manage_posts` terverifikasi, Page
+token tersimpan di runtime server (mode `0600`) dan berlaku tanpa
+kedaluwarsa, koneksi Instagram memakai SUAT Unified Login.
 
-Mode operasional tetap `META_PUBLISH_MODE=shadow`,
-`META_PLATFORMS=instagram,facebook`, dengan timer publisher `disabled/inactive`.
-Tidak ada posting live yang diuji dalam R5. Antrean lokal telah dikosongkan pada
-reset evaluasi; deskripsi draf scheduled historis bukan keadaan antrean saat
-ini. Pengujian publisher memakai fixture, bukan publikasi nyata.
+Publikasi **live** sejak uji pertama yang berhasil pada 2026-11-23 dan
+berjalan setiap hari sejak itu. Penerbitan memakai publish-now
+(`{"reviewed": true, "expected_revision": "<revision>"}`); gerbang verdict
+analis sudah dihapus dari publish-now dan meta-worker pada 2026-11-23.
+Timer publisher internal nonaktif sejak 2026-11-24 karena redaksi
+dipusatkan ke Muse — penerbitan tidak lagi digerakkan timer.
 
 Target terikat ke `schedule_id` dan hash konten yang disetujui. Persetujuan
 otomatis harus berasal dari aksi manusia `approved_auto` pada `audit_log`
@@ -262,12 +294,22 @@ akhir; timeout atau kegagalan pencatatan setelah percobaan remote menghasilkan
 legacy juga memeriksa audit hash dan locked recheck, menyerahkan pekerjaan
 ketika `META_PLATFORMS` terpasang, dan tidak dipanggil dari pipeline intake.
 
-Langkah yang masih diperlukan:
+Keadaan operasional yang berlaku sekarang:
 
-1. Setelah review sampel R7 selesai, periksa izin `instagram_content_publish` dan `pages_manage_posts` pada aplikasi/token Meta yang digunakan. Hasil pemeriksaan izin lama tidak menggantikan pemeriksaan saat aktivasi; tidak ada perubahan token atau izin dalam pekerjaan R5–R6.
-2. Redaktur meninjau seluruh draf/aset dan mengonfirmasi review revisi terkini secara eksplisit. Sumber dan skor Analis harus memenuhi gate Meta. Audit approval manusia dan hash konten menggantikan report/confidence Verifikator; edit membatalkan approval dan memerlukan review baru.
-3. Setelah batch/shadow R8 serta izin dan draf uji siap, satu target memerlukan persetujuan uji publish terpisah. Simpan `remote_id` dan permalink; jangan mengaktifkan timer hanya karena tes lulus. Status `unknown`/`publishing` membutuhkan rekonsiliasi manual dan tidak boleh direset secara otomatis.
-4. Threads membutuhkan `META_THREADS_USER_ID` dan `META_THREADS_ACCESS_TOKEN` tersendiri. Platform ini tetap nonaktif sampai kredensial dan akses resminya terverifikasi.
+1. Izin publish sudah terverifikasi penuh; pemeriksaan ulang hanya
+   diperlukan bila koneksi Meta diotorisasi ulang atau token diganti.
+2. Penerbitan tidak mensyaratkan verdict analis, skor, atau laporan
+   verifikasi. Syarat publish-now hanya status draf `draft`/`scheduled`,
+   `reviewed: true`, dan `expected_revision` yang cocok dengan revisi
+   terkini; edit konten mengubah revisi dan membatalkan upaya publish
+   yang memakai revisi lama.
+3. Hasil per platform tercatat di `publication_targets` (`remote_id`,
+   `container_id`, permalink). Status `unknown`/`publishing` membutuhkan
+   rekonsiliasi manual dan tidak pernah dicoba ulang secara buta. Draf
+   terbit tidak bisa diterbitkan ulang; repost berarti draf baru.
+4. Threads masih belum aktif: membutuhkan `META_THREADS_USER_ID` dan
+   `META_THREADS_ACCESS_TOKEN` tersendiri serta akses lanjutan Meta.
+   Ini satu-satunya sisa pekerjaan pada jalur publikasi Meta.
 
 PNG tetap digunakan untuk preview dan ZIP; JPEG digunakan untuk publikasi dengan
 URL bertanda tangan. Bukti 184 slide serta respons HTTP media pada runbook lama
@@ -280,11 +322,11 @@ dihapus atau di-backfill dan tidak menjadi sumber keputusan publisher.
 
 ### 2. Aktivasi Bot Notifikasi & Approval Telegram
 - **Kondisi Saat Ini:**
-  Modul logika Telegram bot sudah tersedia di `services/telegram/`, namun belum aktif berjalan karena belum adanya token bot resmi.
-- **Kebutuhan untuk Penyelesaian:**
+  Modul logika Telegram bot tersedia di `services/telegram/`, tetapi service-nya tidak terpasang di server produksi dan tidak termasuk model operasi saat ini — notifikasi dan laporan berjalan lewat edisi Muse ke chat owner, sedangkan approval berjalan lewat dashboard dan Space Ruang Produksi. Item ini dipertahankan sebagai kemungkinan masa depan, bukan pekerjaan aktif.
+- **Kebutuhan untuk Penyelesaian (bila owner mengaktifkan kembali):**
   1. Membuat bot melalui `@BotFather` di Telegram untuk mendapatkan `TELEGRAM_BOT_TOKEN`.
   2. Mendapatkan `TELEGRAM_CHAT_ID` dari channel atau grup redaksi.
-  3. Mengaktifkan `hme-telegram.service` agar redaktur dapat menerima notifikasi setiap ada draf baru dan melakukan review via Inline Keyboard (Setujui / Tolak / Edit) langsung dari HP.
+  3. Memasang dan mengaktifkan service Telegram agar redaktur dapat menerima notifikasi setiap ada draf baru dan melakukan review via Inline Keyboard (Setujui / Tolak / Edit) langsung dari HP.
 
 ### 3. UI Kalender Konten Interaktif (Drag & Drop Scheduler)
 - **Kondisi Saat Ini:**

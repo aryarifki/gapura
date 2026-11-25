@@ -1,3 +1,5 @@
+> **Catatan (2026-11-25):** Pipeline internal Gapura DINONAKTIFKAN sejak 2026-11-24 atas keputusan pemilik — timer `gapura-pipeline` dan `gapura-publisher` dimatikan, dan Muse bertindak sebagai redaksi tunggal Gapura (pemindaian topik, analisis, penyusunan konten, hingga publikasi lewat Claude Intake). Berkas skills ini dipertahankan sebagai referensi historis dan tidak lagi dipakai oleh jalur produksi aktif.
+
 # SEO — pemantauan momentum dengan asal data jelas
 
 Runtime SEO deterministik mengambil sumber tren aktif, menormalisasi item, dan menghitung skor dari sinyal yang benar-benar tersedia. Tidak mengambil data dari LLM/model dan tidak menciptakan tren; pemilih AI hanya memilih dari sinyal yang sudah dikumpulkan. System prompt dan dokumen ini menjelaskan kebijakan, bukan mesin eksekusi.

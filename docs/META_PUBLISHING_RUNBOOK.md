@@ -1,9 +1,25 @@
 # Mengaktifkan publikasi Meta
 
-Status 16 November 2026: worker dan `gapura-publisher.timer` terpasang, mode
-`shadow`, platform `instagram,facebook`. Belum ada uji posting live. Akses baca
-Page Gapura Media dan Instagram sudah berhasil, tetapi token belum memiliki
-`instagram_content_publish` dan `pages_manage_posts`.
+Status 25 November 2026: **publikasi LIVE di produksi.** Instagram
+`@gapuramedia` (ID `17841471438781611`) dan Facebook Page "Gapura Media"
+(ID `102321216076547`) menerima terbitan nyata lewat Graph API **v27.0**
+(Meta app `1123019133826199`). Izin publish terverifikasi penuh — Instagram
+SUAT mencakup seluruh izin termasuk `instagram_content_publish` dan
+`pages_manage_posts`; Page token berlaku tanpa kedaluwarsa. Uji live
+pertama berhasil 2026-11-23 dan sejak itu penerbitan berjalan setiap hari.
+
+Jalur penerbitan aktif adalah **publish-now** dari `hme-web`:
+`POST /api/drafts/:id/publish-now` dengan body
+`{"reviewed": true, "expected_revision": "<revision draf>"}` — dipakai
+Claude Intake (edisi harian Muse), dashboard, dan Space Ruang Produksi.
+Gerbang verdict analis sudah **dihapus** dari `publish-now.js` dan
+`meta-worker.js` pada 2026-11-23; tidak ada syarat verdict, skor, atau
+confidence untuk menerbitkan. Timer `gapura-publisher` nonaktif sejak
+2026-11-24 (sentralisasi redaksi ke Muse); worker Meta tetap dipakai
+publish-now secara sinkron. Bagian Unified Login di bawah tetap berlaku
+sebagai dokumentasi koneksi akun yang sedang berjalan; bagian "Review dan
+jadwal" serta "Menyiapkan satu uji live" sudah digantikan alur publish-now
+pada bagian "Alur penerbitan saat ini".
 
 ## Unified Login untuk app baru
 
@@ -57,8 +73,8 @@ Worker Instagram memakai koneksi Unified yang cocok dengan app/config/account;
 Facebook tetap menggunakan Page token tersendiri, Threads menggunakan token
 Threads. Koneksi Unified yang kedaluwarsa menonaktifkan Instagram dan harus
 diotorisasi ulang; implementasi ini belum melakukan refresh otomatis SUAT.
-Menyambungkan akun tidak mengubah `META_PUBLISH_MODE=shadow`, mengaktifkan
-platform baru, atau melonggarkan gate editorial.
+Menyambungkan akun tidak dengan sendirinya mengaktifkan platform baru atau
+mengubah mode publikasi runtime.
 
 ### Jika Finish menghasilkan error
 
@@ -87,6 +103,11 @@ callback lengkap karena query-nya dapat berisi kode otorisasi.
 
 ## Jalur lama: Facebook Login dan Page token
 
+Jalur ini adalah jalur yang benar-benar memasok Page token produksi saat
+ini (token Page tersimpan di runtime server dan berlaku tanpa
+kedaluwarsa); Unified Login di atas memasok koneksi Instagram (SUAT).
+Langkahnya dicatat sebagai referensi perawatan:
+
 1. Buka aplikasi yang benar di [Meta for Developers](https://developers.facebook.com/apps/).
    Pastikan akun operator mempunyai akses ke Page Gapura Media dan Instagram
    profesional terhubung ke Page tersebut.
@@ -109,53 +130,45 @@ callback lengkap karena query-nya dapat berisi kode otorisasi.
 6. Ulangi pemeriksaan baca Page/IG dan
    `GET /17841471438781611/content_publishing_limit` dengan header bearer.
    Code 10 yang masih meminta `instagram_content_publish` berarti izin belum
-   berhasil diberikan; pertahankan mode shadow.
+   berhasil diberikan.
 
 App yang melayani akun di luar role/tester aplikasi dapat membutuhkan advanced
 access dan App Review. Ikuti hasil pemeriksaan dashboard Meta; jangan menganggap
-keberhasilan baca akun membuktikan izin publish.
+keberhasilan baca akun membuktikan izin publish. (Di produksi, kedua izin
+publish sudah terverifikasi diberikan — lihat status di awal dokumen.)
 
-## Review dan jadwal
+## Alur penerbitan saat ini (publish-now)
 
-Redaktur membuka detail draf terbaru, meninjau sumber, skor Analis, laporan
-verifikasi, caption, tagar, dan slide, lalu mencentang konfirmasi review.
-Persetujuan menyimpan hash konten dan menjadwalkan tayang +3 jam. Tab dengan
-konten/revision lama menerima HTTP 409 dan harus dimuat ulang sebelum ditinjau.
+Penerbitan produksi berjalan sinkron lewat `hme-web`:
 
-Worker memerlukan sumber HTTPS publik, hasil Analis terbaru `passed`, laporan
-`verified` dengan confidence 80–100, `needs_review=false`, bukti persetujuan
-manusia, hash konten yang cocok, akun tujuan aktif, dan jadwal jatuh tempo.
-Draf historis tanpa bukti ini tetap diblokir. Jangan membuat verifikasi palsu
-atau memindahkan status secara langsung untuk menguji publisher.
+1. Draf dibuat lewat Claude Intake (`create-from-custom`, review-only)
+   atau dashboard/Studio. **Render carousel terjadi satu kali pada saat
+   draf dibuat**; tidak ada render ulang pada saat publish.
+2. Pemanggil mengambil `revision` terkini dari `GET /api/drafts/:id`.
+3. `POST /api/drafts/:id/publish-now` dengan body
+   `{"reviewed": true, "expected_revision": "<revision>"}`. Syaratnya:
+   status draf `draft` atau `scheduled`, dan tidak ada target yang sedang
+   `publishing`/`unknown`. Selain itu tidak ada gate lain — gerbang
+   verdict analis, skor Analis, dan laporan verifikasi **bukan** syarat
+   (dihapus 2026-11-23).
+4. Worker Meta menerbitkan ke Instagram dan Facebook; hasil per platform
+   tercatat di `publication_targets` beserta `remote_id`, `container_id`,
+   dan permalink. Status akhir draf `published` (atau `partial` bila
+   hanya sebagian platform berhasil).
+5. Draf yang sudah terbit **tidak bisa diterbitkan ulang**; repost selalu
+   berarti draf intake baru.
+6. Bila isi/render draf lama perlu diperbaiki sebelum terbit, render ulang
+   lewat `POST /api/drafts/:id/edit-slide` `{slide_no}` — ditolak untuk
+   draf yang sudah terbit atau sudah pernah dicoba publish.
 
-`shadow` mencatat target yang lolos tanpa menghubungi Meta. Status `blocked`
-berarti gate menolak. Setelah perubahan konten, redaktur wajib meninjau ulang;
-jadwal baru dapat mengaktifkan kembali target yang belum pernah mencoba publish.
+Penjadwalan dari Space Ruang Produksi dan dashboard memakai mekanisme yang
+sama: draf berstatus `scheduled` diterbitkan publish-now saat waktunya tiba.
 
-## Menyiapkan satu uji live
-
-Hentikan timer publisher selama persiapan uji agar perubahan mode tidak mengirim
-antrean secara tidak sengaja:
-
-```bash
-systemctl stop gapura-publisher.timer
-```
-
-Periksa semua target dan jadwal yang jatuh tempo sebelum memilih akun tester
-dan draf yang telah disetujui. Mengubah `META_PUBLISH_MODE=live` mengaktifkan
-pemrosesan **semua** target eligible pada platform aktif; jangan mengaktifkannya
-untuk uji satu draf jika antrean masih memuat draf lain yang siap kirim.
-
-Setelah izin, akun, dan antrean uji sudah benar, jalankan service secara manual.
-Target berstatus `shadow` memerlukan reset shadow eksplisit; reset tidak boleh
-mengenai `unknown`, `publishing`, atau `published`. Periksa `remote_id`,
-`container_id`, permalink, audit log, dan posting di akun Meta sebelum
-mengaktifkan siklus live rutin. Bila hasil belum pasti, kembalikan mode ke
-shadow dan rekonsiliasi terlebih dahulu.
-
-Jadwal dinyatakan selesai hanya setelah seluruh targetnya `published`.
-Publisher legacy menyerahkan pekerjaan bila `META_PLATFORMS` terpasang dan tidak
-dipanggil dari pipeline intake.
+Untuk konteks operasional harian: empat edisi otomatis Muse menerbitkan
+dengan alur ini setiap hari (batas total 6 konten/hari), dan setiap draf
+terbit menjadi artikel di gapuramedia.my.id. Kegagalan publish tidak
+pernah dicoba ulang secara buta; draf gagal tetap menunggu di dashboard
+untuk diterbitkan manual.
 
 ## Hasil tak pasti dan rekonsiliasi
 
@@ -167,8 +180,21 @@ operator memutuskan retry. Pengeditan aset draf diblokir setelah publish dicoba.
 
 ```bash
 systemctl list-timers 'gapura-*'
-journalctl -u gapura-publisher.service -n 40 --no-pager
+journalctl -u hme-web.service -n 40 --no-pager
 ```
+
+## Catatan operasional tunnel
+
+Dashboard/API menjangkau publik lewat Cloudflare Tunnel dari server.
+Selama November 2026 terjadi gangguan berulang yang terdiagnosis sebagai
+**pemfilteran SNI `h2.cftunnel.com` di jaringan upstream**: koneksi tunnel
+berfluktuasi (turun-naik) dan health endpoint sesekali menjawab 503/1033.
+Watchdog cloudflared di server memulihkan koneksi secara otomatis dan
+edisi harian yang gagal health check ditutup edisi berikutnya lewat
+aturan susulan. Gangguan ini **belum dinyatakan teratasi permanen**;
+perlakukan 503 sesaat sebagai kondisi yang dikenal, bukan kerusakan
+aplikasi — periksa status tunnel dan watchdog sebelum mengutak-atik
+service aplikasi.
 
 ## Threads
 
@@ -176,16 +202,18 @@ Threads memakai `https://graph.threads.com/v1.0`, `META_THREADS_USER_ID`, dan
 `META_THREADS_ACCESS_TOKEN` tersendiri dengan `threads_basic` serta
 `threads_content_publish`. Page token Facebook tidak dipakai sebagai fallback.
 Tanpa advanced access, dokumentasi Meta membatasi publish pada Threads tester
-aplikasi. Platform Threads tetap nonaktif sampai kredensial dan aksesnya diuji.
+aplikasi. Platform Threads **belum aktif di produksi** sampai kredensial dan
+aksesnya disiapkan dan diuji; kode publisher dan validasi caption-nya sudah
+mendukung (caption Threads divalidasi maksimal 500 karakter, dengan hashtag
+yang dimuat sebanyak yang muat menurut urutan prioritas).
 
 Instagram memerlukan JPEG; Threads mendukung JPEG dan PNG. Gapura menggunakan
-JPEG turunan yang sama untuk seluruh adapter. Threads membatasi teks 500
-karakter; caption terlalu panjang ditolak untuk review versi khusus, bukan
-dipotong diam-diam.
+JPEG turunan yang sama untuk seluruh adapter.
 
 ## Referensi resmi
 
-Diakses 16 November 2026:
+Diakses 16 November 2026 (konfigurasi koneksi diverifikasi ulang 23–25
+November 2026 saat publikasi live diaktifkan):
 
 - [Instagram content publishing](https://developers.facebook.com/docs/instagram-platform/instagram-api-with-facebook-login/content-publishing/)
 - [Unified Login setup](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-unified-login/get-started)
