@@ -2,17 +2,19 @@
 > **Akun Resmi:** `@gapuramedia` · **Portal Dashboard:** [https://gapura.avenia.my.id](https://gapura.avenia.my.id)  
 > **Fokus editorial:** Politik, sosial, hukum, lingkungan, ekonomi nasional, dan bursa saham Indonesia.
 
-**Status 18 November 2026:** R4 discovery enam desk, R5 penghapusan Verifikator,
-dan R6 naskah orisinal dua mode selesai; unit/DB/API/browser/render serta DOM
-layanan aktif lulus. R6 memasang input eksplisit tanpa body/summary/foto
-penerbit, carousel 3–9 slide default enam, caption isi 1.200–1.900 karakter,
-Threads ≤500, dan tujuh kolom persistensi yang sudah dimigrasikan ke produksi.
-R7 sudah selesai pada gate teknis: unggah gambar manual menjadi jalur visual
-utama, cover (slide 1) wajib bergambar sebelum approval/publish, dan enam sampel
-manual sudah dibuat untuk dinilai owner. R8 (aktivasi publish) belum dijalankan.
-Timer intake/publisher tetap `disabled/inactive`, worker background
-`GAPURA_DISABLE_WORKERS=true`, dan tidak ada publikasi nyata. Raster AI nyata
-masih tertahan quota 0; tidak ada permintaan ulang atau perpindahan provider gambar.
+**Status 25 November 2026: produksi LIVE.** Publikasi Meta berjalan nyata ke
+Instagram `@gapuramedia` dan Facebook Page "Gapura Media" sejak 2026-11-23
+(Graph API v27.0; gerbang verdict analis sudah dihapus). Sejak 2026-11-24
+**Muse adalah redaksi tunggal**: pemindaian, analisis, penyusunan, dan
+publikasi dijalankan Muse lewat Claude Intake dalam empat edisi otomatis
+harian (batas total 6 konten/hari), dan setiap draf terbit menjadi artikel
+di gapuramedia.my.id. Pipeline internal enam agen (Scout/Analis/Copywriter/
+Designer/SEO/Studio) **dinonaktifkan** — timer `gapura-pipeline` dan
+`gapura-publisher` dimatikan atas keputusan owner (unit dipertahankan,
+reversibel). Dashboard tetap menjadi meja review, penerbitan manual, dan
+pemantauan. Panduan di bawah menjelaskan pemakaian dashboard; bagian yang
+menjelaskan pipeline internal berlaku sebagai referensi jalur manual/
+historis, bukan jalur produksi berjalan.
 
 ---
 
@@ -31,9 +33,17 @@ masih tertahan quota 0; tidak ada permintaan ulang atau perpindahan provider gam
 
 ## 1. Ringkasan Alur Kerja Redaksi
 
-Aplikasi ini menyiapkan alur kerja redaksi Instagram dengan prinsip
-**Human-in-the-Loop**. Enam agen aktif adalah **Scout, Analis, Copywriter,
-Designer, SEO, dan Studio**:
+Alur produksi yang berjalan saat ini berpusat pada **Claude Intake**:
+Muse memindai topik trending, menyusun paket konten terstruktur, dan
+mengirimnya sebagai draf review-only ke dashboard; penerbitan ke Meta
+berjalan lewat publish-now (oleh edisi otomatis Muse, oleh owner dari
+dashboard, atau terjadwal dari Space Ruang Produksi). Prinsip
+**Human-in-the-Loop** tetap berlaku untuk jalur manual: owner meninjau
+draf di dashboard sebelum menerbitkan sendiri.
+
+Diagram berikut adalah alur **pipeline internal** aplikasi (Scout, Analis,
+Copywriter, Designer, SEO, dan Studio) yang kini **nonaktif** sejak
+2026-11-24 dan dipertahankan sebagai referensi:
 
 ```
 [Sumber Resmi & Feed Discovery] (BPS, BI, OJK, MK, IDX, media nasional)
@@ -132,10 +142,15 @@ Menu **Antrian Review** adalah meja kerja utama redaktur:
      hash revisi; field mode/angle/batas klaim/referensi bersifat read-only
      setelah digenerate.
    - **Caption & Hashtags:** Sesuaikan caption editorial Instagram sebelum
-     disetujui. Naskah R6 membawa `caption_body` 1.200–1.900 karakter dan teks
-     Threads ≤500 karakter; final Instagram maksimal 2.200 termasuk tagar.
-     Disclaimer hukum atau investasi hanya dipakai bila relevan dengan konteks
-     hukum/bursa; tidak wajib untuk setiap desk.
+     disetujui. Aturan caption produksi saat ini: caption **wajib
+     berparagraf** (baris kosong antarparagraf, blok hashtag pada baris
+     tersendiri), ditutup pertanyaan diskusi + CTA simpan/bagikan +
+     rujukan gapuramedia.my.id sebelum hashtag, dan hashtag **tepat 30**
+     berlapis (umum + desk + topik + lokasi + jangkauan). `caption_body`
+     non-story 1.200–1.900 karakter (story 300–1.700), total caption final
+     Instagram maksimal 2.200 karakter termasuk tagar, teks Threads
+     ≤500 karakter. Disclaimer hukum atau investasi hanya dipakai bila
+     relevan dengan konteks hukum/bursa; tidak wajib untuk setiap desk.
 4. **Tombol Tindakan Utama:**
    - **🔄 Simpan & Render Ulang Slide:** Merender ulang slide aktif secara seketika dan memperbarui pratinjau.
    - **✨ Regenerate AI (Desain Ulang):** Meminta AI Designer merancang ulang seluruh carousel secara adaptif.
@@ -144,20 +159,22 @@ Menu **Antrian Review** adalah meja kerja utama redaktur:
    - **⏱️ Setujui (Auto):** Memerlukan konfirmasi review dan revisi yang sedang
      dilihat. Persetujuan mencatat hash isi pada audit; perubahan konten
      membatalkan approval/jadwal dan memerlukan review baru.
-   - **📸 Posting Sekarang:** Mode manual mencatat status posting manual pada
-     aplikasi; itu bukan bukti panggilan publish ke Meta. Selama evaluasi ini
-     jangan menjalankan publikasi nyata.
+   - **📸 Posting Sekarang:** Menerbitkan draf ke Meta secara nyata lewat
+     jalur publish-now (`{"reviewed": true, "expected_revision": "<revision>"}`);
+     tidak ada syarat verdict analis, skor, atau laporan verifikasi. Draf
+     yang sudah terbit tidak bisa diterbitkan ulang — repost berarti draf
+     baru.
 
 Jika persetujuan ditolak karena draf berubah, muat ulang dan tinjau kembali
 seluruh slide/caption. Draf tanpa cover bergambar tetap dapat disimpan dan
 diedit, tetapi persetujuan ditolak (HTTP 409) sampai gambar dipasang pada slide
 1.
 
-Publisher Meta dan legacy memeriksa audit approval manusia dan hash revisi
-terkini, `needs_review=false`, serta prasyarat jadwal/akun/aset. Meta juga
-memeriksa sumber dan skor Analis.
-Pemeriksaan ulang dilakukan dalam row lock sebelum panggilan publikasi akhir;
-hasil ambigu perlu rekonsiliasi manual, tanpa retry buta.
+Publish-now memeriksa revisi terkini (`expected_revision` harus sama dengan
+hash konten draf) dan menolak bila ada target yang sedang
+`publishing`/`unknown`. Hasil publish tercatat per platform di
+`publication_targets` beserta permalink; hasil ambigu perlu rekonsiliasi
+manual, tanpa retry buta.
 
 ---
 
@@ -203,16 +220,21 @@ Menu **Studio Desain** diperuntukkan jika redaksi ingin membuat postingan khusus
    - Anda dapat bereksperimen mengubah warna latar (`bg`), warna teks (`ink`), aksen (`accent`), dan highlight (`#D79344`).
    - Pratinjau langsung diperbarui seketika di canvas simulator ponsel.
 
-**Studio Prompt** menyusun rencana dari prompt dan topik yang lolos Analis,
-lalu menyerahkan hasil ke alur draf/review. Worker background saat ini dijeda
-dengan `GAPURA_DISABLE_WORKERS=true`; jangan menganggap job akan diproses otomatis.
+**Studio Prompt** menyusun rencana dari prompt dan topik, lalu menyerahkan
+hasil ke alur draf/review. Worker background pipeline internal nonaktif sejak
+2026-11-24; jangan menganggap job Studio akan diproses otomatis. Untuk
+produksi dari prompt bebas, jalur yang berjalan adalah Space **Ruang
+Produksi Gapura** (Generate → Terbitkan/Jadwalkan).
 
 ---
 
 ## 7. Kustomisasi AI Agents & Skills.md
 
-Konfigurasi aktif mencakup **Scout, Analis, Copywriter, Designer, SEO, dan
-Studio**; tidak ada tab/config/skill Verifikator:
+Konfigurasi mencakup **Scout, Analis, Copywriter, Designer, SEO, dan
+Studio**; tidak ada tab/config/skill Verifikator. **Catatan:** keenam agen
+ini adalah pipeline internal yang dinonaktifkan sejak 2026-11-24; menu dan
+berkas skills-nya dipertahankan sebagai referensi dan untuk pengaktifan
+kembali bila owner memutuskan, bukan jalur produksi berjalan:
 1. Masuk ke menu **AI Agents & Skills**.
 2. Terdapat tab untuk keenam agen:
    - **Scout:** Pengumpul berita, interval polling, dan kata kunci fokus.
@@ -257,22 +279,24 @@ penulisan/desain dari body/summary penerbit sudah dipisahkan sejak R6:
 
 ## 9. Operasional Server & Systemd Service
 
-Aplikasi berjalan di atas Debian Linux menggunakan service systemd. Timer
-intake/publisher tetap `disabled/inactive`, worker background tetap
-`GAPURA_DISABLE_WORKERS=true`, publisher tetap `shadow`, dan tidak ada publish
-nyata. Web/render telah dimuat ulang dengan identitas enam desk; publikasi tetap dijeda.
+Aplikasi berjalan di atas Debian Linux menggunakan service systemd. Keadaan
+produksi saat ini: publikasi Meta **live** lewat publish-now; timer
+pipeline/publisher internal `disabled/inactive` **sejak 2026-11-24 atas
+keputusan owner** (sentralisasi redaksi ke Muse; unit dipertahankan dan
+reversibel via `systemctl enable --now`); server menjalankan `hme-web`,
+`hme-render`, PostgreSQL, dan Cloudflare Tunnel.
 
 | Nama Service | Port / Domain | Deskripsi |
 | :--- | :--- | :--- |
-| `hme-web.service` | `127.0.0.1:3005` (`https://gapura.avenia.my.id`) | Web Review Dashboard, API Express, Static Asset Server |
+| `hme-web.service` | `127.0.0.1:3005` (`https://gapura.avenia.my.id`) | Web Review Dashboard, API Express, intake, dan worker publish-now |
 | `hme-render.service` | `127.0.0.1:3000` | Micro-Service Render Node.js (Satori + Sharp) |
-| `hme-n8n.service` | `127.0.0.1:5678` (`https://n8n.avenia.my.id`) | Canvas / fallback manual n8n |
-| `postgresql.service` | `127.0.0.1:5432` | Basis Data PostgreSQL 17 (Database `hme` & `n8n`) |
+| `postgresql.service` | `127.0.0.1:5432` | Basis Data PostgreSQL 17 (Database `hme`) |
+| `cloudflared` | — (`https://gapura.avenia.my.id`) | Cloudflare Tunnel ke dashboard/API; watchdog di server memulihkan koneksi otomatis |
 
 ### Perintah Pemeliharaan Cepat:
 ```bash
 # Cek status seluruh service
-systemctl status hme-web.service hme-render.service hme-n8n.service
+systemctl status hme-web.service hme-render.service
 
 # Melihat log web dashboard secara realtime
 journalctl -u hme-web.service -f
@@ -280,13 +304,16 @@ journalctl -u hme-web.service -f
 # Melihat log render service secara realtime
 journalctl -u hme-render.service -f
 
-# Periksa timer yang sengaja dijeda dan lokasi drop-in worker
+# Periksa timer internal yang nonaktif (keputusan owner 2026-11-24)
 systemctl status gapura-pipeline.timer gapura-publisher.timer --no-pager
-systemctl show hme-web.service --property=DropInPaths
 ```
 
-Aktivasi tetap menunggu review owner atas sampel R7, R8 batch/shadow dan mandat
-eksplisit untuk uji publish/otomatisasi. Tabel/kolom historis Verifikator
-dipertahankan; tidak ada schema removal, purge, atau backfill pada R5. Detail
-implementasi dan hasil gate ada di [laporan R5](plans/13_R5_REMOVE_VERIFICATOR.md)
-dan [laporan R7](plans/15_R7_MANUAL_MEDIA.md).
+Catatan tunnel: gangguan berulang pada November 2026 terdiagnosis sebagai
+pemfilteran SNI `h2.cftunnel.com` di jaringan upstream — koneksi
+berfluktuasi dan health endpoint sesekali 503, lalu pulih sendiri lewat
+watchdog. Belum dinyatakan teratasi permanen; lihat catatan operasional di
+[`SELF_HOSTING.md`](SELF_HOSTING.md) dan
+[`META_PUBLISHING_RUNBOOK.md`](META_PUBLISHING_RUNBOOK.md). Tabel/kolom
+historis Verifikator dipertahankan; tidak ada schema removal, purge, atau
+backfill. Detail implementasi dan hasil gate ada di [laporan R5](plans/13_R5_REMOVE_VERIFICATOR.md)
+dan [laporan R7](plans/15_R7_MANUAL_MEDIA.md) (dokumen historis).

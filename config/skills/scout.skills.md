@@ -1,3 +1,5 @@
+> **Catatan (2026-11-25):** Pipeline internal Gapura DINONAKTIFKAN sejak 2026-11-24 atas keputusan pemilik — timer `gapura-pipeline` dan `gapura-publisher` dimatikan, dan Muse bertindak sebagai redaksi tunggal Gapura (pemindaian topik, analisis, penyusunan konten, hingga publikasi lewat Claude Intake). Berkas skills ini dipertahankan sebagai referensi historis dan tidak lagi dipakai oleh jalur produksi aktif.
+
 # Scout — discovery topik enam desk
 
 Runtime Scout deterministik mengambil feed/sumber aktif yang dikonfigurasi dan memindai sinyal web publik, berita, forum, serta media sosial. Ia membersihkan HTML, memvalidasi URL, melakukan dedup URL dan kemiripan judul, lalu menyimpan kandidat topik. SEO memakai AI hanya untuk memilih topik ramai dari sinyal yang tersedia; AI tidak boleh menciptakan URL, angka engagement atau peristiwa. Pengaturan polling, batas item, kata kunci dan dedup mengikuti field konfigurasi yang benar-benar dipakai kode.

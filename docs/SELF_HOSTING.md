@@ -99,13 +99,45 @@ background Studio workers, Telegram delivery, or the publisher. Keep
 operator-managed systemd units; the tracked `deploy/` units use the production
 layout `/root/gapura` and `/etc/gapura/runtime.env`, so adapt their paths and
 environment-file locations before installing them elsewhere. Leave both timers
-disabled until the review and separate authorization gates are satisfied.
+disabled during setup; in the current production deployment they stay disabled
+by design (see below).
 
 Optional adjacent integrations are not application data and are not bundled:
 n8n, Cloudflare Tunnel, public DNS/domain, Meta app/permissions/account tokens,
 Telegram bot, X API, Firecrawl, and a private legal-index service. Without these,
 the dashboard/rendering and configured local workflows still run, but their
 specific external capabilities will be unavailable or use documented fallbacks.
+
+## Current production topology (reference, updated 2026-11-25)
+
+The running production deployment (host `deb-arya`) deliberately runs only:
+
+- `hme-web.service` — dashboard, API, Claude Intake endpoint, and the
+  publish-now worker (127.0.0.1:3005, public via Cloudflare Tunnel at
+  `gapura.avenia.my.id`).
+- `hme-render.service` — the Satori + Sharp render microservice
+  (127.0.0.1:3000).
+- PostgreSQL 17 and the `cloudflared` tunnel connector.
+
+Since **2026-11-24** content production is centralized on **Muse** as the
+sole newsroom (topic scanning, analysis, composition, and publishing via
+Claude Intake; four automated daily editions plus owner-driven drafts).
+The internal pipeline timers `gapura-pipeline.timer` and
+`gapura-publisher.timer` are **disabled** by owner decision; their unit
+files are kept and the change is reversible with
+`systemctl enable --now <timer>`. Publishing to Meta is live through the
+publish-now endpoint in `hme-web`, not through the timer-driven publisher.
+
+**Tunnel operational note:** the Cloudflare Tunnel egress from this host
+suffered recurring disruption during November 2026, diagnosed as upstream
+SNI filtering of `h2.cftunnel.com` (TLS handshake failures toward the
+Cloudflare edge on port 7844, while other SNI values pass on the same
+edge). In practice the connection **flaps** — the public API alternates
+between healthy and 503/1033 — and a watchdog on the host restarts
+`cloudflared` automatically, with a cooldown after repeated failures.
+This is an expected, self-healing condition, **not** a permanently fixed
+one; treat short 503 windows as known behaviour and check the watchdog
+before changing application services.
 
 ## Verify
 
