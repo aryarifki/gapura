@@ -165,20 +165,30 @@ function normalizeFactIds(value, map, field) {
 
 function checkOriginalText(value, { brief, factIds, claimType, field }) {
   const valueText = text(value, field);
-  if (INTERNAL.test(valueText) || EDITORIAL_FILLER.test(valueText) || /#[\p{L}\p{N}_]+/u.test(valueText)) fail(`${field}_internal`);
+  if (INTERNAL.test(valueText) || EDITORIAL_FILLER.test(valueText)) fail(`${field}_internal`);
   const facts = factIds.map((id) => factMap(brief).get(id));
+  // Mode cerita (paket Space Ruang Produksi): pemeriksaan kesetiaan teks
+  // terhadap fakta (angka/tanggal wajib persis teks fakta, kutipan wajib
+  // terdaftar kata-per-kata, atribusi 'Menurut …' wajib cocok nama sumber,
+  // kata kualifier wajib ikut, frasa tanggal relatif seperti 'minggu ini'
+  // dilarang) DINONAKTIFKAN atas perintah pemilik
+  // 2026-11-26 — paket Space adalah standar dan sudah melewati riset
+  // >= 3 penerbit saat dibuat; validator menyesuaikan, bukan sebaliknya.
+  // Tagar '#' di dalam teks juga lolos apa adanya (tagar bisa menjadi
+  // subjek berita) dan tidak lagi dihapus dari caption/artikel.
+  const relaxed = brief.story_text_relaxed === true;
   if (brief.mode === 'explainer') {
     if (claimType === 'fact' || factIds.length || NUMERIC.test(valueText) || QUOTE.test(valueText) || [...valueText.matchAll(ATTRIBUTION)].length
         || (EVENT_CLAIM.test(valueText) && !CONDITIONAL.test(valueText))) fail(`${field}_unsupported_claim`);
   } else {
     if (claimType === 'fact' && !factIds.length) fail(`${field}_fact_reference_required`);
     if (EVENT_CLAIM.test(valueText) && !CONDITIONAL.test(valueText) && !factIds.length) fail(`${field}_fact_reference_required`);
-    if (NUMERIC.test(valueText) && !hasFactNumber(valueText, facts)) fail(`${field}_number_unreferenced`);
-    if (RELATIVE_DATE.test(valueText)) fail(`${field}_relative_date_unsupported`);
-    for (const date of valueText.match(DATE) || []) {
+    if (!relaxed && NUMERIC.test(valueText) && !hasFactNumber(valueText, facts)) fail(`${field}_number_unreferenced`);
+    if (!relaxed && RELATIVE_DATE.test(valueText)) fail(`${field}_relative_date_unsupported`);
+    if (!relaxed) for (const date of valueText.match(DATE) || []) {
       if (!dateSupported(date, facts)) fail(`${field}_date_unreferenced`);
     }
-    if ((brief.pipeline_version === 3 ? /[“”"]/u.test(valueText) : QUOTE.test(valueText))) {
+    if (!relaxed && (brief.pipeline_version === 3 ? /[“”"]/u.test(valueText) : QUOTE.test(valueText))) {
       if (!factIds.length || !facts.some((fact) => fact.quote && valueText.includes(fact.quote.text) && valueText.includes(fact.quote.speaker))) fail(`${field}_quote_unreferenced`);
       for (const [, quoted] of valueText.matchAll(/[“"]([^”"]+)[”"]/gu)) {
         if (!facts.some((fact) => fact.quote?.text === quoted || fact.quote?.text === quoted.replace(/,$/u, ''))) fail(`${field}_quote_unreferenced`);
@@ -187,11 +197,11 @@ function checkOriginalText(value, { brief, factIds, claimType, field }) {
         if (!facts.some((fact) => fact.quote && normalized(fact.quote.speaker) === normalized(speaker))) fail(`${field}_speaker_mismatch`);
       }
     }
-    for (const [, attributed] of valueText.matchAll(ATTRIBUTION)) {
+    if (!relaxed) for (const [, attributed] of valueText.matchAll(ATTRIBUTION)) {
       if (/^(?:anda|kamu|kalian)$/iu.test(attributed) && /\?$/u.test(valueText)) continue;
       if (!facts.some((fact) => normalized(fact.source_name).includes(normalized(attributed)))) fail(`${field}_source_unreferenced`);
     }
-    if ((brief.pipeline_version === 3 ? facts.length > 0 && facts.every((fact) => QUALIFIER.test(fact.text)) : facts.some((fact) => QUALIFIER.test(fact.text))) && !QUALIFIER.test(valueText)
+    if (!relaxed && (brief.pipeline_version === 3 ? facts.length > 0 && facts.every((fact) => QUALIFIER.test(fact.text)) : facts.some((fact) => QUALIFIER.test(fact.text))) && !QUALIFIER.test(valueText)
         && (claimType === 'fact' || EVENT_CLAIM.test(valueText))) fail(`${field}_qualifier_missing`);
   }
   return valueText;
@@ -206,7 +216,7 @@ function validateSlideData(slide, brief, map) {
   const supported = (value, field) => {
     if (typeof value !== 'string' && (typeof value !== 'number' || !Number.isFinite(value))) fail(`${field}_invalid`);
     const result = text(String(value), field, 500);
-    if (INTERNAL.test(result) || /#[\p{L}\p{N}_]+/u.test(result)) fail(`${field}_internal`);
+    if (INTERNAL.test(result)) fail(`${field}_internal`);
     if (!facts.some((fact) => normalized(fact.text).includes(normalized(result)))) fail(`${field}_unreferenced`);
     return result;
   };
@@ -214,7 +224,9 @@ function validateSlideData(slide, brief, map) {
   for (const key of ['title', 'subtitle', 'callout']) if (data[key] !== undefined) result[key] = check(data[key], `slide_data_${key}`);
   for (const key of ['kicker', 'role_label', 'question', 'cta']) if (data[key] !== undefined) {
     result[key] = check(data[key], `slide_data_${key}`);
-    if (result[key].length > (key === 'kicker' ? 40 : 200)) fail(`slide_data_${key}_length`);
+    // Batas 200 karakter pertanyaan penutup DIBUANG atas perintah pemilik
+    // 2026-11-26: pertanyaan diskusi dari Space lolos apa adanya.
+    if (key !== 'question' && result[key].length > (key === 'kicker' ? 40 : 200)) fail(`slide_data_${key}_length`);
   }
   if (data.quote !== undefined || data.author !== undefined) {
     const quote = text(data.quote, 'slide_quote', 1000);
@@ -224,12 +236,16 @@ function validateSlideData(slide, brief, map) {
     Object.assign(result, { quote, author });
   }
   if (data.items !== undefined) {
-    if (!Array.isArray(data.items) || !data.items.length || data.items.length > 4) fail('stat_grid_data_missing');
+    // Daftar editorial (breakdown/impact) TIDAK lagi dibatasi jumlah itemnya
+    // atas perintah pemilik 2026-11-26 (sebelumnya maks 6, hasil audit
+    // 2026-11-24): daftar utuh dari Space muat satu slide dan renderer
+    // menyesuaikan ukuran; jalur stat-grid dan layout lain tetap maksimal 4.
+    const narrative = ['editorial-breakdown', 'editorial-impact'].includes(slide.layout);
+    if (!Array.isArray(data.items) || !data.items.length || (!narrative && data.items.length > 4)) fail('stat_grid_data_missing');
     result.items = data.items.map((item) => {
       exactKeys(item, ['label', 'value', 'fact_ids'], 'stat_grid_item');
       const itemRefs = item.fact_ids === undefined ? refs : normalizeFactIds(item.fact_ids, map, 'list_fact_ids');
       if (itemRefs.some((id) => !refs.includes(id))) fail('list_fact_ids_invalid');
-      const narrative = ['editorial-breakdown', 'editorial-impact'].includes(slide.layout);
       const label = narrative ? check(item.label, 'list_label') : supported(item.label, 'stat_label');
       const value = narrative ? check(item.value, 'list_value') : supported(item.value, 'stat_value');
       if (!narrative && !facts.some((fact) => normalized(fact.text).includes(normalized(label)) && normalized(fact.text).includes(normalized(value)))) fail('stat_pair_unreferenced');
@@ -249,14 +265,20 @@ function validateSlideData(slide, brief, map) {
     });
   }
   if (data.events !== undefined) {
-    if (!Array.isArray(data.events) || !data.events.length || data.events.length > 5) fail('timeline_data_missing');
+    // Batas atas jumlah peristiwa linimasa per slide DIBUANG atas perintah
+    // pemilik 2026-11-26 (sebelumnya maks 5): linimasa utuh dari Space
+    // tampil satu slide; renderer menyesuaikan ukuran teksnya.
+    if (!Array.isArray(data.events) || !data.events.length) fail('timeline_data_missing');
     let previous = '';
     result.events = data.events.map((event) => {
       exactKeys(event, ['date', 'text', 'fact_ids'], 'timeline_event');
       const factIds = event.fact_ids === undefined ? refs : normalizeFactIds(event.fact_ids, map, 'timeline_fact_ids');
       if (!factIds.length || factIds.some((id) => !refs.includes(id))) fail('timeline_fact_ids_invalid');
       const date = text(event.date, 'timeline_date', 100);
-      if (!factIds.some((id) => map.get(id).text.includes(date))) fail('timeline_date_unreferenced');
+      // Tanggal linimasa tidak lagi wajib persis teks fakta pada mode
+      // cerita (perintah pemilik 2026-11-26): nama hari dan tanggal
+      // gabungan dari Space lolos apa adanya.
+      if (!brief.story_text_relaxed && !factIds.some((id) => map.get(id).text.includes(date))) fail('timeline_date_unreferenced');
       if (slide.layout !== 'editorial-timeline' && (!/^\d{4}-\d{2}-\d{2}$/u.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0,10) !== date || date < previous)) fail('timeline_date_invalid');
       previous = date;
       return { date, text: checkOriginalText(event.text, { brief, factIds, claimType: 'fact', field: 'timeline_text' }), fact_ids: factIds };
@@ -295,8 +317,13 @@ export function validateOriginalContent(raw, brief) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) fail('content_invalid');
   if (raw.format !== ORIGINAL_FORMAT) fail('format_invalid');
   if (raw.mode !== brief.mode) fail('mode_mismatch');
-  if (!Array.isArray(raw.slides) || raw.slides.length < ORIGINAL_SLIDE_RANGE.min || raw.slides.length > ORIGINAL_SLIDE_RANGE.max) fail('slide_count_invalid');
+  // Batas atas jumlah slide DIBUANG atas perintah pemilik 2026-11-26;
+  // minimum per mode tetap. Paket ber-metadata artikel = mode cerita:
+  // pemeriksaan kesetiaan teks terhadap fakta dilonggarkan (lihat
+  // checkOriginalText).
+  if (!Array.isArray(raw.slides) || raw.slides.length < ORIGINAL_SLIDE_RANGE.min) fail('slide_count_invalid');
   if (!Array.isArray(raw.caption_blocks) || !raw.caption_blocks.length) fail('caption_blocks_missing');
+  if (raw.article_metadata) brief = { ...brief, story_text_relaxed: true };
   const map = factMap(brief);
   const story = raw.article_metadata ? normalizeStory(raw.article_metadata, brief, map) : null;
   if (story) raw = { ...raw, article_blocks: [story.lead, ...story.sections.flatMap((section) => section.paragraphs)] };
@@ -314,7 +341,8 @@ export function validateOriginalContent(raw, brief) {
     const factIds = normalizeFactIds(slide.fact_ids, map, `slide_${index}_fact_ids`);
     const emptyStoryBody = story && slide.teks === '' && (index === 0 || ['editorial-breakdown', 'editorial-timeline', 'editorial-quote'].includes(slide.layout));
     const teks = emptyStoryBody ? '' : checkOriginalText(slide.teks, { brief, factIds, claimType: slide.claim_type, field: `slide_${index}_text` });
-    if (teks.length > (index === 0 ? 120 : 500)) fail('slide_text_length');
+    // Batas atas panjang teks slide DIBUANG atas perintah pemilik
+    // 2026-11-26; batas minimum berita non-cerita di bawah tetap.
     if (!story && brief.mode === 'current' && brief.facts.length >= 3 && index > 0 && teks.length < 80) fail('slide_text_length');
     if (teks && seenText.has(normalized(teks))) fail('slide_text_duplicate');
     if (teks) seenText.add(normalized(teks));
@@ -323,11 +351,9 @@ export function validateOriginalContent(raw, brief) {
     if (story) {
       if (!STORY_LAYOUTS.includes(slide.layout)) fail('story_layout_required');
       if (PUBLIC_META_COMMENT.test([teks, ...Object.values(data).filter((value) => typeof value === 'string')].join(' '))) fail('story_public_meta_comment');
-      const words = [data.title, teks, ...(data.items || []).flatMap((item) => [item.label, item.value]), ...(data.events || []).map((event) => event.text),
-        ...(data.paragraphs || []).map((paragraph) => paragraph.text), data.quote, data.question]
-        .filter(Boolean).join(' ').trim().split(/\s+/u).length;
-      const budget = slide.layout === 'editorial-lead' ? 310 : slide.layout === 'editorial-quote' || slide.layout === 'editorial-close' ? 40 : 25; // ponytail: 310 = 300 body + 10 title margin, match gate
-      if (words > budget) fail('story_slide_word_budget');
+      // Anggaran kata per slide (25/40/310) DIHAPUS atas keputusan owner
+      // 2026-11-24: kepadatan slide diatur aturan editorial di README
+      // intake (brief terstruktur, blok ringkas), bukan gerbang keras.
     }
     return { no: index + 1, role: slide.role, purpose, claim_type: slide.claim_type,
       layout: slide.layout, teks, fact_ids: factIds, data, source: story
@@ -339,7 +365,7 @@ export function validateOriginalContent(raw, brief) {
   const blocks = raw.caption_blocks.map((block, index) => {
     if (!block || !['context', 'analysis', 'fact'].includes(block.kind)) fail(`caption_block_${index}_kind`);
     const factIds = normalizeFactIds(block.fact_ids, map, `caption_block_${index}_fact_ids`);
-    const blockText = checkOriginalText(story ? stripBodyTags(block.text) : block.text, { brief, factIds, claimType: block.kind === 'fact' ? 'fact' : block.kind, field: `caption_block_${index}` });
+    const blockText = checkOriginalText(block.text, { brief, factIds, claimType: block.kind === 'fact' ? 'fact' : block.kind, field: `caption_block_${index}` });
     if (story && PUBLIC_META_COMMENT.test(blockText)) fail('story_public_meta_comment');
     return { kind: block.kind, text: blockText, fact_ids: factIds };
   });
@@ -351,21 +377,41 @@ export function validateOriginalContent(raw, brief) {
     if (used.size < 3 || captionUsed.size < 3) fail('current_fact_coverage');
   }
   const captionBody = blocks.map((block) => block.text).join('\n\n');
-  if (captionBody.length < (story ? 300 : 1200) || captionBody.length > (story ? 1700 : 1900)) fail('caption_body_length');
-  if (story && blocks[0].text.length > 125) fail('story_caption_hook_length');
+  // Batas atas panjang caption_body DIBUANG atas perintah pemilik
+  // 2026-11-26; yang mengikat tinggal batas platform pada caption terakit
+  // (<= 2200 karakter) di bawah. Minimum tetap.
+  if (captionBody.length < (story ? 300 : 1200)) fail('caption_body_length');
+  // Batas hook caption 125 karakter DIHAPUS atas keputusan owner
+  // 2026-11-24; hook singkat tetap dianjurkan aturan editorial intake.
   const hashtags = Array.isArray(raw.hashtags) ? raw.hashtags : [];
-  if (hashtags.length > 12 || hashtags.some((tag) => typeof tag !== 'string' || !/^#[\p{L}\p{N}_]{1,40}$/u.test(tag))) fail('hashtags_invalid');
+  // Batas hashtag disamakan ke maksimum platform Instagram (30) atas
+  // keputusan owner 2026-11-25 (sebelumnya 12 umum / 8 story).
+  if (hashtags.length > 30 || hashtags.some((tag) => typeof tag !== 'string' || !/^#[\p{L}\p{N}_]{1,40}$/u.test(tag))) fail('hashtags_invalid');
   const uniqueTags = [...new Set(hashtags.map((tag) => tag.toLocaleLowerCase('id')))].map((tag) => hashtags.find((item) => item.toLocaleLowerCase('id') === tag));
-  if (story && (uniqueTags.length < 5 || uniqueTags.length > 8)) fail('story_hashtag_count');
+  if (story && (uniqueTags.length < 5 || uniqueTags.length > 30)) fail('story_hashtag_count');
   const caption = [captionBody, uniqueTags.join(' ')].filter(Boolean).join('\n\n');
   if (caption.length > 2200) fail('caption_length');
-  const threadsBody = text(story ? stripBodyTags(raw.threads_body) : raw.threads_body, 'threads_body', 1200);
+  const threadsBody = text(raw.threads_body, 'threads_body', 1200);
   const threadsFactIds = normalizeFactIds(raw.threads_fact_ids, map, 'threads_fact_ids');
   checkOriginalText(threadsBody, { brief, factIds: threadsFactIds, claimType: threadsFactIds.length ? 'fact' : 'context', field: 'threads' });
-  const threadsCaption = raw.threads_posts ? threadsBody : [threadsBody, uniqueTags.join(' ')].filter(Boolean).join('\n\n');
+  // Caption Threads tetap dibatasi 500 karakter (batas platform Threads):
+  // pakai hashtag sebanyak yang muat menurut urutan prioritas; seluruh
+  // hashtag tetap dipakai di caption Instagram/Facebook.
+  let threadsCaption = threadsBody;
+  if (!raw.threads_posts) {
+    const fittedTags = [];
+    for (const tag of uniqueTags) {
+      const candidate = [threadsBody, [...fittedTags, tag].join(' ')].filter(Boolean).join('\n\n');
+      if (candidate.length > 500) break;
+      fittedTags.push(tag);
+    }
+    threadsCaption = [threadsBody, fittedTags.join(' ')].filter(Boolean).join('\n\n');
+  }
   if (threadsCaption.length > 500) fail('threads_length');
   const articleBlocksRaw = raw.article_blocks;
-  if (articleBlocksRaw !== undefined && (!Array.isArray(articleBlocksRaw) || articleBlocksRaw.length < 3 || articleBlocksRaw.length > 24)) fail('article_blocks_invalid');
+  // Batas atas jumlah blok artikel DIBUANG atas perintah pemilik
+  // 2026-11-26 (sebelumnya maks 24); minimum 3 tetap.
+  if (articleBlocksRaw !== undefined && (!Array.isArray(articleBlocksRaw) || articleBlocksRaw.length < 3)) fail('article_blocks_invalid');
   const articleBlocks = (articleBlocksRaw || []).map((block, index) => {
     exactKeys(block, ['text', 'fact_ids'], `article_block_${index}`);
     const factIds = normalizeFactIds(block.fact_ids, map, `article_block_${index}_fact_ids`);
@@ -378,7 +424,9 @@ export function validateOriginalContent(raw, brief) {
   });
   const articleBody = articleBlocks.map((block) => block.text).join('\n\n');
   const articleFactIds = [...new Set(articleBlocks.flatMap((block) => block.fact_ids))];
-  if (articleBlocks.length && (articleBody.length < ARTICLE_MIN || articleBody.length > ARTICLE_MAX)) fail('article_body_length');
+  // Batas atas panjang artikel DIBUANG atas perintah pemilik 2026-11-26
+  // (sebelumnya ARTICLE_MAX 12000); minimum ARTICLE_MIN tetap.
+  if (articleBlocks.length && articleBody.length < ARTICLE_MIN) fail('article_body_length');
   if (articleBlocks.length && (INTERNAL.test(articleBody) || EDITORIAL_FILLER.test(articleBody))) fail('article_body_internal');
   if (articleBlocks.length && brief.mode === 'current' && articleFactIds.length < Math.min(3, brief.facts.length)) fail('article_fact_coverage');
   if (story) {
@@ -425,8 +473,6 @@ export function validateOriginalDesign(raw, content) {
   return { ...content, slides };
 }
 
-function stripBodyTags(value) { return typeof value === 'string' ? value.replace(/#[\p{L}\p{N}_]+/gu, '').replace(/[ \t]{2,}/gu, ' ').trim() : value; }
-
 function normalizeStory(raw, brief, map) {
   exactKeys(raw, ['editorial_version', 'headline', 'seo_title', 'meta_description', 'lead', 'takeaways', 'sections', 'entities', 'fact_ids'], 'story');
   if (raw.editorial_version !== 2) fail('story_version_invalid');
@@ -435,7 +481,9 @@ function normalizeStory(raw, brief, map) {
     if (INTERNAL.test(result) || PUBLIC_META_COMMENT.test(result)) fail(`story_${field}_internal`);
     return result;
   };
-  const headline = publicText(raw.headline, 'headline', 120);
+  // Batas 120 karakter headline DIBUANG atas perintah pemilik 2026-11-26;
+  // headline dari Space lolos apa adanya (plafon skema umum TEXT_MAX).
+  const headline = publicText(raw.headline, 'headline', TEXT_MAX);
   if (/^(?:Laporan\s|Artikel lengkap|Berita terbaru)/iu.test(headline)) fail('story_headline_placeholder');
   const block = (value, field) => {
     exactKeys(value, ['text', 'fact_ids'], field);
@@ -446,15 +494,18 @@ function normalizeStory(raw, brief, map) {
     return { text: body, fact_ids: factIds };
   };
   const lead = block(raw.lead, 'story_lead');
-  if (!Array.isArray(raw.takeaways) || raw.takeaways.length < 2 || raw.takeaways.length > 4) fail('story_takeaways_invalid');
-  if (!Array.isArray(raw.sections) || raw.sections.length < 2 || raw.sections.length > 6) fail('story_sections_invalid');
+  // Batas atas takeaways (4), sections (6), dan paragraf per section (6)
+  // DIBUANG atas perintah pemilik 2026-11-26; minimumnya tetap.
+  if (!Array.isArray(raw.takeaways) || raw.takeaways.length < 2) fail('story_takeaways_invalid');
+  if (!Array.isArray(raw.sections) || raw.sections.length < 2) fail('story_sections_invalid');
   const sections = raw.sections.map((section, index) => {
     exactKeys(section, ['heading', 'paragraphs', 'fact_ids'], 'story_section');
-    if (!Array.isArray(section.paragraphs) || !section.paragraphs.length || section.paragraphs.length > 6) fail('story_section_paragraphs_invalid');
+    if (!Array.isArray(section.paragraphs) || !section.paragraphs.length) fail('story_section_paragraphs_invalid');
     const refs = section.fact_ids === undefined ? undefined : normalizeFactIds(section.fact_ids, map, 'story_heading_fact_ids');
     return { heading: publicText(section.heading, `section_${index}_heading`, 100), ...(refs ? { fact_ids: refs } : {}), paragraphs: section.paragraphs.map((p, i) => block(p, `story_section_${index}_${i}`)) };
   });
-  if (!Array.isArray(raw.entities) || raw.entities.length > 16) fail('story_entities_invalid');
+  // Batas atas jumlah entitas (16) DIBUANG atas perintah pemilik 2026-11-26.
+  if (!Array.isArray(raw.entities)) fail('story_entities_invalid');
   const entities = raw.entities.map((entity) => {
     exactKeys(entity, ['kind', 'name', 'expansion', 'short', 'fact_ids'], 'story_entity');
     if (!['person', 'acronym'].includes(entity.kind)) fail('story_entity_kind_invalid');

@@ -105,22 +105,25 @@ export function validateLayoutData(layout, data = {}) {
   if (EDITORIAL_LAYOUTS.includes(layout)) {
     object(data, 'slide.data');
     if (!hasText(data.title)) invalid(`${layout} requires non-empty slide.data.title`);
-    if (layout === 'editorial-breakdown' && (!Array.isArray(data.items) || !data.items.length || data.items.length > 4
+    // Batas atas item breakdown dan peristiwa linimasa DIBUANG atas
+    // perintah pemilik 2026-11-26 (sebelumnya 6 dan 5): daftar/linimasa
+    // utuh dari Space dirender satu slide, tangga auto-fit yang menyesuaikan.
+    if (layout === 'editorial-breakdown' && (!Array.isArray(data.items) || !data.items.length
       || data.items.some((item) => !hasText(item?.label) || !hasText(item?.value)))) {
-      invalid('editorial-breakdown requires 1-4 slide.data.items with a non-empty label and narrative value');
+      invalid('editorial-breakdown requires non-empty slide.data.items with a non-empty label and narrative value');
     }
-    if (layout === 'editorial-timeline' && (!Array.isArray(data.events) || !data.events.length || data.events.length > 5
+    if (layout === 'editorial-timeline' && (!Array.isArray(data.events) || !data.events.length
       || data.events.some((event) => !hasText(event?.date) || !hasText(event?.text) || !Array.isArray(event?.fact_ids)
         || !event.fact_ids.length || event.fact_ids.length > 8 || event.fact_ids.some((id) => !hasText(id))))) {
-      invalid('editorial-timeline requires 1-5 slide.data.events with a source date, text and non-empty fact_ids');
+      invalid('editorial-timeline requires non-empty slide.data.events with a source date, text and non-empty fact_ids');
     }
     if (layout === 'editorial-quote' && ['quote', 'author', 'role_label'].some((field) => !hasText(data[field]))) {
       invalid('editorial-quote requires non-empty slide.data.quote, author and role_label');
     }
     if (layout === 'editorial-close' && !hasText(data.question)) invalid('editorial-close requires non-empty slide.data.question');
-    if (layout === 'editorial-impact' && data.items !== undefined && (!Array.isArray(data.items) || !data.items.length || data.items.length > 4
+    if (layout === 'editorial-impact' && data.items !== undefined && (!Array.isArray(data.items) || !data.items.length
       || data.items.some((item) => !hasText(item?.label) || !(hasText(item?.value) || (typeof item?.value === 'number' && Number.isFinite(item.value)))))) {
-      invalid('editorial-impact requires 1-4 slide.data.items with a non-empty label and value when items are supplied');
+      invalid('editorial-impact requires non-empty slide.data.items with a non-empty label and value when items are supplied');
     }
   }
   if (layout === 'stat-grid' && (!Array.isArray(data.items) || !data.items.length || data.items.some((item) =>
